@@ -296,34 +296,6 @@ def _print_body(body: bytes):
         console.print(f"  <binary, {len(body)} bytes>")
 
 
-@cli.command("import-har")
-@click.argument("har_path", type=click.Path(exists=True))
-@click.option("-o", "--output", required=True, help="Output capture bundle (.zip)")
-def import_har(har_path: str, output: str):
-    """Import a HAR file into a capture bundle."""
-    from cli.har import har_to_bundle
-    from cli.capture.loader import write_bundle
-
-    console.print(f"[bold]Importing HAR:[/bold] {har_path}")
-    bundle = har_to_bundle(Path(har_path))
-    write_bundle(bundle, output)
-    console.print(f"[green]Capture bundle written to {output}[/green]")
-
-
-@cli.command("export-har")
-@click.argument("capture_path", type=click.Path(exists=True))
-@click.option("-o", "--output", required=True, help="Output HAR file (.har)")
-def export_har(capture_path: str, output: str):
-    """Export a capture bundle to HAR format (lossy: no UI context, binary->base64)."""
-    from cli.har import bundle_to_har
-    from cli.capture.loader import load_bundle
-
-    console.print(f"[bold]Exporting to HAR:[/bold] {capture_path}")
-    bundle = load_bundle(capture_path)
-    har = bundle_to_har(bundle)
-    Path(output).write_text(json.dumps(har, indent=2))
-    console.print(f"[green]HAR written to {output}[/green]")
-
 
 def _truncate(s: str, max_len: int) -> str:
     if len(s) <= max_len:
