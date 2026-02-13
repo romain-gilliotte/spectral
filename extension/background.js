@@ -35,6 +35,10 @@ let timeline = [];
 // Pending requests (requestId -> partial trace data)
 let pendingRequests = new Map();
 
+// ExtraInfo events can arrive before or after their base events.
+// Buffer them keyed by requestId for merging.
+let pendingExtraInfo = new Map(); // requestId -> { requestHeaders, responseHeaders }
+
 // Counters for ID generation
 let traceCounter = 0;
 let contextCounter = 0;
@@ -173,6 +177,14 @@ function handleRequestWillBeSent(params) {
       line: initiator?.lineNumber || null,
     },
   });
+
+  // Check if ExtraInfo arrived first (wire-level headers)
+  const extra = pendingExtraInfo.get(requestId);
+  if (extra?.requestHeaders) {
+    pendingRequests.get(requestId).request.headers = extra.requestHeaders;
+    delete extra.requestHeaders;
+    if (!extra.responseHeaders) pendingExtraInfo.delete(requestId);
+  }
 }
 
 /**
@@ -204,6 +216,14 @@ function handleResponseReceived(params) {
   };
   pending.timing = timingInfo;
   pending.responseTimestamp = toEpochMs(timestamp);
+
+  // Check if ExtraInfo arrived first (wire-level headers)
+  const extra = pendingExtraInfo.get(requestId);
+  if (extra?.responseHeaders) {
+    pending.response.headers = extra.responseHeaders;
+    delete extra.responseHeaders;
+    if (!extra.requestHeaders) pendingExtraInfo.delete(requestId);
+  }
 }
 
 /**
@@ -357,6 +377,7 @@ async function handleLoadingFinished(params, debuggeeId) {
   });
 
   pendingRequests.delete(requestId);
+  pendingExtraInfo.delete(requestId);
 }
 
 /**
@@ -365,6 +386,7 @@ async function handleLoadingFinished(params, debuggeeId) {
 function handleLoadingFailed(params) {
   const { requestId } = params;
   pendingRequests.delete(requestId);
+  pendingExtraInfo.delete(requestId);
 }
 
 /**
@@ -525,6 +547,44 @@ function handleWebSocketClosed(params) {
   // Connection is kept in wsConnections map - no action needed
 }
 
+/**
+ * Handle Network.requestWillBeSentExtraInfo — wire-level request headers
+ * (includes Cookie, browser-managed Authorization, etc.)
+ */
+function handleRequestWillBeSentExtraInfo(params) {
+  const { requestId, headers } = params;
+
+  const pending = pendingRequests.get(requestId);
+  if (pending) {
+    // Base event already arrived — merge directly
+    pending.request.headers = normalizeHeaders(headers);
+  } else {
+    // Base event not yet arrived — buffer
+    const extra = pendingExtraInfo.get(requestId) || {};
+    extra.requestHeaders = normalizeHeaders(headers);
+    pendingExtraInfo.set(requestId, extra);
+  }
+}
+
+/**
+ * Handle Network.responseReceivedExtraInfo — wire-level response headers
+ * (includes Set-Cookie, cross-origin headers, etc.)
+ */
+function handleResponseReceivedExtraInfo(params) {
+  const { requestId, headers } = params;
+
+  const pending = pendingRequests.get(requestId);
+  if (pending && pending.response) {
+    // Response already arrived — merge directly
+    pending.response.headers = normalizeHeaders(headers);
+  } else {
+    // Response not yet arrived — buffer
+    const extra = pendingExtraInfo.get(requestId) || {};
+    extra.responseHeaders = normalizeHeaders(headers);
+    pendingExtraInfo.set(requestId, extra);
+  }
+}
+
 // ============================================================================
 // Debugger event handler
 // ============================================================================
@@ -539,6 +599,12 @@ function onDebuggerEvent(debuggeeId, method, params) {
       break;
     case 'Network.responseReceived':
       handleResponseReceived(params);
+      break;
+    case 'Network.requestWillBeSentExtraInfo':
+      handleRequestWillBeSentExtraInfo(params);
+      break;
+    case 'Network.responseReceivedExtraInfo':
+      handleResponseReceivedExtraInfo(params);
       break;
     case 'Network.loadingFinished':
       handleLoadingFinished(params, debuggeeId);
@@ -561,6 +627,22 @@ function onDebuggerEvent(debuggeeId, method, params) {
     case 'Network.webSocketClosed':
       handleWebSocketClosed(params);
       break;
+  }
+}
+
+/**
+ * Re-inject content script when the captured tab completes a navigation.
+ * Full (non-SPA) navigations destroy the JS context, so the content script
+ * must be re-injected to keep capturing UI events.
+ */
+function onTabUpdated(tabId, changeInfo) {
+  if (tabId !== captureTabId || state !== State.CAPTURING) return;
+  if (changeInfo.status === 'complete') {
+    chrome.scripting.executeScript({
+      target: { tabId, allFrames: true },
+      files: ['content.js'],
+    }).then(() => activateContentScript(tabId))
+      .catch((e) => console.warn('Content script re-injection failed:', e));
   }
 }
 
@@ -603,6 +685,7 @@ function resetState() {
   wsMessages = [];
   timeline = [];
   pendingRequests = new Map();
+  pendingExtraInfo = new Map();
   traceCounter = 0;
   contextCounter = 0;
   wsConnectionCounter = 0;
@@ -649,9 +732,10 @@ async function startCapture(tabId) {
       maxPostDataSize: 65536, // 64KB max POST data
     });
 
-    // Set up event listener
+    // Set up event listeners
     chrome.debugger.onEvent.addListener(onDebuggerEvent);
     chrome.debugger.onDetach.addListener(onDebuggerDetach);
+    chrome.tabs.onUpdated.addListener(onTabUpdated);
 
     captureStartTime = now();
     state = State.CAPTURING;
@@ -682,6 +766,7 @@ async function stopCapture() {
 
   chrome.debugger.onEvent.removeListener(onDebuggerEvent);
   chrome.debugger.onDetach.removeListener(onDebuggerDetach);
+  chrome.tabs.onUpdated.removeListener(onTabUpdated);
 
   state = State.IDLE;
 
