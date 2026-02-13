@@ -497,6 +497,7 @@ function onDebuggerEvent(debuggeeId, method, params) {
 function onDebuggerDetach(debuggeeId, reason) {
   if (debuggeeId.tabId === captureTabId) {
     console.log('Debugger detached:', reason);
+    deactivateContentScript(captureTabId);
     resetState();
   }
 }
@@ -504,6 +505,17 @@ function onDebuggerDetach(debuggeeId, reason) {
 // ============================================================================
 // Capture control
 // ============================================================================
+
+/**
+ * Tell the content script to stop/start capturing
+ */
+function deactivateContentScript(tabId) {
+  chrome.tabs.sendMessage(tabId, { type: 'SET_CAPTURE_ACTIVE', active: false }).catch(() => {});
+}
+
+function activateContentScript(tabId) {
+  chrome.tabs.sendMessage(tabId, { type: 'SET_CAPTURE_ACTIVE', active: true }).catch(() => {});
+}
 
 /**
  * Reset all capture state
@@ -547,6 +559,14 @@ async function startCapture(tabId) {
       title: tab.title || '',
     };
 
+    // Inject content script for UI context capture (IIFE guards against double-init)
+    await chrome.scripting.executeScript({
+      target: { tabId, allFrames: true },
+      files: ['content.js'],
+    });
+    // Re-activate if already injected from a previous capture
+    activateContentScript(tabId);
+
     // Attach debugger
     await chrome.debugger.attach({ tabId }, '1.3');
 
@@ -576,6 +596,8 @@ async function stopCapture() {
   if (state !== State.CAPTURING) {
     throw new Error(`Cannot stop capture in state: ${state}`);
   }
+
+  deactivateContentScript(captureTabId);
 
   try {
     // Detach debugger
@@ -765,23 +787,20 @@ async function exportCapture() {
     // Add timeline
     zip.file('timeline.json', JSON.stringify({ events: timeline }, null, 2));
 
-    // Generate ZIP blob
-    const blob = await zip.generateAsync({ type: 'blob' });
+    // Generate ZIP as base64 (URL.createObjectURL not available in service workers)
+    const base64 = await zip.generateAsync({ type: 'base64' });
 
     // Create filename with timestamp
     const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
-    const filename = `capture_${timestamp}.zip`;
+    const domain = appInfo?.base_url ? new URL(appInfo.base_url).hostname.replace(/\./g, '_') : 'unknown';
+    const filename = `capture_${domain}_${timestamp}.zip`;
 
-    // Trigger download
-    const url = URL.createObjectURL(blob);
+    // Trigger download via data URL
     await chrome.downloads.download({
-      url,
+      url: `data:application/zip;base64,${base64}`,
       filename,
       saveAs: true,
     });
-
-    // Cleanup
-    URL.revokeObjectURL(url);
 
     state = State.IDLE;
     return { success: true, filename };
