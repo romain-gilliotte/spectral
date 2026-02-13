@@ -2,7 +2,12 @@
 
 ## Development environment
 
-- Python virtualenv is in `.venv`. Always activate it before running CLI commands: `. .venv/bin/activate`
+- Package manager is **uv**. Use `uv run` to execute commands (no need to activate the venv):
+  - `uv run pytest tests/` — run tests
+  - `uv run api-discover analyze ...` — run the CLI
+  - `uv add <package>` — add a dependency (updates `pyproject.toml` + `uv.lock`)
+  - `uv add --dev <package>` — add a dev dependency
+- `.env` file at project root holds `ANTHROPIC_API_KEY` (loaded by the CLI via `python-dotenv`). Do NOT commit `.env`.
 
 ## What this project is
 
