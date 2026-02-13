@@ -8,8 +8,11 @@ import sys
 from pathlib import Path
 
 import click
+from dotenv import load_dotenv
 from rich.console import Console
 from rich.table import Table
+
+load_dotenv()
 
 console = Console()
 
@@ -39,7 +42,7 @@ def analyze(capture_path: str, output: str, model: str):
         f"{len(bundle.contexts)} contexts"
     )
 
-    client = anthropic.AsyncAnthropic()
+    client = anthropic.AsyncAnthropic(max_retries=3)
 
     def on_progress(msg):
         console.print(f"  {msg}")
@@ -142,7 +145,7 @@ def pipeline(capture_path: str, types: str, output: str, model: str):
     console.print(f"[bold]Loading capture bundle:[/bold] {capture_path}")
     bundle = load_bundle(capture_path)
 
-    client = anthropic.AsyncAnthropic()
+    client = anthropic.AsyncAnthropic(max_retries=3)
 
     def on_progress(msg):
         console.print(f"  {msg}")

@@ -13,6 +13,7 @@ dependencies = [
     "anthropic>=0.40",
     "pyyaml>=6.0",
     "rich>=13.0",
+    "python-dotenv>=1.2.1",
 ]
 
 [project.scripts]
