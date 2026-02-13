@@ -195,7 +195,11 @@ async def build_spec(
 def _find_traces_for_group(group: EndpointGroup, traces: list[Trace]) -> list[Trace]:
     """Find traces whose URLs are listed in the endpoint group."""
     url_set = set(group.urls)
-    matched = [t for t in traces if t.meta.request.url in url_set]
+    matched = [
+        t for t in traces
+        if t.meta.request.url in url_set
+        and t.meta.request.method.upper() == group.method
+    ]
 
     # Also try pattern matching to catch traces the LLM didn't list
     pattern_re = _pattern_to_regex(group.pattern)
