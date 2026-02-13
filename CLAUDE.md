@@ -1,5 +1,9 @@
 # api-discover — Project Specification
 
+## Development environment
+
+- Python virtualenv is in `.venv`. Always activate it before running CLI commands: `. .venv/bin/activate`
+
 ## What this project is
 
 A three-stage pipeline that automatically discovers and documents web application APIs:
@@ -17,36 +21,54 @@ api-discover/
 ├── extension/              # Chrome Extension (Manifest V3)
 │   ├── manifest.json
 │   ├── background.js       # Network capture via chrome.debugger (DevTools Protocol)
-│   ├── content.js          # UI context capture (clicks, navigation, DOM state)
-│   ├── popup.html          # Simple start/stop/export UI
-│   └── popup.js
+│   ├── content.js          # UI context capture (clicks, navigation, DOM state, page content)
+│   ├── popup.html          # Start/stop/export UI with live stats
+│   ├── popup.js            # Popup controller (state management, polling)
+│   ├── popup.css           # Popup styling (320px popup, status indicators)
+│   ├── lib/
+│   │   └── jszip.min.js    # ZIP library for bundle export
+│   └── icons/
+│       ├── icon16.png
+│       ├── icon48.png
+│       └── icon128.png
 ├── cli/                    # Python CLI tool
 │   ├── __init__.py
-│   ├── main.py             # Entry point: `api-discover analyze` / `api-discover generate`
-│   ├── capture/            # Stage 2: Capture bundle parsing
-│   │   ├── loader.py       # Unzips and loads a capture bundle
-│   │   └── models.py       # Data classes for traces, contexts, timeline
-│   ├── analyze/            # Stage 2: Analysis engine
+│   ├── main.py             # Entry point: 4 commands (analyze, generate, pipeline, inspect)
+│   ├── capture/            # Capture bundle parsing
+│   │   ├── loader.py       # Unzips and loads a capture bundle (+ write_bundle)
+│   │   └── models.py       # Data classes for traces, contexts, timeline (wraps Pydantic + binary)
+│   ├── analyze/            # Analysis engine
 │   │   ├── correlator.py   # Time-window correlation: UI action → API calls
 │   │   ├── protocol.py     # Protocol detection (REST, GraphQL, WebSocket, gRPC, binary)
-│   │   ├── llm.py          # LLM client for semantic inference (Anthropic API)
-│   │   └── spec_builder.py # Builds the enriched API spec from correlations
-│   ├── generate/           # Stage 3: Output generators
+│   │   ├── llm.py          # LLM client: 5 async functions (endpoints, auth, detail, context, correction)
+│   │   ├── validator.py    # Mechanical validation: coverage, pattern match, schema, auth coherence
+│   │   └── spec_builder.py # LLM-first pipeline: groups → enrich → validate → correct
+│   ├── generate/           # Output generators
 │   │   ├── openapi.py      # Enriched OpenAPI 3.1 output
-│   │   ├── mcp_server.py   # MCP server scaffold generation
+│   │   ├── mcp_server.py   # MCP server scaffold generation (FastMCP)
 │   │   ├── python_client.py# Python SDK with business-named methods
-│   │   ├── markdown_docs.py# Human-readable documentation
-│   │   └── curl_scripts.py # Ready-to-use cURL examples
+│   │   ├── markdown_docs.py# Human-readable documentation (index + per-endpoint + auth)
+│   │   └── curl_scripts.py # Ready-to-use cURL examples (per-endpoint + all-in-one)
 │   └── formats/            # Shared format definitions
-│       ├── capture_bundle.py   # Capture bundle schema & validation
-│       └── api_spec.py         # Enriched API spec schema & validation
+│       ├── capture_bundle.py   # Capture bundle Pydantic models (17 models)
+│       └── api_spec.py         # Enriched API spec Pydantic models
+├── tests/
+│   ├── conftest.py         # Shared fixtures (sample_bundle, make_trace, make_context, etc.)
+│   ├── test_formats.py
+│   ├── test_loader.py
+│   ├── test_protocol.py
+│   ├── test_correlator.py
+│   ├── test_spec_builder.py
+│   ├── test_validator.py
+│   ├── test_generators.py
+│   └── test_cli.py
 ├── pyproject.toml
 └── README.md
 ```
 
 ## Technology choices
 
-- **Extension**: Vanilla JS, Chrome Manifest V3, Chrome DevTools Protocol (via `chrome.debugger`)
+- **Extension**: Vanilla JS, Chrome Manifest V3, Chrome DevTools Protocol (via `chrome.debugger`), JSZip for bundle export
 - **CLI**: Python 3.11+, Click for CLI, Pydantic for data models
 - **LLM**: Anthropic API (Claude Sonnet) for semantic analysis
 - **Packaging**: pyproject.toml with `[project.scripts]` entry point for `api-discover`
@@ -60,8 +82,6 @@ This is the custom format produced by the Chrome Extension. We chose a ZIP bundl
 - HAR has no standard WebSocket support (Chrome uses non-standard `_webSocketMessages`)
 - HAR has no concept of UI context or unique trace IDs for cross-referencing
 - HAR's request/response pair model doesn't fit WebSocket's async full-duplex messages
-
-The bundle can still import/export HAR for compatibility with existing tooling.
 
 ### Bundle structure
 
@@ -84,7 +104,7 @@ capture_<timestamp>.zip
 │   ├── ws_0001_m002.json
 │   └── ...
 ├── contexts/
-│   ├── c_0001.json            # UI context snapshot
+│   ├── c_0001.json            # UI context snapshot (with rich page content)
 │   ├── c_0002.json
 │   └── ...
 └── timeline.json              # Ordered list of all events with cross-references
@@ -215,14 +235,21 @@ Key design decisions:
     "tag": "NAV",
     "text": "Ma consommation",
     "attributes": {
-      "data-tab": "consumption",
-      "class": "nav-item active"
+      "data-tab": "consumption"
     },
     "xpath": "/html/body/div[2]/nav/div[3]"
   },
   "page": {
     "url": "https://www.edf.fr/dashboard",
-    "title": "Mon espace client - EDF"
+    "title": "Mon espace client - EDF",
+    "content": {
+      "headings": ["Mon espace client", "Ma consommation", "Mes factures"],
+      "navigation": ["Accueil", "Consommation", "Factures", "Contrat"],
+      "main_text": "Bienvenue sur votre espace client EDF...",
+      "forms": [{ "id": "search-form", "fields": ["query"], "submitLabel": "Rechercher" }],
+      "tables": ["Mois | Consommation | Coût"],
+      "alerts": []
+    }
   },
   "viewport": {
     "width": 1440,
@@ -233,12 +260,19 @@ Key design decisions:
 }
 ```
 
+The `page.content` field provides rich page context for LLM analysis:
+- **`headings`** — visible h1/h2/h3 elements (up to 10)
+- **`navigation`** — links from nav/menu elements (up to 15)
+- **`main_text`** — visible text from main content area (max 500 chars)
+- **`forms`** — visible forms with field identifiers and submit labels (up to 5)
+- **`tables`** — header rows from visible tables (up to 5)
+- **`alerts`** — visible alerts/notifications/toasts (up to 5)
+
 Captured UI actions:
-- `click` — user clicks an element
-- `input` — user types in a field (value NOT captured by default for privacy — only field identity)
+- `click` — user clicks an element (walks up to nearest meaningful ancestor: button, link, input, etc.)
+- `input` — user types in a field (value NOT captured for privacy — only field identity, debounced 300ms)
 - `submit` — form submission
-- `navigate` — page navigation (pushState, popstate, full navigation)
-- `scroll` — significant scroll events (debounced)
+- `navigate` — page navigation (pushState, replaceState, popstate)
 
 ### timeline.json
 
@@ -420,10 +454,9 @@ Everything else is mechanical (headers, schemas, status codes, URLs, timing).
 ## CLI commands
 
 ```bash
-# Stage 2: Analyze a capture bundle → enriched API spec
+# Stage 2: Analyze a capture bundle → enriched API spec (requires ANTHROPIC_API_KEY)
 api-discover analyze capture_20260213.zip -o edf-api.json
-api-discover analyze capture_20260213.zip -o edf-api.json --model claude-sonnet-4-5  # choose model
-api-discover analyze capture_20260213.zip -o edf-api.json --no-llm                  # skip LLM, mechanical only
+api-discover analyze capture_20260213.zip -o edf-api.json --model claude-sonnet-4-5-20250929
 
 # Stage 3: Generate outputs from enriched spec
 api-discover generate edf-api.json --type openapi    -o edf-openapi.yaml
@@ -432,17 +465,15 @@ api-discover generate edf-api.json --type python-client -o edf_client.py
 api-discover generate edf-api.json --type markdown-docs -o docs/
 api-discover generate edf-api.json --type curl-scripts  -o scripts/
 
-# Full pipeline
+# Full pipeline (analyze + generate all requested types)
 api-discover pipeline capture_20260213.zip --types openapi,mcp-server,python-client -o output/
-
-# Utility: import/export HAR for compatibility
-api-discover import-har recording.har -o capture.zip        # HAR → capture bundle
-api-discover export-har capture.zip -o recording.har         # capture bundle → HAR (lossy: no UI context, binary→base64)
 
 # Utility: inspect a capture bundle
 api-discover inspect capture_20260213.zip                    # summary stats
 api-discover inspect capture_20260213.zip --trace t_0001     # details of one trace
 ```
+
+Note: `analyze` and `pipeline` always use LLM analysis (requires `ANTHROPIC_API_KEY`). Default model is `claude-sonnet-4-5-20250929`.
 
 ---
 
@@ -453,20 +484,34 @@ api-discover inspect capture_20260213.zip --trace t_0001     # details of one tr
 1. User clicks "Start Capture" in extension popup
 2. Extension attaches `chrome.debugger` to the active tab
 3. `background.js` listens to DevTools Protocol events:
-   - `Network.requestWillBeSent` — capture request metadata
+   - `Network.requestWillBeSent` — capture request metadata (provisional headers)
+   - `Network.requestWillBeSentExtraInfo` — capture wire-level request headers (Cookie, browser-managed Auth)
    - `Network.responseReceived` + `Network.getResponseBody` — capture response metadata + body
+   - `Network.responseReceivedExtraInfo` — capture wire-level response headers (Set-Cookie, cross-origin)
    - `Network.webSocketCreated`, `Network.webSocketFrameSent`, `Network.webSocketFrameReceived` — WebSocket
-4. `content.js` listens to DOM events (click, input, submit) and navigation events
-5. Both sides send timestamped events to background.js which stores them in-memory
-6. User clicks "Stop Capture" → background detaches debugger
-7. User clicks "Export" → background assembles the ZIP bundle and triggers download
+4. `content.js` listens to DOM events (click, input, submit) and navigation events, extracts rich page content
+5. Content script sends timestamped context events to background.js via `chrome.runtime.sendMessage`
+6. On full-page navigation (non-SPA), `chrome.tabs.onUpdated` re-injects `content.js` automatically so UI capture continues
+7. User clicks "Stop Capture" → background detaches debugger
+7. User clicks "Export" → background assembles the ZIP bundle using JSZip and triggers download
+
+### Extension state machine
+
+`IDLE` → `ATTACHING` → `CAPTURING` → `EXPORTING` → `IDLE`
+
+The popup polls the background for current state and stats, updating the UI accordingly:
+- **idle**: Show "Start Capture" button
+- **capturing**: Show live stats (requests, WS messages, UI events, duration) + "Stop Capture" button
+- **stopped**: Show final stats + "Export Bundle" button
 
 ### What we capture via DevTools Protocol
 
 | Protocol event | What we get |
 |---|---|
-| `Network.requestWillBeSent` | URL, method, headers, POST body, initiator, timestamp |
-| `Network.responseReceived` | Status, headers, MIME type, timing |
+| `Network.requestWillBeSent` | URL, method, provisional headers, POST body, initiator, timestamp |
+| `Network.requestWillBeSentExtraInfo` | Wire-level request headers (Cookie, browser-managed Authorization) |
+| `Network.responseReceived` | Status, provisional headers, MIME type, timing |
+| `Network.responseReceivedExtraInfo` | Wire-level response headers (Set-Cookie, cross-origin headers) |
 | `Network.getResponseBody` | Full response body (text or base64-encoded binary) |
 | `Network.webSocketCreated` | WebSocket URL |
 | `Network.webSocketFrameSent` | Outgoing WS message (text or binary as base64) |
@@ -477,11 +522,23 @@ api-discover inspect capture_20260213.zip --trace t_0001     # details of one tr
 
 | DOM event | What we record |
 |---|---|
-| `click` | Element selector, tag, text content, attributes, page URL |
-| `input` | Field identity (name, id, selector) — NOT the value (privacy) |
-| `submit` | Form action, method, field identifiers |
-| `popstate` / `pushState` interception | Navigation URL changes (SPA) |
-| `beforeunload` | Full page navigations |
+| `click` | Element selector, tag, text content, attributes, page URL, page content |
+| `input` | Field identity (name, id, selector) — NOT the value (privacy), debounced 300ms |
+| `submit` | Form target element |
+| `pushState` / `replaceState` / `popstate` | Navigation URL changes (SPA) |
+
+The content script also captures **rich page content** with each context event:
+- Visible headings (h1-h3), navigation links, main text content
+- Form field identifiers and submit labels
+- Table headers, alerts/notifications
+
+### Selector generation strategy
+
+The content script generates stable CSS selectors using a priority chain:
+1. Stable `id` attributes (filters out framework-generated IDs like `ember123`, `react-...`)
+2. `data-testid` / `data-test` / `data-cy` attributes
+3. Tag + `name` attribute for form elements
+4. Fallback: tag + stable classes (filters framework CSS classes) + nth-child, up to 5 levels
 
 ### Context↔Trace correlation (in extension)
 
@@ -489,34 +546,80 @@ When storing a trace, the extension finds the most recent context(s) within a 2-
 
 ---
 
+## Analysis pipeline (LLM-first architecture)
+
+The `build_spec()` function in `spec_builder.py` implements an LLM-first pipeline:
+
+1. **Extract** — Collect `(method, url)` pairs from all traces
+2. **LLM: Group endpoints** — Ask the LLM to group URLs into endpoint patterns with `{param}` syntax
+3. **For each group:**
+   - Mechanical extraction: query params, response codes, JSON schemas, auth headers
+   - LLM enrichment: business purpose, user story, parameter meanings, trigger explanations
+4. **LLM: Auth analysis** — Detect auth type, flow, token handling from auth-related traces
+5. **LLM: Business context** — Infer domain, description, workflows, glossary from all endpoints
+6. **Build WebSocket specs** — Mechanical extraction from WS connections + protocol detection
+7. **Assemble ApiSpec** — Combine all parts into the final spec
+8. **Mechanical validation** — Check coverage, pattern match, schema consistency, auth coherence
+9. **LLM: Correction** — If validation errors, ask LLM to fix the spec (one iteration only)
+
+### LLM functions (`cli/analyze/llm.py`)
+
+| Function | Purpose | Input |
+|---|---|---|
+| `analyze_endpoints` | Group URLs into endpoint patterns | List of `(method, url)` pairs |
+| `analyze_endpoint_detail` | Enrich one endpoint with business meaning | Endpoint summary + samples + UI triggers |
+| `analyze_auth` | Detect authentication mechanism | Auth-related trace summaries |
+| `analyze_business_context` | Infer domain, workflows, glossary | All endpoint summaries + app info |
+| `correct_spec` | Fix validation errors in spec | Spec endpoints + validation errors |
+
+All functions use `_extract_json()` to robustly parse LLM JSON responses (handles markdown blocks, nested objects).
+
+### Mechanical validation (`cli/analyze/validator.py`)
+
+| Check | What it validates |
+|---|---|
+| Coverage | Every trace is assigned to an endpoint |
+| Pattern match | Each trace URL matches its endpoint's path pattern |
+| Schema consistency | Observed JSON bodies match generated schemas (required keys, no extra keys) |
+| Auth coherence | If auth headers seen in traces, auth type must be detected in spec |
+
+Returns structured `ValidationError` objects that can be serialized and fed back to the LLM for correction.
+
+---
+
 ## Implementation status
 
-### Phase 1: Capture bundle format + Extension MVP
-- [x] Pydantic models for capture bundle format (`cli/formats/capture_bundle.py`) — 12 models
+### Phase 1: Capture bundle format + Extension
+- [x] Pydantic models for capture bundle format (`cli/formats/capture_bundle.py`) — 17 models including PageContent
 - [x] Bundle loader/writer with ZIP serialization (`cli/capture/loader.py`) — binary-safe roundtrip
 - [x] In-memory data classes (`cli/capture/models.py`) — wraps metadata + binary payloads
+- [x] Chrome extension: `background.js` — DevTools Protocol capture, state machine, timestamp conversion
+- [x] Chrome extension: `content.js` — DOM event capture, page content extraction, stable selector generation
+- [x] Chrome extension: popup UI — Start/Stop/Export buttons, live stats, status indicators
 - [x] Tests: model roundtrips, bundle read/write, binary safety, lookups
-- [ ] Chrome extension: `background.js` (DevTools Protocol capture)
-- [ ] Chrome extension: `content.js` (DOM event capture)
-- [ ] Chrome extension: popup UI (Start / Stop / Export)
 
-### Phase 2: Mechanical analysis (no LLM)
+### Phase 2: Mechanical analysis
 - [x] Protocol detection (`cli/analyze/protocol.py`) — REST, GraphQL, gRPC, binary, WS sub-protocols
 - [x] Time-window correlation (`cli/analyze/correlator.py`) — UI action → API calls with configurable window
-- [x] Endpoint grouping by (method, normalized path pattern)
+- [x] Endpoint grouping by (method, normalized path pattern) — via LLM in spec_builder
 - [x] Path parameter inference from URL variations (numeric, UUID, hex hash detection)
 - [x] Request/response JSON schema inference with format detection (date, email, UUID, URI)
 - [x] Query parameter extraction from URLs
-- [x] Auth detection (Bearer, Basic, cookie-based)
+- [x] Auth detection (Bearer, Basic, cookie-based) — mechanical fallback + LLM analysis
 - [x] Base URL detection (most common origin)
-- [x] Full spec builder (`cli/analyze/spec_builder.py`) — assembles everything into `ApiSpec`
-- [x] Tests: protocol detection, correlator logic, path params, schema inference, auth, full builds
+- [x] Mechanical validation (`cli/analyze/validator.py`) — coverage, patterns, schemas, auth
+- [x] Full spec builder (`cli/analyze/spec_builder.py`) — LLM-first pipeline with validation + correction
+- [x] Tests: protocol detection, correlator logic, path params, schema inference, auth, validation, full builds
 
 ### Phase 3: LLM analysis
-- [x] LLM client skeleton (`cli/analyze/llm.py`) — Anthropic API, async, per-endpoint + global enrichment
+- [x] LLM client (`cli/analyze/llm.py`) — Anthropic API, async, 5 specialized functions
+- [x] Endpoint grouping via LLM (`analyze_endpoints`)
+- [x] Per-endpoint enrichment: business_purpose, user_story, parameter meanings (`analyze_endpoint_detail`)
+- [x] Business context + glossary inference (`analyze_business_context`)
+- [x] Auth flow reconstruction from traces (`analyze_auth`)
+- [x] Spec correction from validation errors (`correct_spec`)
 - [ ] Real-world testing with actual API keys
 - [ ] Prompt tuning for better business_purpose / user_story quality
-- [ ] Auth flow reconstruction from login-related traces
 
 ### Phase 4: Output generators
 - [x] OpenAPI 3.1 generator (`cli/generate/openapi.py`) — paths, params, request bodies, security schemes, tags
@@ -527,74 +630,28 @@ When storing a trace, the extension finds the most recent context(s) within a 2-
 - [x] Tests: structure, content, file output for all 5 generators
 
 ### Phase 5: Polish
-- [x] HAR import/export (`cli/har.py`) — bidirectional, base64 binary support, tested roundtrips
 - [x] `api-discover inspect` command — summary + per-trace detail view
-- [x] Full CLI (`cli/main.py`) — 6 commands: `analyze`, `generate`, `pipeline`, `inspect`, `import-har`, `export-har`
+- [x] Full CLI (`cli/main.py`) — 4 commands: `analyze`, `generate`, `pipeline`, `inspect`
 - [ ] Bundle merging (combine multiple capture sessions for the same app)
-- [ ] Better popup UI with live capture stats
 - [ ] Privacy controls: exclude domains, redact headers/cookies
 
 ### Test coverage
-157 tests across 8 test files, all passing:
+137 tests across 8 test files, all passing:
 - `tests/test_formats.py` — Pydantic model roundtrips and defaults
 - `tests/test_loader.py` — Bundle read/write, binary safety, lookups
 - `tests/test_protocol.py` — Protocol detection for HTTP and WebSocket
 - `tests/test_correlator.py` — Time-window correlation logic
 - `tests/test_spec_builder.py` — Path params, schema inference, auth detection, full builds
+- `tests/test_validator.py` — Validation: coverage, pattern match, schema consistency, auth coherence
 - `tests/test_generators.py` — All 5 generators (structure, content, file output)
-- `tests/test_har.py` — HAR import, export, and roundtrip
 - `tests/test_cli.py` — All CLI commands via Click test runner
 
 ---
 
-## Implementation order (reference)
-
-Build in this order. Each phase should be independently testable.
-
-### Phase 1: Capture bundle format + Extension MVP
-1. Define Pydantic models for the capture bundle format (cli/formats/capture_bundle.py)
-2. Write a bundle loader that can read and validate a ZIP (cli/capture/loader.py)
-3. Write a test that creates a sample bundle programmatically and loads it back
-4. Build the Chrome extension: background.js with DevTools Protocol capture
-5. Build the Chrome extension: content.js with DOM event capture
-6. Build the popup UI: Start / Stop / Export buttons
-7. Test: browse a simple site, export, load the bundle with the CLI loader
-
-### Phase 2: Mechanical analysis (no LLM)
-1. Protocol detection from trace metadata (content-type, URL patterns, WS handshake)
-2. Time-window correlation: for each context, find traces within 2s
-3. Group traces by endpoint (same method + URL path pattern)
-4. Infer path parameters from URL variations (e.g., `/users/123` and `/users/456` → `/users/{id}`)
-5. Infer request/response schemas from observed JSON bodies (merge across observations)
-6. Build the enriched API spec with all mechanical fields filled in, LLM fields left as null
-7. Test: load a real capture → produce a spec → validate it has sensible endpoints
-
-### Phase 3: LLM analysis
-1. Build the LLM client (Anthropic API, claude-sonnet)
-2. For each correlated (context, traces) pair, ask the LLM to infer business_purpose, user_story, user_explanation
-3. For each endpoint's parameters, ask the LLM to infer business_meaning and constraints
-4. Ask the LLM to infer the overall business_context and business_glossary from all data
-5. Ask the LLM to reconstruct auth flow from login-related traces
-6. Fill in correlation_confidence scores
-7. Test: compare LLM-enriched spec vs mechanical-only spec
-
-### Phase 4: Output generators
-1. OpenAPI 3.1 generator (most standard, test with swagger-ui)
-2. Python client generator (business-named methods, type hints, error handling)
-3. Markdown documentation generator
-4. cURL scripts generator
-5. MCP server generator (scaffold a working MCP server with tools for each endpoint)
-
-### Phase 5: Polish
-1. HAR import/export for compatibility
-2. `api-discover inspect` command for debugging bundles
-3. Bundle merging (combine multiple capture sessions for the same app)
-4. Better popup UI with live capture stats
-5. Privacy controls: exclude domains, redact headers/cookies
-
----
-
 ## Key technical notes
+
+### Timestamp conversion in the extension
+Chrome DevTools Protocol uses monotonic timestamps (seconds since browser start), not epoch time. `background.js` converts these to epoch milliseconds by computing an offset: `Date.now() - (chromeTimestamp * 1000)` on the first event, then applying it consistently to all subsequent events.
 
 ### Binary handling in the extension
 `Network.getResponseBody` returns `{ body: string, base64Encoded: boolean }`. When `base64Encoded` is true, decode to binary before writing to `.bin` file. When false, write as UTF-8 text. Always store as binary files to be uniform.
@@ -602,23 +659,20 @@ Build in this order. Each phase should be independently testable.
 ### WebSocket in the extension
 Chrome DevTools Protocol gives us `Network.webSocketFrameSent` and `Network.webSocketFrameReceived` with `{ requestId, timestamp, response: { opcode, mask, payloadData } }`. The `payloadData` is a string for text frames and base64 for binary frames. Store both as `.bin` files with metadata in the companion `.json`.
 
-### LLM prompt strategy
-Don't send the entire bundle to the LLM. Instead:
-1. First, do ALL mechanical analysis (protocol detection, correlation, schema inference)
-2. Then send focused prompts per endpoint: "Here is an API endpoint [URL, method, sample request/response] that was triggered by [UI action on element X on page Y]. What is the business purpose? Write a user story."
-3. Then one final prompt with all discovered endpoints for the business glossary and workflow reconstruction
+### LLM-first analysis strategy
+The analysis pipeline is LLM-first (not mechanical-first with LLM enrichment):
+1. The LLM groups URLs into endpoint patterns — this is more accurate than mechanical heuristics for complex APIs
+2. For each group, mechanical extraction provides the raw data (schemas, params, headers)
+3. The LLM enriches each endpoint with business semantics using focused per-endpoint prompts
+4. Mechanical validation catches LLM mistakes (uncovered traces, pattern mismatches, schema inconsistencies)
+5. The LLM corrects its own mistakes based on structured validation errors (one iteration)
 
-This keeps token usage low and prompts focused.
+This keeps token usage low (focused prompts, not the entire bundle) while leveraging the LLM's strength at pattern recognition and semantic inference.
 
-### Path parameter inference (mechanical)
-Given these observed URLs:
-```
-/api/users/123/orders
-/api/users/456/orders
-/api/users/789/orders
-```
-Detect that segment 3 varies while others are constant → infer `/api/users/{user_id}/orders`.
-Heuristic: if a URL segment is numeric or UUID-like and varies across traces for the same path structure, it's a parameter.
+### Path parameter inference
+In the LLM-first pipeline, path parameters are inferred by the LLM during URL grouping. The LLM sees all observed URLs and identifies variable segments (IDs, UUIDs, hashes) to produce patterns like `/api/users/{user_id}/orders`.
+
+The mechanical `_pattern_to_regex()` helper converts these patterns to regexes for validation: `{param}` → `[^/]+`.
 
 ### Schema inference (mechanical)
 Given multiple JSON response bodies for the same endpoint, merge them:
@@ -632,7 +686,7 @@ Given multiple JSON response bodies for the same endpoint, merge them:
 ## Dependencies
 
 ### Extension
-None — vanilla JS, Chrome APIs only.
+- JSZip (bundled in `extension/lib/jszip.min.js`) — ZIP file creation for bundle export
 
 ### CLI
 ```
@@ -643,8 +697,15 @@ pyyaml         # YAML output for OpenAPI
 rich           # Pretty terminal output
 ```
 
+### Dev
+```
+pytest         # Test framework
+pytest-cov     # Coverage reporting
+pytest-asyncio # Async test support (asyncio_mode = "auto")
+```
+
 ## Environment variables
 
 ```
-ANTHROPIC_API_KEY=sk-ant-...    # Required for LLM analysis (not needed for --no-llm)
+ANTHROPIC_API_KEY=sk-ant-...    # Required for analyze and pipeline commands
 ```
