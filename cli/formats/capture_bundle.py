@@ -113,9 +113,21 @@ class ElementInfo(BaseModel):
     xpath: str = ""
 
 
+class PageContent(BaseModel):
+    """Rich page context for LLM analysis."""
+
+    headings: list[str] = Field(default_factory=list)
+    navigation: list[str] = Field(default_factory=list)
+    main_text: str = ""
+    forms: list[dict] = Field(default_factory=list)  # [{id, fields, submitLabel}]
+    tables: list[str] = Field(default_factory=list)  # Header rows
+    alerts: list[str] = Field(default_factory=list)
+
+
 class PageInfo(BaseModel):
     url: str
     title: str = ""
+    content: PageContent | None = None  # Optional for backward compatibility
 
 
 class ViewportInfo(BaseModel):

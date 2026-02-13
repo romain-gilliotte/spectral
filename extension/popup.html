@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=320">
+  <title>API Discover</title>
+  <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+  <div class="container">
+    <header>
+      <h1>API Discover</h1>
+      <p class="subtitle">Capture network traffic & UI context</p>
+    </header>
+
+    <div id="status" class="status status-idle">
+      <span class="status-indicator"></span>
+      <span class="status-text">Ready to capture</span>
+    </div>
+
+    <div id="stats" class="stats hidden">
+      <div class="stat">
+        <span class="stat-value" id="stat-requests">0</span>
+        <span class="stat-label">Requests</span>
+      </div>
+      <div class="stat">
+        <span class="stat-value" id="stat-ws">0</span>
+        <span class="stat-label">WebSocket</span>
+      </div>
+      <div class="stat">
+        <span class="stat-value" id="stat-contexts">0</span>
+        <span class="stat-label">UI Events</span>
+      </div>
+      <div class="stat">
+        <span class="stat-value" id="stat-duration">0s</span>
+        <span class="stat-label">Duration</span>
+      </div>
+    </div>
+
+    <div class="actions">
+      <button id="btn-start" class="btn btn-primary">
+        <span class="btn-icon">&#9658;</span>
+        Start Capture
+      </button>
+      <button id="btn-stop" class="btn btn-danger hidden">
+        <span class="btn-icon">&#9632;</span>
+        Stop Capture
+      </button>
+      <button id="btn-export" class="btn btn-secondary hidden">
+        <span class="btn-icon">&#8681;</span>
+        Export Bundle
+      </button>
+    </div>
+
+    <div id="error" class="error hidden"></div>
+
+    <footer>
+      <p>Bundles compatible with <code>api-discover</code> CLI</p>
+    </footer>
+  </div>
+
+  <script src="popup.js"></script>
+</body>
+</html>
