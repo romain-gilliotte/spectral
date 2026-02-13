@@ -44,6 +44,10 @@ let wsMessageCounters = new Map(); // ws_id -> message counter
 // Tab info captured at start
 let appInfo = null;
 
+// Offset to convert Chrome monotonic timestamps to epoch ms.
+// Computed from the first requestWillBeSent event's wallTime.
+let timeOffset = null;
+
 // ============================================================================
 // Utility functions
 // ============================================================================
@@ -59,6 +63,18 @@ function padId(prefix, num) {
  * Get current timestamp in milliseconds
  */
 function now() {
+  return Date.now();
+}
+
+/**
+ * Convert a Chrome DevTools Protocol monotonic timestamp (seconds) to epoch ms.
+ * Uses the offset computed from the first requestWillBeSent wallTime.
+ * Falls back to Date.now() if no offset has been computed yet.
+ */
+function toEpochMs(chromeTimestamp) {
+  if (timeOffset !== null) {
+    return Math.floor(chromeTimestamp * 1000 + timeOffset);
+  }
   return Date.now();
 }
 
@@ -128,7 +144,7 @@ function findContextRefs(timestamp, windowMs = 2000) {
  * Handle Network.requestWillBeSent
  */
 function handleRequestWillBeSent(params) {
-  const { requestId, request, timestamp, initiator, type } = params;
+  const { requestId, request, timestamp, wallTime, initiator, type } = params;
 
   // Skip WebSocket upgrade requests - handled separately
   if (type === 'WebSocket') return;
@@ -136,10 +152,15 @@ function handleRequestWillBeSent(params) {
   // Skip chrome-extension:// URLs
   if (request.url.startsWith('chrome-extension://')) return;
 
+  // Compute time offset on the first event (wallTime = epoch seconds)
+  if (timeOffset === null && wallTime) {
+    timeOffset = wallTime * 1000 - timestamp * 1000;
+  }
+
   // Store partial trace data
   pendingRequests.set(requestId, {
     requestId,
-    timestamp: Math.floor(timestamp * 1000), // Chrome uses seconds, we use ms
+    timestamp: toEpochMs(timestamp),
     request: {
       method: request.method,
       url: request.url,
@@ -182,7 +203,7 @@ function handleResponseReceived(params) {
     mimeType: response.mimeType,
   };
   pending.timing = timingInfo;
-  pending.responseTimestamp = Math.floor(timestamp * 1000);
+  pending.responseTimestamp = toEpochMs(timestamp);
 }
 
 /**
@@ -261,7 +282,7 @@ async function handleLoadingFinished(params, debuggeeId) {
 
   // Compute total timing
   if (pending.timing) {
-    const receiveMs = timestamp * 1000 - pending.responseTimestamp;
+    const receiveMs = toEpochMs(timestamp) - pending.responseTimestamp;
     pending.timing.receive_ms = Math.max(0, receiveMs);
     pending.timing.total_ms =
       pending.timing.dns_ms +
@@ -410,7 +431,7 @@ function handleWebSocketFrameSent(params) {
   wsMessageCounters.set(wsId, counter);
 
   const msgId = `${wsId}_m${String(counter).padStart(3, '0')}`;
-  const ts = Math.floor(timestamp * 1000);
+  const ts = toEpochMs(timestamp);
 
   // Determine opcode and payload
   const opcode = response.opcode === 1 ? 'text' : response.opcode === 2 ? 'binary' : 'text';
@@ -461,7 +482,7 @@ function handleWebSocketFrameReceived(params) {
   wsMessageCounters.set(wsId, counter);
 
   const msgId = `${wsId}_m${String(counter).padStart(3, '0')}`;
-  const ts = Math.floor(timestamp * 1000);
+  const ts = toEpochMs(timestamp);
 
   const opcode = response.opcode === 1 ? 'text' : response.opcode === 2 ? 'binary' : 'text';
   let payloadBytes = null;
@@ -587,6 +608,7 @@ function resetState() {
   wsConnectionCounter = 0;
   wsMessageCounters = new Map();
   appInfo = null;
+  timeOffset = null;
 }
 
 /**
