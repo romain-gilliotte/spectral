@@ -1,4 +1,16 @@
-"""Build an enriched API spec from a capture bundle using mechanical analysis."""
+"""Build an enriched API spec from a capture bundle using LLM-first analysis.
+
+Pipeline:
+1. Extract (method, url) pairs from traces
+2. LLM groups URLs into endpoint patterns
+3. For each group: mechanical extraction (query params, response codes, schemas)
+   + LLM enrichment (business purpose, user story)
+4. LLM auth analysis
+5. LLM business context
+6. Assemble spec
+7. Mechanical validation
+8. LLM correction if needed (one iteration)
+"""
 
 from __future__ import annotations
 
@@ -8,9 +20,18 @@ from collections import defaultdict
 from datetime import datetime, timezone
 from urllib.parse import urlparse
 
-from cli.analyze.correlator import Correlation, correlate, find_uncorrelated_traces
-from cli.analyze.protocol import detect_trace_protocol, detect_ws_protocol
-from cli.capture.models import CaptureBundle, Trace, WsConnection
+from cli.analyze.correlator import Correlation, correlate
+from cli.analyze.llm import (
+    EndpointGroup,
+    analyze_auth,
+    analyze_business_context,
+    analyze_endpoint_detail,
+    analyze_endpoints,
+    correct_spec,
+)
+from cli.analyze.protocol import detect_ws_protocol
+from cli.analyze.validator import validate_spec
+from cli.capture.models import CaptureBundle, Context, Trace, WsConnection
 from cli.formats.api_spec import (
     ApiSpec,
     AuthInfo,
@@ -28,150 +49,176 @@ from cli.formats.api_spec import (
 )
 
 
-def build_spec(bundle: CaptureBundle, source_filename: str = "") -> ApiSpec:
-    """Build an enriched API spec from a capture bundle (mechanical analysis only)."""
-    correlations = correlate(bundle)
-    uncorrelated = find_uncorrelated_traces(bundle, correlations)
+async def build_spec(
+    bundle: CaptureBundle,
+    client,
+    model: str,
+    source_filename: str = "",
+    on_progress=None,
+) -> ApiSpec:
+    """Build an enriched API spec from a capture bundle (LLM-first pipeline).
 
-    # Collect all traces (correlated + uncorrelated)
+    Args:
+        bundle: The loaded capture bundle.
+        client: An Anthropic async client.
+        model: The model to use for LLM calls.
+        source_filename: The filename of the capture bundle.
+        on_progress: Optional callback(message: str) for progress updates.
+    """
+
+    def progress(msg: str):
+        if on_progress:
+            on_progress(msg)
+
     all_traces = list(bundle.traces)
+    correlations = correlate(bundle)
 
-    # Group traces by endpoint signature (method + normalized path)
-    endpoint_groups = _group_by_endpoint(all_traces)
+    # Step 1: Extract (method, url) pairs
+    url_method_pairs = [
+        (t.meta.request.method.upper(), t.meta.request.url) for t in all_traces
+    ]
 
-    # Build endpoint specs
+    # Step 2: LLM groups URLs into endpoint patterns
+    progress("Grouping URLs into endpoints (LLM)...")
+    endpoint_groups = await analyze_endpoints(client, model, url_method_pairs)
+
+    # Step 3: For each group, do mechanical extraction + LLM enrichment
+    progress(f"Enriching {len(endpoint_groups)} endpoints...")
+    trace_map = {t.meta.id: t for t in all_traces}
     endpoints: list[EndpointSpec] = []
-    for (method, path_pattern), traces in sorted(endpoint_groups.items()):
-        endpoint = _build_endpoint(method, path_pattern, traces, correlations)
+    base_url = _detect_base_url(all_traces)
+    app_name = (
+        bundle.manifest.app.name + " API" if bundle.manifest.app.name else "Discovered API"
+    )
+
+    for group in endpoint_groups:
+        # Find traces that belong to this group
+        group_traces = _find_traces_for_group(group, all_traces)
+
+        # Mechanical extraction
+        endpoint = _build_endpoint_mechanical(
+            group.method, group.pattern, group_traces, correlations
+        )
+
+        # Prepare summary for LLM
+        summary = _prepare_endpoint_summary(
+            endpoint, group_traces, correlations, app_name, base_url
+        )
+
+        # LLM enrichment
+        try:
+            enrichment = await analyze_endpoint_detail(client, model, summary)
+            _apply_enrichment(endpoint, enrichment)
+        except Exception:
+            pass  # LLM enrichment is best-effort
+
         endpoints.append(endpoint)
 
-    # Detect base URL
-    base_url = _detect_base_url(all_traces)
+    # Step 4: Auth analysis
+    progress("Analyzing authentication (LLM)...")
+    auth_summary = _prepare_auth_summary(all_traces)
+    try:
+        auth = await analyze_auth(client, model, auth_summary)
+    except Exception:
+        auth = _detect_auth_mechanical(all_traces)
 
-    # Build WebSocket specs
-    ws_specs = _build_ws_specs(bundle.ws_connections)
-
-    # Detect auth
-    auth = _detect_auth(all_traces)
-
-    return ApiSpec(
-        name=bundle.manifest.app.name + " API" if bundle.manifest.app.name else "Discovered API",
-        discovery_date=datetime.now(timezone.utc).isoformat(),
-        source_captures=[source_filename] if source_filename else [],
-        business_context=BusinessContext(
+    # Step 5: Business context
+    progress("Analyzing business context (LLM)...")
+    ep_summaries = [
+        f"- {ep.method} {ep.path}: {ep.business_purpose or '(unknown)'}"
+        for ep in endpoints
+    ]
+    try:
+        business_context, glossary = await analyze_business_context(
+            client, model, ep_summaries, app_name, base_url
+        )
+    except Exception:
+        business_context = BusinessContext(
             domain="",
             description=f"API discovered from {bundle.manifest.app.base_url}",
-        ),
+        )
+        glossary = {}
+
+    # Step 5.5: WebSocket specs
+    ws_specs = _build_ws_specs(bundle.ws_connections)
+
+    # Step 6: Assemble spec
+    spec = ApiSpec(
+        name=app_name,
+        discovery_date=datetime.now(timezone.utc).isoformat(),
+        source_captures=[source_filename] if source_filename else [],
+        business_context=business_context,
         auth=auth,
         protocols=Protocols(
             rest=RestProtocol(base_url=base_url, endpoints=endpoints),
             websocket=ws_specs,
         ),
+        business_glossary=glossary,
     )
 
+    # Step 7: Validate
+    progress("Validating spec against traces...")
+    errors = validate_spec(spec, all_traces)
 
-def _group_by_endpoint(traces: list[Trace]) -> dict[tuple[str, str], list[Trace]]:
-    """Group traces by (method, normalized_path_pattern)."""
-    groups: dict[tuple[str, str], list[Trace]] = defaultdict(list)
-    # First pass: collect all URL paths per method
-    method_paths: dict[str, list[tuple[str, Trace]]] = defaultdict(list)
-    for trace in traces:
-        parsed = urlparse(trace.meta.request.url)
-        method = trace.meta.request.method.upper()
-        method_paths[method].append((parsed.path, trace))
+    # Step 8: Correct if needed (one iteration)
+    if errors:
+        progress(f"Found {len(errors)} validation errors, requesting LLM correction...")
+        try:
+            spec_dict = json.loads(spec.model_dump_json(by_alias=True))
+            error_dicts = [e.to_dict() for e in errors]
+            corrected_dict = await correct_spec(client, model, spec_dict, error_dicts)
+            spec = ApiSpec.model_validate(corrected_dict)
 
-    # Second pass: detect path parameters and normalize
-    for method, path_traces in method_paths.items():
-        paths = [pt[0] for pt in path_traces]
-        pattern_map = _infer_path_patterns(paths)
-        for path, trace in path_traces:
-            pattern = pattern_map.get(path, path)
-            groups[(method, pattern)].append(trace)
+            # Re-validate (informational only, no second correction)
+            errors2 = validate_spec(spec, all_traces)
+            if errors2:
+                progress(f"  {len(errors2)} errors remain after correction")
+            else:
+                progress("  All errors resolved")
+        except Exception:
+            progress("  Correction failed, keeping original spec")
 
-    return dict(groups)
-
-
-def _infer_path_patterns(paths: list[str]) -> dict[str, str]:
-    """Infer path parameter patterns from observed URLs.
-
-    Given ['/users/123/orders', '/users/456/orders'], returns a mapping:
-    {'/users/123/orders': '/users/{id}/orders', '/users/456/orders': '/users/{id}/orders'}
-    """
-    result: dict[str, str] = {}
-
-    # Group paths by their segment count
-    by_length: dict[int, list[list[str]]] = defaultdict(list)
-    for path in paths:
-        segments = path.strip("/").split("/")
-        by_length[len(segments)].append(segments)
-
-    for length, segment_lists in by_length.items():
-        if length == 0:
-            for p in paths:
-                if p.strip("/") == "":
-                    result[p] = "/"
-            continue
-
-        # For each position, check if the segment varies
-        varying_positions = set()
-        if len(segment_lists) > 1:
-            for pos in range(length):
-                values = {segs[pos] for segs in segment_lists}
-                if len(values) > 1:
-                    # Check if all varying values look like IDs
-                    if all(_looks_like_id(v) for v in values):
-                        varying_positions.add(pos)
-
-        # Build pattern for each path in this group
-        for segments in segment_lists:
-            original = "/" + "/".join(segments)
-            pattern_segments = []
-            for pos, seg in enumerate(segments):
-                if pos in varying_positions:
-                    param_name = _infer_param_name(segments, pos)
-                    pattern_segments.append("{" + param_name + "}")
-                else:
-                    pattern_segments.append(seg)
-            result[original] = "/" + "/".join(pattern_segments)
-
-    # Handle paths not yet mapped (single occurrences)
-    for path in paths:
-        if path not in result:
-            result[path] = path
-
-    return result
+    return spec
 
 
-def _looks_like_id(segment: str) -> bool:
-    """Check if a URL segment looks like a dynamic ID."""
-    # Numeric
-    if segment.isdigit():
-        return True
-    # UUID-like
-    if re.match(r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$", segment, re.I):
-        return True
-    # Hex hash-like (8+ chars)
-    if re.match(r"^[0-9a-f]{8,}$", segment, re.I) and not segment.isalpha():
-        return True
-    return False
+def _find_traces_for_group(group: EndpointGroup, traces: list[Trace]) -> list[Trace]:
+    """Find traces whose URLs are listed in the endpoint group."""
+    url_set = set(group.urls)
+    matched = [t for t in traces if t.meta.request.url in url_set]
+
+    # Also try pattern matching to catch traces the LLM didn't list
+    pattern_re = _pattern_to_regex(group.pattern)
+    for t in traces:
+        if t not in matched:
+            parsed = urlparse(t.meta.request.url)
+            if (
+                t.meta.request.method.upper() == group.method
+                and pattern_re.match(parsed.path)
+            ):
+                matched.append(t)
+
+    return matched
 
 
-def _infer_param_name(segments: list[str], pos: int) -> str:
-    """Infer a parameter name from context."""
-    # Use the preceding segment as a hint (e.g., /users/{id} -> user_id)
-    if pos > 0:
-        prev = segments[pos - 1].rstrip("s")  # simple de-pluralization
-        return f"{prev}_id"
-    return "id"
+def _pattern_to_regex(pattern: str) -> re.Pattern:
+    """Convert /api/users/{user_id} to a regex pattern."""
+    parts = re.split(r"\{[^}]+\}", pattern)
+    placeholders = re.findall(r"\{[^}]+\}", pattern)
+    regex = ""
+    for i, part in enumerate(parts):
+        regex += re.escape(part)
+        if i < len(placeholders):
+            regex += r"[^/]+"
+    return re.compile(f"^{regex}$")
 
 
-def _build_endpoint(
+def _build_endpoint_mechanical(
     method: str,
     path_pattern: str,
     traces: list[Trace],
     correlations: list[Correlation],
 ) -> EndpointSpec:
-    """Build an endpoint spec from grouped traces."""
+    """Build an endpoint spec from grouped traces (mechanical only)."""
     endpoint_id = _make_endpoint_id(method, path_pattern)
 
     # Collect UI triggers from correlations
@@ -187,17 +234,14 @@ def _build_endpoint(
                         page_url=corr.context.meta.page.url,
                     )
                 )
-                break  # one trigger per correlation
+                break
 
-    # Build request spec
     request_spec = _build_request_spec(traces, path_pattern)
-
-    # Build response specs
     response_specs = _build_response_specs(traces)
 
-    # Detect auth requirement
     requires_auth = any(
         _get_header(t.meta.request.headers, "authorization") is not None
+        or _has_auth_cookie(t)
         for t in traces
     )
 
@@ -212,6 +256,210 @@ def _build_endpoint(
         observed_count=len(traces),
         source_trace_refs=[t.meta.id for t in traces],
     )
+
+
+def _prepare_endpoint_summary(
+    endpoint: EndpointSpec,
+    traces: list[Trace],
+    correlations: list[Correlation],
+    app_name: str,
+    base_url: str,
+) -> dict:
+    """Prepare a summary dict for the LLM enrichment call."""
+    sample_requests = []
+    sample_responses = []
+
+    for t in traces[:3]:  # Limit to 3 samples
+        req = {"method": t.meta.request.method, "url": t.meta.request.url}
+        if t.request_body:
+            try:
+                req["body"] = json.loads(t.request_body)
+            except (json.JSONDecodeError, UnicodeDecodeError):
+                req["body_size"] = len(t.request_body)
+        sample_requests.append(req)
+
+        resp = {"status": t.meta.response.status}
+        if t.response_body:
+            try:
+                body = json.loads(t.response_body)
+                # Truncate large bodies
+                resp["body"] = _truncate_json(body, max_keys=10)
+            except (json.JSONDecodeError, UnicodeDecodeError):
+                resp["body_size"] = len(t.response_body)
+        sample_responses.append(resp)
+
+    triggers = []
+    for trig in endpoint.ui_triggers:
+        triggers.append({
+            "action": trig.action,
+            "element_text": trig.element_text,
+            "element_selector": trig.element_selector,
+            "page_url": trig.page_url,
+        })
+
+    return {
+        "method": endpoint.method,
+        "pattern": endpoint.path,
+        "observed_count": endpoint.observed_count,
+        "app_name": app_name,
+        "base_url": base_url,
+        "ui_triggers": triggers,
+        "sample_requests": sample_requests,
+        "sample_responses": sample_responses,
+    }
+
+
+def _truncate_json(obj, max_keys: int = 10):
+    """Truncate a JSON-like object for LLM consumption."""
+    if isinstance(obj, dict):
+        items = list(obj.items())[:max_keys]
+        return {k: _truncate_json(v, max_keys) for k, v in items}
+    if isinstance(obj, list):
+        return [_truncate_json(item, max_keys) for item in obj[:3]]
+    if isinstance(obj, str) and len(obj) > 200:
+        return obj[:200] + "..."
+    return obj
+
+
+def _apply_enrichment(endpoint: EndpointSpec, enrichment) -> None:
+    """Apply LLM enrichment to an endpoint spec."""
+    if enrichment.business_purpose:
+        endpoint.business_purpose = enrichment.business_purpose
+    if enrichment.user_story:
+        endpoint.user_story = enrichment.user_story
+    if enrichment.correlation_confidence is not None:
+        try:
+            endpoint.correlation_confidence = float(enrichment.correlation_confidence)
+        except (ValueError, TypeError):
+            pass
+
+    # Apply parameter meanings
+    for param in endpoint.request.parameters:
+        if param.name in enrichment.parameter_meanings:
+            param.business_meaning = enrichment.parameter_meanings[param.name]
+
+    # Apply response meanings
+    for resp in endpoint.responses:
+        if resp.status in enrichment.response_meanings:
+            resp.business_meaning = enrichment.response_meanings[resp.status]
+
+    # Apply trigger explanations
+    for i, trigger in enumerate(endpoint.ui_triggers):
+        if i < len(enrichment.trigger_explanations):
+            trigger.user_explanation = enrichment.trigger_explanations[i]
+
+
+def _prepare_auth_summary(traces: list[Trace]) -> list[dict]:
+    """Prepare trace summaries relevant to authentication."""
+    summaries = []
+    for t in traces:
+        headers_dict = {h.name: h.value for h in t.meta.request.headers}
+        resp_headers_dict = {h.name: h.value for h in t.meta.response.headers}
+
+        # Include traces with auth-like characteristics
+        is_auth_related = (
+            "authorization" in {h.name.lower() for h in t.meta.request.headers}
+            or "set-cookie" in {h.name.lower() for h in t.meta.response.headers}
+            or any(kw in t.meta.request.url.lower() for kw in [
+                "auth", "login", "token", "oauth", "callback", "session", "signin"
+            ])
+            or t.meta.response.status in (401, 403)
+        )
+
+        if not is_auth_related:
+            continue
+
+        summary: dict = {
+            "method": t.meta.request.method,
+            "url": t.meta.request.url,
+            "response_status": t.meta.response.status,
+            "request_headers": _sanitize_headers(headers_dict),
+            "response_headers": _sanitize_headers(resp_headers_dict),
+        }
+
+        if t.request_body:
+            try:
+                body = json.loads(t.request_body)
+                summary["request_body_snippet"] = _truncate_json(body, max_keys=5)
+            except (json.JSONDecodeError, UnicodeDecodeError):
+                pass
+
+        if t.response_body:
+            try:
+                body = json.loads(t.response_body)
+                summary["response_body_snippet"] = _truncate_json(body, max_keys=5)
+            except (json.JSONDecodeError, UnicodeDecodeError):
+                pass
+
+        summaries.append(summary)
+
+    # If no auth-specific traces found, include a sample of headers from all traces
+    if not summaries and traces:
+        for t in traces[:5]:
+            headers_dict = {h.name: h.value for h in t.meta.request.headers}
+            summaries.append({
+                "method": t.meta.request.method,
+                "url": t.meta.request.url,
+                "response_status": t.meta.response.status,
+                "request_headers": _sanitize_headers(headers_dict),
+            })
+
+    return summaries
+
+
+def _sanitize_headers(headers: dict) -> dict:
+    """Redact long token values but keep header structure visible."""
+    sanitized = {}
+    for k, v in headers.items():
+        if k.lower() in ("authorization", "cookie", "set-cookie") and len(v) > 30:
+            sanitized[k] = v[:30] + "...[redacted]"
+        else:
+            sanitized[k] = v
+    return sanitized
+
+
+def _has_auth_cookie(trace: Trace) -> bool:
+    """Check if a trace has auth-related cookies."""
+    cookie = _get_header(trace.meta.request.headers, "cookie")
+    if cookie and any(
+        name in cookie.lower() for name in ["session", "token", "auth", "jwt"]
+    ):
+        return True
+    return False
+
+
+def _detect_auth_mechanical(traces: list[Trace]) -> AuthInfo:
+    """Fallback mechanical auth detection."""
+    auth_type = ""
+    token_header = None
+    token_prefix = None
+
+    for trace in traces:
+        auth_value = _get_header(trace.meta.request.headers, "authorization")
+        if auth_value:
+            token_header = "Authorization"
+            if auth_value.startswith("Bearer "):
+                auth_type = "bearer_token"
+                token_prefix = "Bearer"
+            elif auth_value.startswith("Basic "):
+                auth_type = "basic"
+                token_prefix = "Basic"
+            else:
+                auth_type = "custom"
+            break
+
+    if not auth_type:
+        for trace in traces:
+            if _has_auth_cookie(trace):
+                auth_type = "cookie"
+                break
+
+    return AuthInfo(type=auth_type, token_header=token_header, token_prefix=token_prefix)
+
+
+# ============================================================================
+# Mechanical extraction utilities (shared with validator)
+# ============================================================================
 
 
 def _make_endpoint_id(method: str, path: str) -> str:
@@ -293,7 +541,6 @@ def _build_response_specs(traces: list[Trace]) -> list[ResponseSpec]:
     for status, status_traces in sorted(by_status.items()):
         ct = _get_header(status_traces[0].meta.response.headers, "content-type")
 
-        # Try to infer schema from JSON response bodies
         schema = None
         example_body = None
         body_samples: list[dict] = []
@@ -324,10 +571,7 @@ def _build_response_specs(traces: list[Trace]) -> list[ResponseSpec]:
 
 
 def _merge_schemas(samples: list[dict]) -> dict[str, dict]:
-    """Merge multiple JSON object samples into parameter info.
-
-    Returns {field_name: {"type": str, "required": bool, "example": Any, "values": list}}
-    """
+    """Merge multiple JSON object samples into parameter info."""
     all_keys: dict[str, list] = defaultdict(list)
     total = len(samples)
     for sample in samples:
@@ -395,7 +639,6 @@ def _infer_json_schema(samples: list[dict]) -> dict:
         prop_type = _infer_type(values[0])
         properties[key] = {"type": prop_type}
 
-        # Detect common formats
         if prop_type == "string" and values:
             fmt = _detect_format(values)
             if fmt:
@@ -416,22 +659,18 @@ def _detect_format(values: list) -> str | None:
     if not str_values:
         return None
 
-    # ISO date
     if all(re.match(r"^\d{4}-\d{2}-\d{2}", v) for v in str_values):
         return "date-time" if any("T" in v for v in str_values) else "date"
 
-    # Email
     if all(re.match(r"^[^@]+@[^@]+\.[^@]+$", v) for v in str_values):
         return "email"
 
-    # UUID
     if all(
         re.match(r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$", v, re.I)
         for v in str_values
     ):
         return "uuid"
 
-    # URL
     if all(re.match(r"^https?://", v) for v in str_values):
         return "uri"
 
@@ -461,44 +700,6 @@ def _detect_base_url(traces: list[Trace]) -> str:
     if url_counts:
         return max(url_counts, key=url_counts.get)
     return ""
-
-
-def _detect_auth(traces: list[Trace]) -> AuthInfo:
-    """Detect authentication patterns from traces."""
-    auth_type = ""
-    token_header = None
-    token_prefix = None
-
-    for trace in traces:
-        auth_value = _get_header(trace.meta.request.headers, "authorization")
-        if auth_value:
-            token_header = "Authorization"
-            if auth_value.startswith("Bearer "):
-                auth_type = "bearer_token"
-                token_prefix = "Bearer"
-            elif auth_value.startswith("Basic "):
-                auth_type = "basic"
-                token_prefix = "Basic"
-            else:
-                auth_type = "custom"
-            break
-
-    # Look for cookie-based auth
-    if not auth_type:
-        for trace in traces:
-            cookie = _get_header(trace.meta.request.headers, "cookie")
-            if cookie and any(
-                name in cookie.lower()
-                for name in ["session", "token", "auth", "jwt"]
-            ):
-                auth_type = "cookie"
-                break
-
-    return AuthInfo(
-        type=auth_type,
-        token_header=token_header,
-        token_prefix=token_prefix,
-    )
 
 
 def _build_ws_specs(ws_connections: list[WsConnection]) -> WebSocketProtocol:

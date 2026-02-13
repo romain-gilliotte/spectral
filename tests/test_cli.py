@@ -2,6 +2,7 @@
 
 import json
 from pathlib import Path
+from unittest.mock import AsyncMock, MagicMock, patch
 
 from click.testing import CliRunner
 
@@ -9,19 +10,73 @@ from cli.capture.loader import write_bundle
 from cli.main import cli
 
 
+def _make_mock_anthropic_module():
+    """Create a mock anthropic module with AsyncAnthropic client."""
+
+    # Standard LLM responses for the pipeline
+    groups_response = json.dumps([
+        {"method": "GET", "pattern": "/api/users", "urls": ["https://api.example.com/api/users"]},
+        {"method": "GET", "pattern": "/api/users/{user_id}/orders",
+         "urls": ["https://api.example.com/api/users/123/orders", "https://api.example.com/api/users/456/orders"]},
+        {"method": "POST", "pattern": "/api/orders", "urls": ["https://api.example.com/api/orders"]},
+    ])
+
+    auth_response = json.dumps({
+        "type": "bearer_token", "token_header": "Authorization",
+        "token_prefix": "Bearer", "business_process": "Token auth",
+        "user_journey": ["Login"], "obtain_flow": "login_form",
+    })
+
+    detail_response = json.dumps({
+        "business_purpose": "Test endpoint", "user_story": "As a user, I want to test",
+        "correlation_confidence": 0.9, "parameter_meanings": {},
+        "response_meanings": {}, "trigger_explanations": [],
+    })
+
+    context_response = json.dumps({
+        "domain": "Testing", "description": "Test API",
+        "user_personas": ["tester"], "key_workflows": [],
+        "business_glossary": {},
+    })
+
+    async def mock_create(**kwargs):
+        mock_response = MagicMock()
+        mock_content = MagicMock()
+        msg = kwargs.get("messages", [{}])[0].get("content", "")
+        if "Group these observed URLs" in msg:
+            mock_content.text = groups_response
+        elif "authentication" in msg:
+            mock_content.text = auth_response
+        elif "business domain" in msg or "Based on these API endpoints" in msg:
+            mock_content.text = context_response
+        else:
+            mock_content.text = detail_response
+        mock_response.content = [mock_content]
+        return mock_response
+
+    mock_client = MagicMock()
+    mock_client.messages.create = mock_create
+
+    mock_module = MagicMock()
+    mock_module.AsyncAnthropic.return_value = mock_client
+    return mock_module
+
+
 class TestAnalyzeCommand:
     def test_analyze_basic(self, sample_bundle, tmp_path):
-        """Test the analyze command with --no-llm."""
+        """Test the analyze command with mocked LLM."""
         bundle_path = tmp_path / "capture.zip"
         write_bundle(sample_bundle, bundle_path)
 
         output_path = tmp_path / "spec.json"
         runner = CliRunner()
-        result = runner.invoke(cli, [
-            "analyze", str(bundle_path),
-            "-o", str(output_path),
-            "--no-llm",
-        ])
+
+        mock_anthropic = _make_mock_anthropic_module()
+        with patch.dict("sys.modules", {"anthropic": mock_anthropic}):
+            result = runner.invoke(cli, [
+                "analyze", str(bundle_path),
+                "-o", str(output_path),
+            ])
 
         assert result.exit_code == 0, result.output
         assert output_path.exists()
@@ -36,11 +91,13 @@ class TestAnalyzeCommand:
 
         output_path = tmp_path / "spec.json"
         runner = CliRunner()
-        result = runner.invoke(cli, [
-            "analyze", str(bundle_path),
-            "-o", str(output_path),
-            "--no-llm",
-        ])
+
+        mock_anthropic = _make_mock_anthropic_module()
+        with patch.dict("sys.modules", {"anthropic": mock_anthropic}):
+            result = runner.invoke(cli, [
+                "analyze", str(bundle_path),
+                "-o", str(output_path),
+            ])
 
         assert result.exit_code == 0
         spec = json.loads(output_path.read_text())
@@ -50,10 +107,38 @@ class TestAnalyzeCommand:
 
 class TestGenerateCommand:
     def _create_spec_file(self, sample_bundle, tmp_path) -> Path:
-        """Helper to create a spec file from a sample bundle."""
+        """Helper to create a spec file from a sample bundle using mocked LLM."""
+        import asyncio
+        from unittest.mock import AsyncMock, MagicMock
         from cli.analyze.spec_builder import build_spec
 
-        spec = build_spec(sample_bundle)
+        mock_client = AsyncMock()
+
+        groups_response = json.dumps([
+            {"method": "GET", "pattern": "/api/users", "urls": ["https://api.example.com/api/users"]},
+            {"method": "GET", "pattern": "/api/users/{user_id}/orders",
+             "urls": ["https://api.example.com/api/users/123/orders", "https://api.example.com/api/users/456/orders"]},
+            {"method": "POST", "pattern": "/api/orders", "urls": ["https://api.example.com/api/orders"]},
+        ])
+
+        async def mock_create(**kwargs):
+            mock_response = MagicMock()
+            mock_content = MagicMock()
+            msg = kwargs.get("messages", [{}])[0].get("content", "")
+            if "Group these observed URLs" in msg:
+                mock_content.text = groups_response
+            elif "authentication" in msg:
+                mock_content.text = json.dumps({"type": "bearer_token", "token_header": "Authorization", "token_prefix": "Bearer"})
+            elif "business domain" in msg or "Based on these API endpoints" in msg:
+                mock_content.text = json.dumps({"domain": "", "description": "", "user_personas": [], "key_workflows": [], "business_glossary": {}})
+            else:
+                mock_content.text = json.dumps({"business_purpose": "test", "user_story": "test", "correlation_confidence": 0.5, "parameter_meanings": {}, "response_meanings": {}, "trigger_explanations": []})
+            mock_response.content = [mock_content]
+            return mock_response
+
+        mock_client.messages.create = mock_create
+
+        spec = asyncio.run(build_spec(sample_bundle, client=mock_client, model="test-model"))
         spec_path = tmp_path / "spec.json"
         spec_path.write_text(spec.model_dump_json(indent=2, by_alias=True))
         return spec_path
@@ -170,12 +255,14 @@ class TestPipelineCommand:
 
         output_dir = tmp_path / "output"
         runner = CliRunner()
-        result = runner.invoke(cli, [
-            "pipeline", str(bundle_path),
-            "--types", "openapi,python-client",
-            "-o", str(output_dir),
-            "--no-llm",
-        ])
+
+        mock_anthropic = _make_mock_anthropic_module()
+        with patch.dict("sys.modules", {"anthropic": mock_anthropic}):
+            result = runner.invoke(cli, [
+                "pipeline", str(bundle_path),
+                "--types", "openapi,python-client",
+                "-o", str(output_dir),
+            ])
 
         assert result.exit_code == 0, result.output
         assert (output_dir / "api_spec.json").exists()

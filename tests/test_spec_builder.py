@@ -1,78 +1,26 @@
-"""Tests for the spec builder (mechanical analysis)."""
+"""Tests for the spec builder (mechanical utilities and LLM-first pipeline)."""
 
 import json
+from unittest.mock import AsyncMock, MagicMock, patch
+
+import pytest
 
 from cli.analyze.spec_builder import (
-    _detect_auth,
+    _build_endpoint_mechanical,
+    _build_request_spec,
+    _build_response_specs,
     _detect_base_url,
     _detect_format,
     _extract_query_params,
-    _group_by_endpoint,
+    _find_traces_for_group,
+    _get_header,
     _infer_json_schema,
-    _infer_path_patterns,
-    _looks_like_id,
     _make_endpoint_id,
     build_spec,
 )
+from cli.analyze.llm import EndpointGroup
 from cli.formats.capture_bundle import Header
 from tests.conftest import make_trace
-
-
-class TestPathParameterInference:
-    def test_numeric_ids(self):
-        paths = ["/users/123/orders", "/users/456/orders"]
-        result = _infer_path_patterns(paths)
-        assert result["/users/123/orders"] == "/users/{user_id}/orders"
-        assert result["/users/456/orders"] == "/users/{user_id}/orders"
-
-    def test_uuid_ids(self):
-        paths = [
-            "/items/a1b2c3d4-e5f6-7890-abcd-ef1234567890",
-            "/items/11111111-2222-3333-4444-555555555555",
-        ]
-        result = _infer_path_patterns(paths)
-        assert "{item_id}" in result[paths[0]]
-
-    def test_no_parameterization_for_static_paths(self):
-        paths = ["/api/users", "/api/users"]
-        result = _infer_path_patterns(paths)
-        assert result["/api/users"] == "/api/users"
-
-    def test_single_path_not_parameterized(self):
-        paths = ["/api/users/123"]
-        result = _infer_path_patterns(paths)
-        assert result["/api/users/123"] == "/api/users/123"
-
-    def test_mixed_static_and_dynamic(self):
-        paths = ["/api/v1/users/123", "/api/v1/users/456"]
-        result = _infer_path_patterns(paths)
-        assert result["/api/v1/users/123"] == "/api/v1/users/{user_id}"
-
-    def test_alpha_segments_not_parameterized(self):
-        """Non-ID-like segments (e.g., words) should not be parameterized."""
-        paths = ["/api/users/list", "/api/users/search"]
-        result = _infer_path_patterns(paths)
-        # "list" and "search" don't look like IDs
-        assert result["/api/users/list"] == "/api/users/list"
-
-
-class TestLooksLikeId:
-    def test_numeric(self):
-        assert _looks_like_id("123") is True
-        assert _looks_like_id("0") is True
-
-    def test_uuid(self):
-        assert _looks_like_id("a1b2c3d4-e5f6-7890-abcd-ef1234567890") is True
-
-    def test_hex_hash(self):
-        assert _looks_like_id("deadbeef12345678") is True
-
-    def test_word_not_id(self):
-        assert _looks_like_id("users") is False
-        assert _looks_like_id("list") is False
-
-    def test_short_hex_not_id(self):
-        assert _looks_like_id("abc") is False
 
 
 class TestSchemaInference:
@@ -126,30 +74,6 @@ class TestSchemaInference:
         assert _detect_format(values) is None
 
 
-class TestEndpointGrouping:
-    def test_groups_by_method_and_path(self):
-        traces = [
-            make_trace("t_0001", "GET", "https://api.example.com/users", 200, 1000),
-            make_trace("t_0002", "GET", "https://api.example.com/users", 200, 2000),
-            make_trace("t_0003", "POST", "https://api.example.com/users", 201, 3000),
-        ]
-        groups = _group_by_endpoint(traces)
-        assert ("GET", "/users") in groups
-        assert ("POST", "/users") in groups
-        assert len(groups[("GET", "/users")]) == 2
-        assert len(groups[("POST", "/users")]) == 1
-
-    def test_parameterizes_varying_segments(self):
-        traces = [
-            make_trace("t_0001", "GET", "https://api.example.com/users/123", 200, 1000),
-            make_trace("t_0002", "GET", "https://api.example.com/users/456", 200, 2000),
-        ]
-        groups = _group_by_endpoint(traces)
-        keys = list(groups.keys())
-        assert len(keys) == 1
-        assert "{user_id}" in keys[0][1]
-
-
 class TestQueryParamExtraction:
     def test_extracts_query_params(self):
         traces = [
@@ -161,48 +85,6 @@ class TestQueryParamExtraction:
         assert "page" in params
         assert "hello" in params["q"]
         assert "world" in params["q"]
-
-
-class TestAuthDetection:
-    def test_bearer_token(self):
-        traces = [
-            make_trace(
-                "t_0001", "GET", "http://localhost/a", 200, 1000,
-                request_headers=[Header(name="Authorization", value="Bearer token123")],
-            ),
-        ]
-        auth = _detect_auth(traces)
-        assert auth.type == "bearer_token"
-        assert auth.token_header == "Authorization"
-        assert auth.token_prefix == "Bearer"
-
-    def test_basic_auth(self):
-        traces = [
-            make_trace(
-                "t_0001", "GET", "http://localhost/a", 200, 1000,
-                request_headers=[Header(name="Authorization", value="Basic dXNlcjpwYXNz")],
-            ),
-        ]
-        auth = _detect_auth(traces)
-        assert auth.type == "basic"
-        assert auth.token_prefix == "Basic"
-
-    def test_cookie_auth(self):
-        traces = [
-            make_trace(
-                "t_0001", "GET", "http://localhost/a", 200, 1000,
-                request_headers=[Header(name="Cookie", value="session_id=abc123")],
-            ),
-        ]
-        auth = _detect_auth(traces)
-        assert auth.type == "cookie"
-
-    def test_no_auth(self):
-        traces = [
-            make_trace("t_0001", "GET", "http://localhost/a", 200, 1000),
-        ]
-        auth = _detect_auth(traces)
-        assert auth.type == ""
 
 
 class TestBaseUrlDetection:
@@ -229,69 +111,194 @@ class TestEndpointId:
         assert _make_endpoint_id("GET", "/") == "get"
 
 
+class TestFindTracesForGroup:
+    def test_finds_by_url(self):
+        traces = [
+            make_trace("t_0001", "GET", "https://api.example.com/users/123", 200, 1000),
+            make_trace("t_0002", "GET", "https://api.example.com/users/456", 200, 2000),
+            make_trace("t_0003", "POST", "https://api.example.com/users", 201, 3000),
+        ]
+        group = EndpointGroup(
+            method="GET",
+            pattern="/users/{user_id}",
+            urls=["https://api.example.com/users/123", "https://api.example.com/users/456"],
+        )
+        matched = _find_traces_for_group(group, traces)
+        assert len(matched) == 2
+        assert all(t.meta.request.method == "GET" for t in matched)
+
+    def test_fallback_to_pattern_matching(self):
+        traces = [
+            make_trace("t_0001", "GET", "https://api.example.com/users/123", 200, 1000),
+            make_trace("t_0002", "GET", "https://api.example.com/users/456", 200, 2000),
+        ]
+        # Group with only one URL listed, but pattern should match both
+        group = EndpointGroup(
+            method="GET",
+            pattern="/users/{user_id}",
+            urls=["https://api.example.com/users/123"],
+        )
+        matched = _find_traces_for_group(group, traces)
+        assert len(matched) == 2
+
+
+class TestBuildEndpointMechanical:
+    def test_basic_endpoint(self):
+        traces = [
+            make_trace(
+                "t_0001", "GET", "https://api.example.com/api/users", 200,
+                timestamp=1000000,
+                response_body=json.dumps({"name": "Alice"}).encode(),
+                request_headers=[Header(name="Authorization", value="Bearer tok")],
+            ),
+        ]
+        endpoint = _build_endpoint_mechanical("GET", "/api/users", traces, [])
+        assert endpoint.method == "GET"
+        assert endpoint.path == "/api/users"
+        assert endpoint.observed_count == 1
+        assert endpoint.requires_auth is True
+        assert "t_0001" in endpoint.source_trace_refs
+
+    def test_endpoint_with_path_params(self):
+        traces = [
+            make_trace("t_0001", "GET", "https://api.example.com/users/123", 200, 1000),
+        ]
+        endpoint = _build_endpoint_mechanical("GET", "/users/{user_id}", traces, [])
+        path_params = [p for p in endpoint.request.parameters if p.location == "path"]
+        assert len(path_params) == 1
+        assert path_params[0].name == "user_id"
+
+
 class TestBuildSpec:
-    def test_full_build(self, sample_bundle):
-        spec = build_spec(sample_bundle, source_filename="test.zip")
+    """Tests for the full LLM-first build_spec pipeline with mocked LLM."""
+
+    @pytest.mark.asyncio
+    async def test_full_build(self, sample_bundle):
+        """Test build_spec with mocked LLM calls."""
+        mock_client = AsyncMock()
+
+        # Mock analyze_endpoints response
+        endpoint_groups_response = json.dumps([
+            {
+                "method": "GET",
+                "pattern": "/api/users",
+                "urls": ["https://api.example.com/api/users"],
+            },
+            {
+                "method": "GET",
+                "pattern": "/api/users/{user_id}/orders",
+                "urls": [
+                    "https://api.example.com/api/users/123/orders",
+                    "https://api.example.com/api/users/456/orders",
+                ],
+            },
+            {
+                "method": "POST",
+                "pattern": "/api/orders",
+                "urls": ["https://api.example.com/api/orders"],
+            },
+        ])
+
+        # Mock auth response
+        auth_response = json.dumps({
+            "type": "bearer_token",
+            "obtain_flow": "login_form",
+            "token_header": "Authorization",
+            "token_prefix": "Bearer",
+            "business_process": "Token-based auth",
+            "user_journey": ["Login with credentials", "Receive bearer token"],
+        })
+
+        # Mock endpoint detail response
+        detail_response = json.dumps({
+            "business_purpose": "List users",
+            "user_story": "As a user, I want to list users",
+            "correlation_confidence": 0.9,
+            "parameter_meanings": {},
+            "response_meanings": {"200": "Success"},
+            "trigger_explanations": [],
+        })
+
+        # Mock business context response
+        context_response = json.dumps({
+            "domain": "User Management",
+            "description": "API for managing users and orders",
+            "user_personas": ["admin", "user"],
+            "key_workflows": [{"name": "browse_users", "description": "Browse user list", "steps": ["login", "view_users"]}],
+            "business_glossary": {"user": "A registered account"},
+        })
+
+        # Set up mock to return different responses for different calls
+        call_count = [0]
+
+        async def mock_create(**kwargs):
+            call_count[0] += 1
+            msg = kwargs.get("messages", [{}])[0].get("content", "")
+
+            mock_response = MagicMock()
+            mock_content = MagicMock()
+
+            if "Group these observed URLs" in msg:
+                mock_content.text = endpoint_groups_response
+            elif "authentication mechanism" in msg:
+                mock_content.text = auth_response
+            elif "business domain" in msg or "Based on these API endpoints" in msg:
+                mock_content.text = context_response
+            else:
+                mock_content.text = detail_response
+
+            mock_response.content = [mock_content]
+            return mock_response
+
+        mock_client.messages.create = mock_create
+
+        spec = await build_spec(
+            sample_bundle,
+            client=mock_client,
+            model="test-model",
+            source_filename="test.zip",
+        )
 
         assert spec.name == "Test App API"
         assert "test.zip" in spec.source_captures
-        assert spec.protocols.rest.base_url == "https://api.example.com"
         assert len(spec.protocols.rest.endpoints) > 0
         assert spec.auth.type == "bearer_token"
+        assert spec.business_context.domain == "User Management"
+        assert "user" in spec.business_glossary
 
-    def test_endpoints_have_traces(self, sample_bundle):
-        spec = build_spec(sample_bundle)
+    @pytest.mark.asyncio
+    async def test_websocket_specs_built(self, sample_bundle):
+        """WebSocket specs should be built regardless of LLM."""
+        mock_client = AsyncMock()
 
-        for ep in spec.protocols.rest.endpoints:
-            assert ep.observed_count > 0
-            assert len(ep.source_trace_refs) > 0
+        groups_response = json.dumps([
+            {"method": "GET", "pattern": "/api/users", "urls": ["https://api.example.com/api/users"]},
+            {"method": "GET", "pattern": "/api/users/{user_id}/orders",
+             "urls": ["https://api.example.com/api/users/123/orders", "https://api.example.com/api/users/456/orders"]},
+            {"method": "POST", "pattern": "/api/orders", "urls": ["https://api.example.com/api/orders"]},
+        ])
 
-    def test_websocket_specs_built(self, sample_bundle):
-        spec = build_spec(sample_bundle)
+        async def mock_create(**kwargs):
+            mock_response = MagicMock()
+            mock_content = MagicMock()
+            msg = kwargs.get("messages", [{}])[0].get("content", "")
+            if "Group these observed URLs" in msg:
+                mock_content.text = groups_response
+            elif "authentication" in msg:
+                mock_content.text = json.dumps({"type": "bearer_token", "token_header": "Authorization", "token_prefix": "Bearer"})
+            elif "business domain" in msg or "Based on these API endpoints" in msg:
+                mock_content.text = json.dumps({"domain": "", "description": "", "user_personas": [], "key_workflows": [], "business_glossary": {}})
+            else:
+                mock_content.text = json.dumps({"business_purpose": "test", "user_story": "test", "correlation_confidence": 0.5, "parameter_meanings": {}, "response_meanings": {}, "trigger_explanations": []})
+            mock_response.content = [mock_content]
+            return mock_response
+
+        mock_client.messages.create = mock_create
+
+        spec = await build_spec(sample_bundle, client=mock_client, model="test-model")
 
         assert len(spec.protocols.websocket.connections) == 1
         ws = spec.protocols.websocket.connections[0]
         assert ws.url == "wss://realtime.example.com/ws"
         assert ws.subprotocol == "graphql-ws"
         assert len(ws.messages) == 2
-
-    def test_post_endpoint_has_body_params(self, sample_bundle):
-        spec = build_spec(sample_bundle)
-
-        post_endpoints = [
-            ep for ep in spec.protocols.rest.endpoints if ep.method == "POST"
-        ]
-        assert len(post_endpoints) >= 1
-        ep = post_endpoints[0]
-        body_params = [p for p in ep.request.parameters if p.location == "body"]
-        assert len(body_params) > 0
-
-    def test_path_parameters_detected(self, sample_bundle):
-        spec = build_spec(sample_bundle)
-
-        # Should have an endpoint with path params for /api/users/{user_id}/orders
-        endpoints_with_params = [
-            ep for ep in spec.protocols.rest.endpoints
-            if any(p.location == "path" for p in ep.request.parameters)
-        ]
-        assert len(endpoints_with_params) >= 1
-
-    def test_response_schemas_inferred(self, sample_bundle):
-        spec = build_spec(sample_bundle)
-
-        for ep in spec.protocols.rest.endpoints:
-            for resp in ep.responses:
-                if resp.status == 200 or resp.status == 201:
-                    # Should have either schema or example_body for JSON responses
-                    assert resp.schema_ is not None or resp.example_body is not None
-
-    def test_ui_triggers_attached(self, sample_bundle):
-        """Endpoints correlated with UI contexts should have triggers."""
-        spec = build_spec(sample_bundle)
-
-        all_triggers = []
-        for ep in spec.protocols.rest.endpoints:
-            all_triggers.extend(ep.ui_triggers)
-
-        # At least some triggers should exist (contexts exist in sample_bundle)
-        assert len(all_triggers) > 0

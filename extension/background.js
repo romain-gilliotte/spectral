@@ -133,6 +133,9 @@ function handleRequestWillBeSent(params) {
   // Skip WebSocket upgrade requests - handled separately
   if (type === 'WebSocket') return;
 
+  // Skip chrome-extension:// URLs
+  if (request.url.startsWith('chrome-extension://')) return;
+
   // Store partial trace data
   pendingRequests.set(requestId, {
     requestId,
@@ -183,6 +186,43 @@ function handleResponseReceived(params) {
 }
 
 /**
+ * Static asset extensions to skip during capture
+ */
+const STATIC_EXTENSIONS = new Set([
+  '.js', '.css', '.woff', '.woff2', '.ttf', '.png', '.jpg', '.jpeg',
+  '.gif', '.svg', '.ico', '.map',
+]);
+
+/**
+ * Response content-type prefixes to skip during capture
+ */
+const SKIP_CONTENT_TYPES = [
+  'font/', 'image/', 'text/css', 'application/javascript', 'text/javascript',
+];
+
+/**
+ * Check if a URL points to a static asset by extension
+ */
+function isStaticAsset(url) {
+  try {
+    const pathname = new URL(url).pathname;
+    const ext = pathname.slice(pathname.lastIndexOf('.')).toLowerCase();
+    return STATIC_EXTENSIONS.has(ext);
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Check if a content-type is non-API (font, image, css, js)
+ */
+function isSkippableContentType(mimeType) {
+  if (!mimeType) return false;
+  const lower = mimeType.toLowerCase();
+  return SKIP_CONTENT_TYPES.some((prefix) => lower.startsWith(prefix));
+}
+
+/**
  * Handle Network.loadingFinished - fetch response body and finalize trace
  */
 async function handleLoadingFinished(params, debuggeeId) {
@@ -190,6 +230,18 @@ async function handleLoadingFinished(params, debuggeeId) {
 
   const pending = pendingRequests.get(requestId);
   if (!pending || !pending.response) {
+    pendingRequests.delete(requestId);
+    return;
+  }
+
+  // Skip static assets by URL extension
+  if (isStaticAsset(pending.request.url)) {
+    pendingRequests.delete(requestId);
+    return;
+  }
+
+  // Skip non-API content types
+  if (isSkippableContentType(pending.response.mimeType)) {
     pendingRequests.delete(requestId);
     return;
   }

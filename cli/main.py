@@ -24,10 +24,10 @@ def cli():
 @click.argument("capture_path", type=click.Path(exists=True))
 @click.option("-o", "--output", required=True, help="Output file path for the API spec (.json)")
 @click.option("--model", default="claude-sonnet-4-5-20250929", help="LLM model to use")
-@click.option("--no-llm", is_flag=True, help="Skip LLM analysis, mechanical only")
-def analyze(capture_path: str, output: str, model: str, no_llm: bool):
+def analyze(capture_path: str, output: str, model: str):
     """Analyze a capture bundle and produce an enriched API spec."""
-    from cli.analyze.llm import enrich_spec, is_llm_available
+    import anthropic
+
     from cli.analyze.spec_builder import build_spec
     from cli.capture.loader import load_bundle
 
@@ -39,21 +39,24 @@ def analyze(capture_path: str, output: str, model: str, no_llm: bool):
         f"{len(bundle.contexts)} contexts"
     )
 
-    console.print("[bold]Building API spec (mechanical analysis)...[/bold]")
-    spec = build_spec(bundle, source_filename=Path(capture_path).name)
+    client = anthropic.AsyncAnthropic()
+
+    def on_progress(msg):
+        console.print(f"  {msg}")
+
+    console.print(f"[bold]Analyzing with LLM ({model})...[/bold]")
+    spec = asyncio.run(
+        build_spec(
+            bundle,
+            client=client,
+            model=model,
+            source_filename=Path(capture_path).name,
+            on_progress=on_progress,
+        )
+    )
     console.print(
         f"  Found {len(spec.protocols.rest.endpoints)} endpoints"
     )
-
-    if not no_llm:
-        if is_llm_available():
-            console.print(f"[bold]Enriching with LLM ({model})...[/bold]")
-            spec = asyncio.run(enrich_spec(spec, model=model))
-            console.print("  LLM enrichment complete")
-        else:
-            console.print(
-                "[yellow]ANTHROPIC_API_KEY not set — skipping LLM enrichment[/yellow]"
-            )
 
     output_path = Path(output)
     output_path.parent.mkdir(parents=True, exist_ok=True)
@@ -125,10 +128,10 @@ def _generate_curl_scripts(spec, output):
 )
 @click.option("-o", "--output", required=True, help="Output directory")
 @click.option("--model", default="claude-sonnet-4-5-20250929", help="LLM model to use")
-@click.option("--no-llm", is_flag=True, help="Skip LLM analysis")
-def pipeline(capture_path: str, types: str, output: str, model: str, no_llm: bool):
+def pipeline(capture_path: str, types: str, output: str, model: str):
     """Run the full pipeline: analyze + generate."""
-    from cli.analyze.llm import enrich_spec, is_llm_available
+    import anthropic
+
     from cli.analyze.spec_builder import build_spec
     from cli.capture.loader import load_bundle
 
@@ -138,11 +141,22 @@ def pipeline(capture_path: str, types: str, output: str, model: str, no_llm: boo
     # Analyze
     console.print(f"[bold]Loading capture bundle:[/bold] {capture_path}")
     bundle = load_bundle(capture_path)
-    spec = build_spec(bundle, source_filename=Path(capture_path).name)
 
-    if not no_llm and is_llm_available():
-        console.print(f"[bold]Enriching with LLM ({model})...[/bold]")
-        spec = asyncio.run(enrich_spec(spec, model=model))
+    client = anthropic.AsyncAnthropic()
+
+    def on_progress(msg):
+        console.print(f"  {msg}")
+
+    console.print(f"[bold]Analyzing with LLM ({model})...[/bold]")
+    spec = asyncio.run(
+        build_spec(
+            bundle,
+            client=client,
+            model=model,
+            source_filename=Path(capture_path).name,
+            on_progress=on_progress,
+        )
+    )
 
     # Save intermediate spec
     spec_path = output_dir / "api_spec.json"
@@ -300,7 +314,7 @@ def import_har(har_path: str, output: str):
 @click.argument("capture_path", type=click.Path(exists=True))
 @click.option("-o", "--output", required=True, help="Output HAR file (.har)")
 def export_har(capture_path: str, output: str):
-    """Export a capture bundle to HAR format (lossy: no UI context, binary→base64)."""
+    """Export a capture bundle to HAR format (lossy: no UI context, binary->base64)."""
     from cli.har import bundle_to_har
     from cli.capture.loader import load_bundle
 
