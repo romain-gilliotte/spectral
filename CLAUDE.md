@@ -489,7 +489,65 @@ When storing a trace, the extension finds the most recent context(s) within a 2-
 
 ---
 
-## Implementation order
+## Implementation status
+
+### Phase 1: Capture bundle format + Extension MVP
+- [x] Pydantic models for capture bundle format (`cli/formats/capture_bundle.py`) — 12 models
+- [x] Bundle loader/writer with ZIP serialization (`cli/capture/loader.py`) — binary-safe roundtrip
+- [x] In-memory data classes (`cli/capture/models.py`) — wraps metadata + binary payloads
+- [x] Tests: model roundtrips, bundle read/write, binary safety, lookups
+- [ ] Chrome extension: `background.js` (DevTools Protocol capture)
+- [ ] Chrome extension: `content.js` (DOM event capture)
+- [ ] Chrome extension: popup UI (Start / Stop / Export)
+
+### Phase 2: Mechanical analysis (no LLM)
+- [x] Protocol detection (`cli/analyze/protocol.py`) — REST, GraphQL, gRPC, binary, WS sub-protocols
+- [x] Time-window correlation (`cli/analyze/correlator.py`) — UI action → API calls with configurable window
+- [x] Endpoint grouping by (method, normalized path pattern)
+- [x] Path parameter inference from URL variations (numeric, UUID, hex hash detection)
+- [x] Request/response JSON schema inference with format detection (date, email, UUID, URI)
+- [x] Query parameter extraction from URLs
+- [x] Auth detection (Bearer, Basic, cookie-based)
+- [x] Base URL detection (most common origin)
+- [x] Full spec builder (`cli/analyze/spec_builder.py`) — assembles everything into `ApiSpec`
+- [x] Tests: protocol detection, correlator logic, path params, schema inference, auth, full builds
+
+### Phase 3: LLM analysis
+- [x] LLM client skeleton (`cli/analyze/llm.py`) — Anthropic API, async, per-endpoint + global enrichment
+- [ ] Real-world testing with actual API keys
+- [ ] Prompt tuning for better business_purpose / user_story quality
+- [ ] Auth flow reconstruction from login-related traces
+
+### Phase 4: Output generators
+- [x] OpenAPI 3.1 generator (`cli/generate/openapi.py`) — paths, params, request bodies, security schemes, tags
+- [x] Python client generator (`cli/generate/python_client.py`) — typed methods, auth, docstrings
+- [x] Markdown docs generator (`cli/generate/markdown_docs.py`) — index + per-endpoint + auth docs
+- [x] cURL scripts generator (`cli/generate/curl_scripts.py`) — per-endpoint + all-in-one script
+- [x] MCP server generator (`cli/generate/mcp_server.py`) — FastMCP scaffold with tools, README, requirements
+- [x] Tests: structure, content, file output for all 5 generators
+
+### Phase 5: Polish
+- [x] HAR import/export (`cli/har.py`) — bidirectional, base64 binary support, tested roundtrips
+- [x] `api-discover inspect` command — summary + per-trace detail view
+- [x] Full CLI (`cli/main.py`) — 6 commands: `analyze`, `generate`, `pipeline`, `inspect`, `import-har`, `export-har`
+- [ ] Bundle merging (combine multiple capture sessions for the same app)
+- [ ] Better popup UI with live capture stats
+- [ ] Privacy controls: exclude domains, redact headers/cookies
+
+### Test coverage
+157 tests across 8 test files, all passing:
+- `tests/test_formats.py` — Pydantic model roundtrips and defaults
+- `tests/test_loader.py` — Bundle read/write, binary safety, lookups
+- `tests/test_protocol.py` — Protocol detection for HTTP and WebSocket
+- `tests/test_correlator.py` — Time-window correlation logic
+- `tests/test_spec_builder.py` — Path params, schema inference, auth detection, full builds
+- `tests/test_generators.py` — All 5 generators (structure, content, file output)
+- `tests/test_har.py` — HAR import, export, and roundtrip
+- `tests/test_cli.py` — All CLI commands via Click test runner
+
+---
+
+## Implementation order (reference)
 
 Build in this order. Each phase should be independently testable.
 
