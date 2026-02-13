@@ -18,6 +18,7 @@ import json
 import re
 from collections import defaultdict
 from datetime import datetime, timezone
+from pathlib import Path
 from urllib.parse import urlparse
 
 from cli.analyze.correlator import Correlation, correlate
@@ -55,6 +56,7 @@ async def build_spec(
     model: str,
     source_filename: str = "",
     on_progress=None,
+    enable_debug: bool = False,
 ) -> ApiSpec:
     """Build an enriched API spec from a capture bundle (LLM-first pipeline).
 
@@ -70,6 +72,14 @@ async def build_spec(
         if on_progress:
             on_progress(msg)
 
+    # Create debug directory for this run
+    debug_dir = None
+    if enable_debug:
+        run_ts = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.%f")[:-3] + "Z"
+        debug_dir = Path("debug") / run_ts
+        debug_dir.mkdir(parents=True, exist_ok=True)
+        progress(f"Debug logs → {debug_dir}")
+
     all_traces = list(bundle.traces)
     correlations = correlate(bundle)
 
@@ -80,7 +90,7 @@ async def build_spec(
 
     # Step 2: LLM groups URLs into endpoint patterns
     progress("Grouping URLs into endpoints (LLM)...")
-    endpoint_groups = await analyze_endpoints(client, model, url_method_pairs)
+    endpoint_groups = await analyze_endpoints(client, model, url_method_pairs, debug_dir=debug_dir)
 
     # Step 3: For each group, do mechanical extraction + LLM enrichment
     progress(f"Enriching {len(endpoint_groups)} endpoints...")
@@ -91,7 +101,8 @@ async def build_spec(
         bundle.manifest.app.name + " API" if bundle.manifest.app.name else "Discovered API"
     )
 
-    for group in endpoint_groups:
+    for i, group in enumerate(endpoint_groups, 1):
+        progress(f"  [{i}/{len(endpoint_groups)}] {group.method} {group.pattern}")
         # Find traces that belong to this group
         group_traces = _find_traces_for_group(group, all_traces)
 
@@ -107,7 +118,7 @@ async def build_spec(
 
         # LLM enrichment
         try:
-            enrichment = await analyze_endpoint_detail(client, model, summary)
+            enrichment = await analyze_endpoint_detail(client, model, summary, debug_dir=debug_dir)
             _apply_enrichment(endpoint, enrichment)
         except Exception:
             pass  # LLM enrichment is best-effort
@@ -118,7 +129,7 @@ async def build_spec(
     progress("Analyzing authentication (LLM)...")
     auth_summary = _prepare_auth_summary(all_traces)
     try:
-        auth = await analyze_auth(client, model, auth_summary)
+        auth = await analyze_auth(client, model, auth_summary, debug_dir=debug_dir)
     except Exception:
         auth = _detect_auth_mechanical(all_traces)
 
@@ -130,7 +141,7 @@ async def build_spec(
     ]
     try:
         business_context, glossary = await analyze_business_context(
-            client, model, ep_summaries, app_name, base_url
+            client, model, ep_summaries, app_name, base_url, debug_dir=debug_dir,
         )
     except Exception:
         business_context = BusinessContext(
@@ -166,7 +177,7 @@ async def build_spec(
         try:
             spec_dict = json.loads(spec.model_dump_json(by_alias=True))
             error_dicts = [e.to_dict() for e in errors]
-            corrected_dict = await correct_spec(client, model, spec_dict, error_dicts)
+            corrected_dict = await correct_spec(client, model, spec_dict, error_dicts, debug_dir=debug_dir)
             spec = ApiSpec.model_validate(corrected_dict)
 
             # Re-validate (informational only, no second correction)

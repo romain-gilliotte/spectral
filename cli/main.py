@@ -55,6 +55,7 @@ def analyze(capture_path: str, output: str, model: str):
             model=model,
             source_filename=Path(capture_path).name,
             on_progress=on_progress,
+            enable_debug=True,
         )
     )
     console.print(
@@ -158,6 +159,7 @@ def pipeline(capture_path: str, types: str, output: str, model: str):
             model=model,
             source_filename=Path(capture_path).name,
             on_progress=on_progress,
+            enable_debug=True,
         )
     )
 

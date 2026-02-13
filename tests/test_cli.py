@@ -42,6 +42,8 @@ def _make_mock_anthropic_module():
     async def mock_create(**kwargs):
         mock_response = MagicMock()
         mock_content = MagicMock()
+        mock_content.type = "text"
+        mock_response.stop_reason = "end_turn"
         msg = kwargs.get("messages", [{}])[0].get("content", "")
         if "Group these observed URLs" in msg:
             mock_content.text = groups_response
@@ -124,6 +126,8 @@ class TestGenerateCommand:
         async def mock_create(**kwargs):
             mock_response = MagicMock()
             mock_content = MagicMock()
+            mock_content.type = "text"
+            mock_response.stop_reason = "end_turn"
             msg = kwargs.get("messages", [{}])[0].get("content", "")
             if "Group these observed URLs" in msg:
                 mock_content.text = groups_response
