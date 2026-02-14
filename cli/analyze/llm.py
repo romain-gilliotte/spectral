@@ -431,7 +431,7 @@ async def analyze_auth(
 
 Here are relevant traces (login flows, token exchanges, authenticated requests):
 
-{json.dumps(auth_traces_summary, indent=2)[:6000]}
+{json.dumps(auth_traces_summary)[:6000]}
 
 Identify:
 1. "type": The auth type (e.g., "bearer_token", "oauth2", "cookie", "basic", "api_key", "none")
@@ -490,13 +490,13 @@ Base URL: {endpoint_summary.get('base_url', '')}
 Observed {endpoint_summary.get('observed_count', 0)} times.
 
 UI triggers (what the user did to cause this API call):
-{json.dumps(endpoint_summary.get('ui_triggers', []), indent=2)[:1000]}
+{chr(10).join(json.dumps(t) for t in endpoint_summary.get('ui_triggers', []))[:1000]}
 
 Sample requests:
-{json.dumps(endpoint_summary.get('sample_requests', []), indent=2)[:2000]}
+{chr(10).join(json.dumps(r) for r in endpoint_summary.get('sample_requests', []))[:2000]}
 
 Sample responses:
-{json.dumps(endpoint_summary.get('sample_responses', []), indent=2)[:2000]}
+{chr(10).join(json.dumps(r) for r in endpoint_summary.get('sample_responses', []))[:2000]}
 
 Provide:
 1. "business_purpose": Concise description of what this endpoint does in business terms
@@ -605,7 +605,7 @@ async def correct_spec(
     Output: corrected spec as a dict.
     """
     # Only send endpoint-relevant parts to keep tokens low
-    endpoints_json = json.dumps(spec_json.get("protocols", {}).get("rest", {}).get("endpoints", []), indent=2)
+    endpoints_json = json.dumps(spec_json.get("protocols", {}).get("rest", {}).get("endpoints", []))
 
     prompt = f"""The following API spec has validation errors when checked against the actual captured traffic.
 
@@ -613,7 +613,7 @@ Endpoints:
 {endpoints_json[:8000]}
 
 Validation errors:
-{json.dumps(errors, indent=2)[:4000]}
+{json.dumps(errors)[:4000]}
 
 Fix the spec to resolve these errors. Common fixes:
 - If a trace URL doesn't match any endpoint pattern, adjust the pattern or create a new endpoint

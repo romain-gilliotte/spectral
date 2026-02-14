@@ -109,6 +109,9 @@ async def build_spec(
     endpoint_groups = await analyze_endpoints(client, model, url_method_pairs, debug_dir=debug_dir)
 
     # Step 3: For each group, do mechanical extraction + LLM enrichment
+    if debug_dir is not None and len(endpoint_groups) > 10:
+        progress(f"Debug mode: limiting LLM enrichment to 10/{len(endpoint_groups)} endpoints")
+        endpoint_groups = endpoint_groups[:10]
     progress(f"Enriching {len(endpoint_groups)} endpoints...")
     trace_map = {t.meta.id: t for t in all_traces}
     endpoints: list[EndpointSpec] = []
