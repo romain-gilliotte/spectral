@@ -29,6 +29,7 @@ from cli.analyze.llm import (
     analyze_endpoint_detail,
     analyze_endpoints,
     correct_spec,
+    detect_api_base_url,
 )
 from cli.analyze.protocol import detect_ws_protocol
 from cli.analyze.validator import validate_spec
@@ -88,6 +89,21 @@ async def build_spec(
         (t.meta.request.method.upper(), t.meta.request.url) for t in all_traces
     ]
 
+    # Step 1b: LLM detects the business API base URL
+    progress("Detecting API base URL (LLM)...")
+    base_url = await detect_api_base_url(client, model, url_method_pairs, debug_dir=debug_dir)
+    progress(f"  API base URL: {base_url}")
+
+    # Step 1c: Filter traces to those matching the base URL
+    total_before = len(all_traces)
+    all_traces = [t for t in all_traces if t.meta.request.url.startswith(base_url)]
+    progress(f"  Kept {len(all_traces)}/{total_before} traces under {base_url}")
+
+    # Recalculate url_method_pairs from filtered traces
+    url_method_pairs = [
+        (t.meta.request.method.upper(), t.meta.request.url) for t in all_traces
+    ]
+
     # Step 2: LLM groups URLs into endpoint patterns
     progress("Grouping URLs into endpoints (LLM)...")
     endpoint_groups = await analyze_endpoints(client, model, url_method_pairs, debug_dir=debug_dir)
@@ -96,7 +112,6 @@ async def build_spec(
     progress(f"Enriching {len(endpoint_groups)} endpoints...")
     trace_map = {t.meta.id: t for t in all_traces}
     endpoints: list[EndpointSpec] = []
-    base_url = _detect_base_url(all_traces)
     app_name = (
         bundle.manifest.app.name + " API" if bundle.manifest.app.name else "Discovered API"
     )

@@ -12,6 +12,7 @@ from cli.analyze.llm import (
     _execute_decode_jwt,
     _execute_decode_url,
     _TOOL_EXECUTORS,
+    detect_api_base_url,
     INVESTIGATION_TOOLS,
 )
 
@@ -225,6 +226,59 @@ class TestCallWithTools:
             INVESTIGATION_TOOLS, _TOOL_EXECUTORS,
         )
         assert result == "done"
+
+
+class TestDetectApiBaseUrl:
+    @pytest.mark.asyncio
+    async def test_returns_base_url(self):
+        """detect_api_base_url should parse the LLM response and return the base_url string."""
+        async def mock_create(**kwargs):
+            return _make_text_response('{"base_url": "https://www.example.com/api"}')
+
+        client = MagicMock()
+        client.messages.create = mock_create
+
+        result = await detect_api_base_url(
+            client, "model",
+            [("GET", "https://www.example.com/api/users"), ("GET", "https://cdn.example.com/style.css")],
+        )
+        assert result == "https://www.example.com/api"
+
+    @pytest.mark.asyncio
+    async def test_strips_trailing_slash(self):
+        """Trailing slash should be stripped from the returned base URL."""
+        async def mock_create(**kwargs):
+            return _make_text_response('{"base_url": "https://api.example.com/"}')
+
+        client = MagicMock()
+        client.messages.create = mock_create
+
+        result = await detect_api_base_url(client, "model", [("GET", "https://api.example.com/v1")])
+        assert result == "https://api.example.com"
+
+    @pytest.mark.asyncio
+    async def test_origin_only(self):
+        """LLM may return just the origin without a path prefix."""
+        async def mock_create(**kwargs):
+            return _make_text_response('{"base_url": "https://api.example.com"}')
+
+        client = MagicMock()
+        client.messages.create = mock_create
+
+        result = await detect_api_base_url(client, "model", [("GET", "https://api.example.com/users")])
+        assert result == "https://api.example.com"
+
+    @pytest.mark.asyncio
+    async def test_invalid_response_raises(self):
+        """If the LLM doesn't return {base_url: ...}, raise ValueError."""
+        async def mock_create(**kwargs):
+            return _make_text_response('{"something_else": "value"}')
+
+        client = MagicMock()
+        client.messages.create = mock_create
+
+        with pytest.raises(ValueError, match="Expected"):
+            await detect_api_base_url(client, "model", [("GET", "https://example.com/api")])
 
 
 def _async_return(value):

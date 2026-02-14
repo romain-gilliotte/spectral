@@ -39,13 +39,17 @@ def _make_mock_anthropic_module():
         "business_glossary": {},
     })
 
+    base_url_response = json.dumps({"base_url": "https://api.example.com"})
+
     async def mock_create(**kwargs):
         mock_response = MagicMock()
         mock_content = MagicMock()
         mock_content.type = "text"
         mock_response.stop_reason = "end_turn"
         msg = kwargs.get("messages", [{}])[0].get("content", "")
-        if "Group these observed URLs" in msg:
+        if "base URL" in msg and "business API" in msg:
+            mock_content.text = base_url_response
+        elif "Group these observed URLs" in msg:
             mock_content.text = groups_response
         elif "authentication" in msg:
             mock_content.text = auth_response
@@ -129,7 +133,9 @@ class TestGenerateCommand:
             mock_content.type = "text"
             mock_response.stop_reason = "end_turn"
             msg = kwargs.get("messages", [{}])[0].get("content", "")
-            if "Group these observed URLs" in msg:
+            if "base URL" in msg and "business API" in msg:
+                mock_content.text = json.dumps({"base_url": "https://api.example.com"})
+            elif "Group these observed URLs" in msg:
                 mock_content.text = groups_response
             elif "authentication" in msg:
                 mock_content.text = json.dumps({"type": "bearer_token", "token_header": "Authorization", "token_prefix": "Bearer"})

@@ -27,7 +27,8 @@ def cli():
 @click.argument("capture_path", type=click.Path(exists=True))
 @click.option("-o", "--output", required=True, help="Output file path for the API spec (.json)")
 @click.option("--model", default="claude-sonnet-4-5-20250929", help="LLM model to use")
-def analyze(capture_path: str, output: str, model: str):
+@click.option("--debug", is_flag=True, default=False, help="Save LLM prompts/responses to debug/")
+def analyze(capture_path: str, output: str, model: str, debug: bool):
     """Analyze a capture bundle and produce an enriched API spec."""
     import anthropic
 
@@ -55,7 +56,7 @@ def analyze(capture_path: str, output: str, model: str):
             model=model,
             source_filename=Path(capture_path).name,
             on_progress=on_progress,
-            enable_debug=True,
+            enable_debug=debug,
         )
     )
     console.print(
@@ -132,7 +133,8 @@ def _generate_curl_scripts(spec, output):
 )
 @click.option("-o", "--output", required=True, help="Output directory")
 @click.option("--model", default="claude-sonnet-4-5-20250929", help="LLM model to use")
-def pipeline(capture_path: str, types: str, output: str, model: str):
+@click.option("--debug", is_flag=True, default=False, help="Save LLM prompts/responses to debug/")
+def pipeline(capture_path: str, types: str, output: str, model: str, debug: bool):
     """Run the full pipeline: analyze + generate."""
     import anthropic
 
@@ -159,7 +161,7 @@ def pipeline(capture_path: str, types: str, output: str, model: str):
             model=model,
             source_filename=Path(capture_path).name,
             on_progress=on_progress,
-            enable_debug=True,
+            enable_debug=debug,
         )
     )
 

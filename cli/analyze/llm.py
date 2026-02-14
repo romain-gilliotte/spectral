@@ -285,6 +285,56 @@ def _compact_url(url: str) -> str:
     return f"{parsed.scheme}://{parsed.netloc}{'/'.join(compacted)}"
 
 
+async def detect_api_base_url(
+    client, model: str, url_method_pairs: list[tuple[str, str]],
+    debug_dir: Path | None = None,
+) -> str:
+    """Ask the LLM to identify the business API base URL from captured traffic.
+
+    Input: list of (method, url) pairs (deduplicated).
+    Output: a base URL string like "https://www.example.com/api" or "https://api.example.com".
+    """
+    unique_pairs = sorted(set(url_method_pairs))
+    compacted_pairs = sorted(set(
+        (method, _compact_url(url)) for method, url in unique_pairs
+    ))
+    lines = [f"  {method} {url}" for method, url in compacted_pairs]
+
+    prompt = f"""You are analyzing HTTP traffic captured from a web application.
+Identify the base URL of the **business API** (the main application API, not CDN, analytics, tracking, fonts, or third-party services).
+
+The base URL can be:
+- Just the origin: https://api.example.com
+- Origin + path prefix: https://www.example.com/api
+
+Rules:
+- Pick the single most important API base URL — the one serving the app's core business endpoints.
+- Ignore CDN domains, analytics (google-analytics, hotjar, segment, etc.), ad trackers, font services, static asset hosts.
+- If the API endpoints share a common path prefix (e.g. /api/v1), include it.
+- Return ONLY the base URL string, no trailing slash.
+
+Observed requests:
+{chr(10).join(lines)}
+
+Respond with a JSON object:
+{{"base_url": "https://..."}}"""
+
+    text = await _call_with_tools(
+        client,
+        model,
+        [{"role": "user", "content": prompt}],
+        INVESTIGATION_TOOLS,
+        _TOOL_EXECUTORS,
+        debug_dir=debug_dir,
+        call_name="detect_api_base_url",
+    )
+
+    result = _extract_json(text)
+    if isinstance(result, dict) and "base_url" in result:
+        return result["base_url"].rstrip("/")
+    raise ValueError(f"Expected {{\"base_url\": \"...\"}} from detect_api_base_url, got: {text[:200]}")
+
+
 async def analyze_endpoints(
     client, model: str, url_method_pairs: list[tuple[str, str]],
     debug_dir: Path | None = None,

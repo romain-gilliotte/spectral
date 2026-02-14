@@ -228,6 +228,9 @@ class TestBuildSpec:
             "business_glossary": {"user": "A registered account"},
         })
 
+        # Mock detect_api_base_url response
+        base_url_response = json.dumps({"base_url": "https://api.example.com"})
+
         # Set up mock to return different responses for different calls
         call_count = [0]
 
@@ -240,7 +243,9 @@ class TestBuildSpec:
             mock_content.type = "text"
             mock_response.stop_reason = "end_turn"
 
-            if "Group these observed URLs" in msg:
+            if "base URL" in msg and "business API" in msg:
+                mock_content.text = base_url_response
+            elif "Group these observed URLs" in msg:
                 mock_content.text = endpoint_groups_response
             elif "authentication mechanism" in msg:
                 mock_content.text = auth_response
@@ -267,6 +272,7 @@ class TestBuildSpec:
         assert spec.auth.type == "bearer_token"
         assert spec.business_context.domain == "User Management"
         assert "user" in spec.business_glossary
+        assert spec.protocols.rest.base_url == "https://api.example.com"
 
     @pytest.mark.asyncio
     async def test_websocket_specs_built(self, sample_bundle):
@@ -286,7 +292,9 @@ class TestBuildSpec:
             mock_content.type = "text"
             mock_response.stop_reason = "end_turn"
             msg = kwargs.get("messages", [{}])[0].get("content", "")
-            if "Group these observed URLs" in msg:
+            if "base URL" in msg and "business API" in msg:
+                mock_content.text = json.dumps({"base_url": "https://api.example.com"})
+            elif "Group these observed URLs" in msg:
                 mock_content.text = groups_response
             elif "authentication" in msg:
                 mock_content.text = json.dumps({"type": "bearer_token", "token_header": "Authorization", "token_prefix": "Bearer"})
@@ -306,3 +314,48 @@ class TestBuildSpec:
         assert ws.url == "wss://realtime.example.com/ws"
         assert ws.subprotocol == "graphql-ws"
         assert len(ws.messages) == 2
+
+    @pytest.mark.asyncio
+    async def test_traces_filtered_by_base_url(self, sample_bundle):
+        """Traces not matching the detected base URL should be excluded from the spec."""
+        # Add a CDN trace that should be filtered out
+        from tests.conftest import make_trace as mt
+        cdn_trace = mt("t_cdn", "GET", "https://cdn.example.com/style.css", 200, 999500)
+        sample_bundle.traces.append(cdn_trace)
+
+        mock_client = AsyncMock()
+
+        # LLM returns base URL that excludes the CDN trace
+        groups_response = json.dumps([
+            {"method": "GET", "pattern": "/api/users", "urls": ["https://api.example.com/api/users"]},
+        ])
+
+        async def mock_create(**kwargs):
+            mock_response = MagicMock()
+            mock_content = MagicMock()
+            mock_content.type = "text"
+            mock_response.stop_reason = "end_turn"
+            msg = kwargs.get("messages", [{}])[0].get("content", "")
+            if "base URL" in msg and "business API" in msg:
+                mock_content.text = json.dumps({"base_url": "https://api.example.com"})
+            elif "Group these observed URLs" in msg:
+                mock_content.text = groups_response
+            elif "authentication" in msg:
+                mock_content.text = json.dumps({"type": "none"})
+            elif "business domain" in msg or "Based on these API endpoints" in msg:
+                mock_content.text = json.dumps({"domain": "", "description": "", "user_personas": [], "key_workflows": [], "business_glossary": {}})
+            else:
+                mock_content.text = json.dumps({"business_purpose": "test", "user_story": "test", "correlation_confidence": 0.5, "parameter_meanings": {}, "response_meanings": {}, "trigger_explanations": []})
+            mock_response.content = [mock_content]
+            return mock_response
+
+        mock_client.messages.create = mock_create
+
+        spec = await build_spec(sample_bundle, client=mock_client, model="test-model")
+
+        # CDN trace should not appear in any endpoint's source_trace_refs
+        all_refs = []
+        for ep in spec.protocols.rest.endpoints:
+            all_refs.extend(ep.source_trace_refs)
+        assert "t_cdn" not in all_refs
+        assert spec.protocols.rest.base_url == "https://api.example.com"
