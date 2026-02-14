@@ -8,3 +8,18 @@ build/
 .coverage
 *.egg
 capture_*
+
+# Environment and secrets
+.env
+
+# Debug and generated output
+debug/
+docs/
+
+# Generated test artifacts
+*.generated.json
+indy-api.json
+indy-openapi.yaml
+indy_client.py
+monitool-api.json
+test.json
