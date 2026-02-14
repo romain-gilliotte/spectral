@@ -52,12 +52,12 @@ def build_mcp_server(spec: ApiSpec) -> str:
         "    if AUTH_TOKEN:",
     ]
 
-    if spec.auth.type == "bearer_token":
-        lines.append('        headers["Authorization"] = f"Bearer {AUTH_TOKEN}"')
-    elif spec.auth.type == "basic":
-        lines.append('        headers["Authorization"] = f"Basic {AUTH_TOKEN}"')
+    header = spec.auth.token_header or "Authorization"
+    prefix = spec.auth.token_prefix
+    if prefix:
+        lines.append(f'        headers["{header}"] = f"{prefix} {{AUTH_TOKEN}}"')
     else:
-        lines.append('        headers["Authorization"] = AUTH_TOKEN')
+        lines.append(f'        headers["{header}"] = AUTH_TOKEN')
 
     lines.extend([
         "    return headers",

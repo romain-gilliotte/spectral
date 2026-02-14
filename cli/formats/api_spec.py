@@ -18,6 +18,25 @@ class BusinessContext(BaseModel):
     key_workflows: list[WorkflowStep] = Field(default_factory=list)
 
 
+class LoginEndpointConfig(BaseModel):
+    url: str
+    method: str = "POST"
+    credential_fields: dict[str, str] = Field(default_factory=dict)
+    extra_fields: dict[str, str] = Field(default_factory=dict)
+    content_type: str = "application/json"
+    token_response_path: str = "access_token"
+    refresh_token_response_path: str = ""
+
+
+class RefreshEndpointConfig(BaseModel):
+    url: str
+    method: str = "POST"
+    token_field: str = "refresh_token"
+    extra_fields: dict[str, str] = Field(default_factory=dict)
+    token_response_path: str = "access_token"
+    content_type: str = "application/json"
+
+
 class AuthInfo(BaseModel):
     type: str = ""
     obtain_flow: str = ""
@@ -25,7 +44,8 @@ class AuthInfo(BaseModel):
     user_journey: list[str] = Field(default_factory=list)
     token_header: str | None = None
     token_prefix: str | None = None
-    refresh_endpoint: str | None = None
+    login_config: LoginEndpointConfig | None = None
+    refresh_config: RefreshEndpointConfig | None = None
     discovery_notes: str | None = None
 
 

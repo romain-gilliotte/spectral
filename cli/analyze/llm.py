@@ -32,7 +32,9 @@ from cli.formats.api_spec import (
     AuthInfo,
     BusinessContext,
     EndpointSpec,
+    LoginEndpointConfig,
     ParameterSpec,
+    RefreshEndpointConfig,
     RequestSpec,
     ResponseSpec,
     UiTrigger,
@@ -431,19 +433,29 @@ async def analyze_auth(
 
 Here are relevant traces (login flows, token exchanges, authenticated requests):
 
-{json.dumps(auth_traces_summary)[:6000]}
+{json.dumps(auth_traces_summary)[:8000]}
 
 Identify:
 1. "type": The auth type (e.g., "bearer_token", "oauth2", "cookie", "basic", "api_key", "none")
-2. "obtain_flow": How the token is obtained (e.g., "oauth2_authorization_code", "login_form", "api_key")
-3. "token_header": The header carrying the auth token (e.g., "Authorization", "Cookie")
+2. "obtain_flow": How the token is obtained (e.g., "oauth2_authorization_code", "oauth2_password", "login_form", "api_key", "social_auth")
+3. "token_header": The header carrying the auth token (e.g., "Authorization", "X-API-Key", "Cookie")
 4. "token_prefix": The prefix before the token value (e.g., "Bearer", "Basic", null)
 5. "business_process": Human description of how auth works
 6. "user_journey": Array of steps describing the login process
 7. "discovery_notes": Any additional observations
+8. "login_endpoint": If a login/token endpoint is visible, provide:
+   {{"url": "full URL or path", "method": "POST", "credential_fields": {{"username": "email", "password": "password"}}, "extra_fields": {{"grant_type": "password", "client_id": "xxx"}}, "token_response_path": "access_token", "refresh_token_response_path": "refresh_token"}}
+   Set to null if no login endpoint is visible.
+9. "refresh_endpoint_config": If a refresh/token-refresh endpoint is visible, provide:
+   {{"url": "full URL", "method": "POST", "token_field": "refresh_token", "extra_fields": {{"grant_type": "refresh_token", "client_id": "xxx"}}, "token_response_path": "access_token"}}
+   Set to null if no refresh endpoint is visible.
 
-If you see OAuth2 flows (auth0, okta, etc.), detect them even if the Authorization header is not used directly.
-Look for cookies, URL tokens, and cross-origin auth redirects.
+Look for these patterns:
+- Auth0/Okta/Cognito IdP domains (external token endpoints with grant_type, client_id)
+- Login form POST endpoints (email/password → JWT token)
+- OAuth2 password grant (grant_type=password)
+- Custom auth headers: X-API-Key, X-Auth-Token, X-Access-Token
+- If the token endpoint is on an external domain, use the full URL.
 
 Respond in JSON."""
 
@@ -458,6 +470,31 @@ Respond in JSON."""
     if not isinstance(data, dict):
         return AuthInfo()
 
+    # Build LoginEndpointConfig if present
+    login_config = None
+    login_data = data.get("login_endpoint")
+    if isinstance(login_data, dict) and login_data.get("url"):
+        login_config = LoginEndpointConfig(
+            url=login_data["url"],
+            method=login_data.get("method", "POST"),
+            credential_fields=login_data.get("credential_fields", {}),
+            extra_fields=login_data.get("extra_fields", {}),
+            token_response_path=login_data.get("token_response_path", "access_token"),
+            refresh_token_response_path=login_data.get("refresh_token_response_path", ""),
+        )
+
+    # Build RefreshEndpointConfig if present
+    refresh_config = None
+    refresh_data = data.get("refresh_endpoint_config")
+    if isinstance(refresh_data, dict) and refresh_data.get("url"):
+        refresh_config = RefreshEndpointConfig(
+            url=refresh_data["url"],
+            method=refresh_data.get("method", "POST"),
+            token_field=refresh_data.get("token_field", "refresh_token"),
+            extra_fields=refresh_data.get("extra_fields", {}),
+            token_response_path=refresh_data.get("token_response_path", "access_token"),
+        )
+
     return AuthInfo(
         type=data.get("type", ""),
         obtain_flow=data.get("obtain_flow", ""),
@@ -465,7 +502,8 @@ Respond in JSON."""
         user_journey=data.get("user_journey", []),
         token_header=data.get("token_header"),
         token_prefix=data.get("token_prefix"),
-        refresh_endpoint=data.get("refresh_endpoint"),
+        login_config=login_config,
+        refresh_config=refresh_config,
         discovery_notes=data.get("discovery_notes"),
     )
 

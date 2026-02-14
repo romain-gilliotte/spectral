@@ -49,7 +49,7 @@ def build_all_curl_script(spec: ApiSpec) -> str:
         "",
     ]
 
-    if spec.auth.type == "bearer_token":
+    if spec.auth.type and spec.auth.type != "none":
         lines.append('# Set your auth token')
         lines.append('TOKEN="${API_TOKEN:-your-token-here}"')
         lines.append("")
@@ -97,11 +97,13 @@ def _build_curl_command(endpoint: EndpointSpec, spec: ApiSpec) -> str:
     parts.append(f"'{url}'")
 
     # Auth header
-    if endpoint.requires_auth:
-        if spec.auth.type == "bearer_token":
-            parts.append("-H 'Authorization: Bearer $TOKEN'")
-        elif spec.auth.type == "basic":
-            parts.append("-H 'Authorization: Basic $TOKEN'")
+    if endpoint.requires_auth and spec.auth.type:
+        header = spec.auth.token_header or "Authorization"
+        prefix = spec.auth.token_prefix
+        if prefix:
+            parts.append(f"-H '{header}: {prefix} $TOKEN'")
+        else:
+            parts.append(f"-H '{header}: $TOKEN'")
 
     # Request body
     body_params = [p for p in endpoint.request.parameters if p.location == "body"]

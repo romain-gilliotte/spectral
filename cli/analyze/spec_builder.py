@@ -108,6 +108,14 @@ async def build_spec(
     progress("Grouping URLs into endpoints (LLM)...")
     endpoint_groups = await analyze_endpoints(client, model, url_method_pairs, debug_dir=debug_dir)
 
+    # Step 2b: Strip base_url path prefix from patterns to avoid double prefixes
+    # e.g. base_url="https://app.example.com/api" + pattern="/api/foo" → pattern="/foo"
+    base_path = urlparse(base_url).path.rstrip("/")
+    if base_path and base_path != "/":
+        for group in endpoint_groups:
+            if group.pattern.startswith(base_path):
+                group.pattern = group.pattern[len(base_path):] or "/"
+
     # Step 3: For each group, do mechanical extraction + LLM enrichment
     if debug_dir is not None and len(endpoint_groups) > 10:
         progress(f"Debug mode: limiting LLM enrichment to 10/{len(endpoint_groups)} endpoints")
@@ -384,23 +392,38 @@ def _apply_enrichment(endpoint: EndpointSpec, enrichment) -> None:
 
 def _prepare_auth_summary(traces: list[Trace]) -> list[dict]:
     """Prepare trace summaries relevant to authentication."""
+    _AUTH_URL_KEYWORDS = [
+        "auth", "login", "token", "oauth", "callback", "session", "signin",
+        "auth0", "okta", "cognito", "accounts.google",
+    ]
+    _LOGIN_URL_KEYWORDS = ["auth", "login", "signin", "token"]
+
     summaries = []
+    login_summaries = []
+
     for t in traces:
         headers_dict = {h.name: h.value for h in t.meta.request.headers}
         resp_headers_dict = {h.name: h.value for h in t.meta.response.headers}
+        req_header_names_lower = {h.name.lower() for h in t.meta.request.headers}
 
         # Include traces with auth-like characteristics
         is_auth_related = (
-            "authorization" in {h.name.lower() for h in t.meta.request.headers}
+            "authorization" in req_header_names_lower
+            or any(h in req_header_names_lower for h in ["x-api-key", "x-auth-token", "x-access-token"])
             or "set-cookie" in {h.name.lower() for h in t.meta.response.headers}
-            or any(kw in t.meta.request.url.lower() for kw in [
-                "auth", "login", "token", "oauth", "callback", "session", "signin"
-            ])
+            or any(kw in t.meta.request.url.lower() for kw in _AUTH_URL_KEYWORDS)
             or t.meta.response.status in (401, 403)
         )
 
         if not is_auth_related:
             continue
+
+        # Check if this is a login-like POST (prioritize it)
+        url_lower = t.meta.request.url.lower()
+        is_login_post = (
+            t.meta.request.method.upper() == "POST"
+            and any(kw in url_lower for kw in _LOGIN_URL_KEYWORDS)
+        )
 
         summary: dict = {
             "method": t.meta.request.method,
@@ -410,21 +433,30 @@ def _prepare_auth_summary(traces: list[Trace]) -> list[dict]:
             "response_headers": _sanitize_headers(resp_headers_dict),
         }
 
+        # For login POSTs, include more body detail so the LLM sees field names
+        body_max_keys = 15 if is_login_post else 5
+
         if t.request_body:
             try:
                 body = json.loads(t.request_body)
-                summary["request_body_snippet"] = _truncate_json(body, max_keys=5)
+                summary["request_body_snippet"] = _truncate_json(body, max_keys=body_max_keys)
             except (json.JSONDecodeError, UnicodeDecodeError):
                 pass
 
         if t.response_body:
             try:
                 body = json.loads(t.response_body)
-                summary["response_body_snippet"] = _truncate_json(body, max_keys=5)
+                summary["response_body_snippet"] = _truncate_json(body, max_keys=body_max_keys)
             except (json.JSONDecodeError, UnicodeDecodeError):
                 pass
 
-        summaries.append(summary)
+        if is_login_post:
+            login_summaries.append(summary)
+        else:
+            summaries.append(summary)
+
+    # Put login POSTs first so the LLM sees them prominently
+    summaries = login_summaries + summaries
 
     # If no auth-specific traces found, include a sample of headers from all traces
     if not summaries and traces:
@@ -480,6 +512,18 @@ def _detect_auth_mechanical(traces: list[Trace]) -> AuthInfo:
             else:
                 auth_type = "custom"
             break
+
+    # Detect custom API key headers
+    if not auth_type:
+        custom_headers = ["x-api-key", "x-auth-token", "x-access-token"]
+        for trace in traces:
+            for h in trace.meta.request.headers:
+                if h.name.lower() in custom_headers:
+                    auth_type = "api_key"
+                    token_header = h.name
+                    break
+            if auth_type:
+                break
 
     if not auth_type:
         for trace in traces:

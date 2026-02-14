@@ -195,8 +195,26 @@ def build_auth_markdown(spec: ApiSpec) -> str:
             lines.append(f"{i}. {step}")
         lines.append("")
 
-    if spec.auth.refresh_endpoint:
-        lines.append(f"**Refresh endpoint:** `{spec.auth.refresh_endpoint}`")
+    if spec.auth.login_config:
+        lines.append("## Login Endpoint")
+        lines.append("")
+        lines.append(f"**URL:** `{spec.auth.login_config.url}`")
+        lines.append(f"**Method:** `{spec.auth.login_config.method}`")
+        if spec.auth.login_config.credential_fields:
+            lines.append(f"**Credential fields:** {', '.join(f'`{k}` ({v})' for k, v in spec.auth.login_config.credential_fields.items())}")
+        if spec.auth.login_config.extra_fields:
+            lines.append(f"**Extra fields:** {', '.join(f'`{k}`=`{v}`' for k, v in spec.auth.login_config.extra_fields.items())}")
+        lines.append(f"**Token response path:** `{spec.auth.login_config.token_response_path}`")
+        lines.append("")
+
+    if spec.auth.refresh_config:
+        lines.append("## Refresh Endpoint")
+        lines.append("")
+        lines.append(f"**URL:** `{spec.auth.refresh_config.url}`")
+        lines.append(f"**Method:** `{spec.auth.refresh_config.method}`")
+        lines.append(f"**Token field:** `{spec.auth.refresh_config.token_field}`")
+        if spec.auth.refresh_config.extra_fields:
+            lines.append(f"**Extra fields:** {', '.join(f'`{k}`=`{v}`' for k, v in spec.auth.refresh_config.extra_fields.items())}")
         lines.append("")
 
     if spec.auth.discovery_notes:

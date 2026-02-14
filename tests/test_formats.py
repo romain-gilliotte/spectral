@@ -7,8 +7,10 @@ from cli.formats.api_spec import (
     AuthInfo,
     BusinessContext,
     EndpointSpec,
+    LoginEndpointConfig,
     ParameterSpec,
     Protocols,
+    RefreshEndpointConfig,
     RequestSpec,
     ResponseSpec,
     RestProtocol,
@@ -248,3 +250,87 @@ class TestApiSpec:
         assert spec.protocols.rest.endpoints == []
         assert spec.protocols.websocket.connections == []
         assert spec.business_glossary == {}
+
+    def test_login_endpoint_config_roundtrip(self):
+        config = LoginEndpointConfig(
+            url="https://auth.example.com/oauth/token",
+            method="POST",
+            credential_fields={"username": "email", "password": "password"},
+            extra_fields={"grant_type": "password", "client_id": "abc"},
+            token_response_path="access_token",
+            refresh_token_response_path="refresh_token",
+        )
+        json_str = config.model_dump_json()
+        loaded = LoginEndpointConfig.model_validate_json(json_str)
+        assert loaded.url == "https://auth.example.com/oauth/token"
+        assert loaded.credential_fields == {"username": "email", "password": "password"}
+        assert loaded.extra_fields["grant_type"] == "password"
+        assert loaded.refresh_token_response_path == "refresh_token"
+
+    def test_refresh_endpoint_config_roundtrip(self):
+        config = RefreshEndpointConfig(
+            url="https://auth.example.com/oauth/token",
+            token_field="refresh_token",
+            extra_fields={"grant_type": "refresh_token", "client_id": "abc"},
+            token_response_path="access_token",
+        )
+        json_str = config.model_dump_json()
+        loaded = RefreshEndpointConfig.model_validate_json(json_str)
+        assert loaded.url == "https://auth.example.com/oauth/token"
+        assert loaded.token_field == "refresh_token"
+        assert loaded.extra_fields["grant_type"] == "refresh_token"
+
+    def test_auth_info_with_login_and_refresh(self):
+        auth = AuthInfo(
+            type="bearer_token",
+            token_header="Authorization",
+            token_prefix="Bearer",
+            login_config=LoginEndpointConfig(
+                url="/auth/login",
+                credential_fields={"email": "email", "password": "password"},
+            ),
+            refresh_config=RefreshEndpointConfig(
+                url="/auth/refresh",
+            ),
+        )
+        json_str = auth.model_dump_json()
+        loaded = AuthInfo.model_validate_json(json_str)
+        assert loaded.login_config is not None
+        assert loaded.login_config.url == "/auth/login"
+        assert loaded.refresh_config is not None
+        assert loaded.refresh_config.url == "/auth/refresh"
+
+    def test_auth_info_backward_compat(self):
+        """Specs without login_config/refresh_config should still load."""
+        data = {
+            "type": "bearer_token",
+            "obtain_flow": "login_form",
+            "token_header": "Authorization",
+            "token_prefix": "Bearer",
+        }
+        auth = AuthInfo.model_validate(data)
+        assert auth.login_config is None
+        assert auth.refresh_config is None
+        assert auth.type == "bearer_token"
+
+    def test_api_spec_with_auth_configs_roundtrip(self):
+        spec = ApiSpec(
+            name="Test",
+            auth=AuthInfo(
+                type="oauth2",
+                login_config=LoginEndpointConfig(
+                    url="https://auth0.example.com/oauth/token",
+                    credential_fields={"username": "email", "password": "password"},
+                    extra_fields={"grant_type": "password", "client_id": "xxx"},
+                ),
+                refresh_config=RefreshEndpointConfig(
+                    url="https://auth0.example.com/oauth/token",
+                    extra_fields={"grant_type": "refresh_token", "client_id": "xxx"},
+                ),
+            ),
+        )
+        json_str = spec.model_dump_json(by_alias=True)
+        loaded = ApiSpec.model_validate_json(json_str)
+        assert loaded.auth.login_config is not None
+        assert loaded.auth.refresh_config is not None
+        assert loaded.auth.login_config.extra_fields["client_id"] == "xxx"

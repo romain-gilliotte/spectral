@@ -54,6 +54,13 @@ def build_openapi_dict(spec: ApiSpec) -> dict:
             "in": "cookie",
             "name": "session",
         }
+    elif spec.auth.type == "api_key":
+        header_name = spec.auth.token_header or "X-API-Key"
+        openapi["components"]["securitySchemes"]["apiKeyAuth"] = {
+            "type": "apiKey",
+            "in": "header",
+            "name": header_name,
+        }
 
     # Paths
     for endpoint in spec.protocols.rest.endpoints:
@@ -154,6 +161,8 @@ def _build_operation(endpoint: EndpointSpec, spec: ApiSpec) -> dict:
             operation["security"] = [{"basicAuth": []}]
         elif spec.auth.type == "cookie":
             operation["security"] = [{"cookieAuth": []}]
+        elif spec.auth.type == "api_key":
+            operation["security"] = [{"apiKeyAuth": []}]
 
     return operation
 

@@ -11,8 +11,10 @@ from cli.formats.api_spec import (
     AuthInfo,
     BusinessContext,
     EndpointSpec,
+    LoginEndpointConfig,
     ParameterSpec,
     Protocols,
+    RefreshEndpointConfig,
     RequestSpec,
     ResponseSpec,
     RestProtocol,
@@ -408,3 +410,83 @@ class TestMcpServerGenerator:
         readme = (out / "README.md").read_text()
         assert "get_pets" in readme
         assert "Pet Store API" in readme
+
+
+def _make_api_key_spec() -> ApiSpec:
+    """Create a spec with api_key auth for testing custom auth headers."""
+    return ApiSpec(
+        name="Key Auth API",
+        auth=AuthInfo(type="api_key", token_header="X-API-Key"),
+        protocols=Protocols(
+            rest=RestProtocol(
+                base_url="https://api.example.com",
+                endpoints=[
+                    EndpointSpec(
+                        id="get_data",
+                        path="/api/data",
+                        method="GET",
+                        business_purpose="Get data",
+                        requires_auth=True,
+                        observed_count=1,
+                    ),
+                ],
+            ),
+        ),
+    )
+
+
+class TestApiKeyAuthGenerators:
+    def test_openapi_api_key_scheme(self):
+        spec = _make_api_key_spec()
+        openapi = build_openapi_dict(spec)
+        assert "apiKeyAuth" in openapi["components"]["securitySchemes"]
+        scheme = openapi["components"]["securitySchemes"]["apiKeyAuth"]
+        assert scheme["type"] == "apiKey"
+        assert scheme["in"] == "header"
+        assert scheme["name"] == "X-API-Key"
+
+    def test_openapi_api_key_on_endpoint(self):
+        spec = _make_api_key_spec()
+        openapi = build_openapi_dict(spec)
+        get_data = openapi["paths"]["/api/data"]["get"]
+        assert "security" in get_data
+        assert {"apiKeyAuth": []} in get_data["security"]
+
+    def test_python_client_custom_header(self):
+        spec = _make_api_key_spec()
+        code = build_python_client(spec)
+        assert 'X-API-Key' in code
+
+    def test_mcp_server_custom_header(self):
+        spec = _make_api_key_spec()
+        code = build_mcp_server(spec)
+        assert 'X-API-Key' in code
+
+    def test_curl_custom_header(self):
+        spec = _make_api_key_spec()
+        ep = spec.protocols.rest.endpoints[0]
+        script = build_curl_script(ep, spec)
+        assert "X-API-Key" in script
+
+    def test_markdown_login_config(self):
+        spec = ApiSpec(
+            name="Auth API",
+            auth=AuthInfo(
+                type="bearer_token",
+                token_header="Authorization",
+                token_prefix="Bearer",
+                login_config=LoginEndpointConfig(
+                    url="/auth/login",
+                    credential_fields={"email": "email", "password": "password"},
+                ),
+                refresh_config=RefreshEndpointConfig(
+                    url="/auth/refresh",
+                    token_field="refresh_token",
+                ),
+            ),
+        )
+        doc = build_auth_markdown(spec)
+        assert "Login Endpoint" in doc
+        assert "/auth/login" in doc
+        assert "Refresh Endpoint" in doc
+        assert "/auth/refresh" in doc

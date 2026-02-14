@@ -2,7 +2,7 @@
 
 import json
 from pathlib import Path
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch, PropertyMock
 
 from click.testing import CliRunner
 
@@ -256,6 +256,99 @@ class TestInspectCommand:
 
         assert result.exit_code == 0
         assert "not found" in result.output
+
+
+class TestCallCommand:
+    def _create_spec_file(self, tmp_path) -> Path:
+        """Create a minimal spec file for call command testing."""
+        from cli.formats.api_spec import (
+            ApiSpec,
+            AuthInfo,
+            EndpointSpec,
+            ParameterSpec,
+            Protocols,
+            RequestSpec,
+            ResponseSpec,
+            RestProtocol,
+        )
+
+        spec = ApiSpec(
+            name="Test API",
+            auth=AuthInfo(type="bearer_token", token_header="Authorization", token_prefix="Bearer"),
+            protocols=Protocols(
+                rest=RestProtocol(
+                    base_url="https://api.example.com",
+                    endpoints=[
+                        EndpointSpec(
+                            id="get_users",
+                            path="/api/users",
+                            method="GET",
+                            business_purpose="List users",
+                            request=RequestSpec(parameters=[
+                                ParameterSpec(name="limit", location="query", type="integer"),
+                            ]),
+                            responses=[ResponseSpec(status=200)],
+                        ),
+                        EndpointSpec(
+                            id="get_user",
+                            path="/api/users/{user_id}",
+                            method="GET",
+                            business_purpose="Get a user",
+                            request=RequestSpec(parameters=[
+                                ParameterSpec(name="user_id", location="path", type="string", required=True),
+                            ]),
+                            responses=[ResponseSpec(status=200)],
+                        ),
+                    ],
+                ),
+            ),
+        )
+        spec_path = tmp_path / "spec.json"
+        spec_path.write_text(spec.model_dump_json(indent=2, by_alias=True))
+        return spec_path
+
+    def test_call_list(self, tmp_path):
+        spec_path = self._create_spec_file(tmp_path)
+        runner = CliRunner()
+        result = runner.invoke(cli, ["call", str(spec_path), "--list", "--token", "tok"])
+        assert result.exit_code == 0
+        assert "get_users" in result.output
+        assert "get_user" in result.output
+
+    def test_call_list_no_args(self, tmp_path):
+        """When no endpoint is specified, should list endpoints."""
+        spec_path = self._create_spec_file(tmp_path)
+        runner = CliRunner()
+        result = runner.invoke(cli, ["call", str(spec_path), "--token", "tok"])
+        assert result.exit_code == 0
+        assert "get_users" in result.output
+
+    @patch("cli.client.requests.Session")
+    def test_call_endpoint(self, mock_session_cls, tmp_path):
+        mock_session = MagicMock()
+        mock_session.headers = {}
+        mock_resp = MagicMock()
+        mock_resp.status_code = 200
+        mock_resp.content = b'[{"id": 1}]'
+        mock_resp.json.return_value = [{"id": 1}]
+        mock_resp.raise_for_status = MagicMock()
+        mock_session.request.return_value = mock_resp
+        mock_session_cls.return_value = mock_session
+
+        spec_path = self._create_spec_file(tmp_path)
+        runner = CliRunner()
+        result = runner.invoke(cli, [
+            "call", str(spec_path), "get_users", "limit=10", "--token", "tok",
+        ])
+        assert result.exit_code == 0
+
+    def test_call_invalid_param_format(self, tmp_path):
+        spec_path = self._create_spec_file(tmp_path)
+        runner = CliRunner()
+        result = runner.invoke(cli, [
+            "call", str(spec_path), "get_users", "badparam", "--token", "tok",
+        ])
+        assert result.exit_code != 0
 
 
 class TestPipelineCommand:

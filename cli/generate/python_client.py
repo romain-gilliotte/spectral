@@ -42,12 +42,12 @@ def build_python_client(spec: ApiSpec) -> str:
     ]
 
     # Set auth header based on detected auth type
-    if spec.auth.type == "bearer_token":
-        lines.append('            self.session.headers["Authorization"] = f"Bearer {token}"')
-    elif spec.auth.type == "basic":
-        lines.append('            self.session.headers["Authorization"] = f"Basic {token}"')
+    header = spec.auth.token_header or "Authorization"
+    prefix = spec.auth.token_prefix
+    if prefix:
+        lines.append(f'            self.session.headers["{header}"] = f"{prefix} {{token}}"')
     else:
-        lines.append('            self.session.headers["Authorization"] = token')
+        lines.append(f'            self.session.headers["{header}"] = token')
 
     lines.append("")
 
@@ -94,14 +94,12 @@ def _build_method(endpoint: EndpointSpec) -> list[str]:
 
     # Build URL
     path = endpoint.path
-    for p in path_params:
-        path = path.replace("{" + p.name + "}", "' + str(" + _safe_name(p.name) + ") + '")
     if path_params:
-        url_expr = f"self.base_url + '{path}'"
+        for p in path_params:
+            path = path.replace("{" + p.name + "}", "{" + _safe_name(p.name) + "}")
+        lines.append(f'        url = f"{{self.base_url}}{path}"')
     else:
-        url_expr = f'self.base_url + "{path}"'
-
-    lines.append(f"        url = {url_expr}")
+        lines.append(f'        url = f"{{self.base_url}}{path}"')
 
     # Query parameters
     if query_params:

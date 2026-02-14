@@ -191,6 +191,71 @@ def pipeline(capture_path: str, types: str, output: str, model: str, debug: bool
         console.print(f"[green]Generated {t} at {out_path}[/green]")
 
 
+@cli.command("call")
+@click.argument("spec_path", type=click.Path(exists=True))
+@click.argument("args", nargs=-1)
+@click.option("--list", "list_endpoints", is_flag=True, default=False, help="List available endpoints")
+@click.option("--token", default=None, help="Auth token")
+@click.option("--username", default=None, help="Username for login")
+@click.option("--password", default=None, help="Password for login")
+@click.option("--base-url", default=None, help="Override base URL")
+def call_command(spec_path: str, args: tuple, list_endpoints: bool, token: str | None, username: str | None, password: str | None, base_url: str | None):
+    """Call an API endpoint from an enriched spec.
+
+    \b
+    Examples:
+      api-discover call spec.json --list
+      api-discover call spec.json get_users
+      api-discover call spec.json get_user user_id=123 --token eyJ...
+      api-discover call spec.json login --username user@x.com --password secret
+    """
+    from cli.client import ApiClient
+
+    try:
+        client = ApiClient(
+            spec_path,
+            base_url=base_url,
+            token=token,
+            username=username,
+            password=password,
+        )
+    except Exception as e:
+        console.print(f"[red]Error initializing client: {e}[/red]")
+        sys.exit(1)
+
+    if list_endpoints or not args:
+        endpoints = client.endpoints()
+        table = Table(title="Available Endpoints")
+        table.add_column("ID", style="cyan")
+        table.add_column("Method")
+        table.add_column("Path")
+        table.add_column("Purpose")
+        for ep in endpoints:
+            table.add_row(ep["id"], ep["method"], ep["path"], ep["purpose"])
+        console.print(table)
+        return
+
+    endpoint_id = args[0]
+    kwargs = {}
+    for arg in args[1:]:
+        if "=" in arg:
+            key, value = arg.split("=", 1)
+            kwargs[key] = value
+        else:
+            console.print(f"[red]Invalid parameter format: {arg} (expected key=value)[/red]")
+            sys.exit(1)
+
+    try:
+        result = client.call(endpoint_id, **kwargs)
+        if result is not None:
+            console.print_json(json.dumps(result, default=str))
+        else:
+            console.print("[dim]No content[/dim]")
+    except Exception as e:
+        console.print(f"[red]Error: {e}[/red]")
+        sys.exit(1)
+
+
 @cli.command()
 @click.argument("capture_path", type=click.Path(exists=True))
 @click.option("--trace", "trace_id", default=None, help="Show details for a specific trace")
