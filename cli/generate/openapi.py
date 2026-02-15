@@ -101,8 +101,13 @@ def _build_operation(endpoint: EndpointSpec, spec: ApiSpec) -> dict:
                 "required": param.required,
                 "schema": {"type": param.type},
             }
+            desc_parts = []
             if param.business_meaning:
-                p["description"] = param.business_meaning
+                desc_parts.append(param.business_meaning)
+            if param.constraints:
+                desc_parts.append(param.constraints)
+            if desc_parts:
+                p["description"] = ". ".join(desc_parts)
             if param.example:
                 p["schema"]["example"] = param.example
             if param.format:
@@ -119,8 +124,13 @@ def _build_operation(endpoint: EndpointSpec, spec: ApiSpec) -> dict:
         required = []
         for param in body_params:
             prop: dict = {"type": param.type}
+            desc_parts = []
             if param.business_meaning:
-                prop["description"] = param.business_meaning
+                desc_parts.append(param.business_meaning)
+            if param.constraints:
+                desc_parts.append(param.constraints)
+            if desc_parts:
+                prop["description"] = ". ".join(desc_parts)
             if param.example:
                 prop["example"] = param.example
             if param.format:
@@ -152,6 +162,10 @@ def _build_operation(endpoint: EndpointSpec, spec: ApiSpec) -> dict:
 
     if not operation["responses"]:
         operation["responses"] = {"200": {"description": "Successful response"}}
+
+    # Rate limit extension
+    if endpoint.rate_limit:
+        operation["x-rate-limit"] = endpoint.rate_limit
 
     # Security
     if endpoint.requires_auth and spec.auth.type:

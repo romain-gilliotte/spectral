@@ -7,12 +7,15 @@ import pytest
 
 from cli.analyze.schemas import _detect_format, _extract_query_params, _infer_json_schema
 from cli.analyze.steps import EndpointGroup
+from cli.analyze.steps.enrich_and_context import _apply_enrichment
 from cli.analyze.steps.mechanical_extraction import (
     _build_endpoint_mechanical,
+    _extract_rate_limit,
     _find_traces_for_group,
     _make_endpoint_id,
 )
 from cli.analyze.pipeline import build_spec
+from cli.formats.api_spec import EndpointSpec, ParameterSpec, RequestSpec, ResponseSpec
 from cli.formats.capture_bundle import Header
 from tests.conftest import make_trace
 
@@ -150,6 +153,192 @@ class TestBuildEndpointMechanical:
         assert path_params[0].name == "user_id"
 
 
+class TestFormatDetectionInExtraction:
+    """Test that _detect_format is wired into mechanical extraction for params."""
+
+    def test_body_param_date_format(self):
+        traces = [
+            make_trace(
+                "t_0001", "POST", "https://api.example.com/api/events", 201,
+                timestamp=1000,
+                request_body=json.dumps({"date": "2024-01-15", "name": "Meeting"}).encode(),
+                request_headers=[Header(name="Content-Type", value="application/json")],
+            ),
+            make_trace(
+                "t_0002", "POST", "https://api.example.com/api/events", 201,
+                timestamp=2000,
+                request_body=json.dumps({"date": "2024-02-20", "name": "Conference"}).encode(),
+                request_headers=[Header(name="Content-Type", value="application/json")],
+            ),
+        ]
+        endpoint = _build_endpoint_mechanical("POST", "/api/events", traces, [])
+        body_params = {p.name: p for p in endpoint.request.parameters if p.location == "body"}
+        assert body_params["date"].format == "date"
+        assert body_params["name"].format is None  # not a recognizable format
+
+    def test_query_param_uuid_format(self):
+        traces = [
+            make_trace(
+                "t_0001", "GET",
+                "https://api.example.com/items?id=a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+                200, timestamp=1000,
+            ),
+            make_trace(
+                "t_0002", "GET",
+                "https://api.example.com/items?id=11111111-2222-3333-4444-555555555555",
+                200, timestamp=2000,
+            ),
+        ]
+        endpoint = _build_endpoint_mechanical("GET", "/items", traces, [])
+        query_params = {p.name: p for p in endpoint.request.parameters if p.location == "query"}
+        assert query_params["id"].format == "uuid"
+
+    def test_non_string_body_param_no_format(self):
+        traces = [
+            make_trace(
+                "t_0001", "POST", "https://api.example.com/api/count", 200,
+                timestamp=1000,
+                request_body=json.dumps({"count": 42}).encode(),
+                request_headers=[Header(name="Content-Type", value="application/json")],
+            ),
+        ]
+        endpoint = _build_endpoint_mechanical("POST", "/api/count", traces, [])
+        body_params = {p.name: p for p in endpoint.request.parameters if p.location == "body"}
+        assert body_params["count"].format is None
+
+
+class TestRateLimitExtraction:
+    def test_extracts_rate_limit_headers(self):
+        traces = [
+            make_trace(
+                "t_0001", "GET", "https://api.example.com/data", 200,
+                timestamp=1000,
+                response_headers=[
+                    Header(name="Content-Type", value="application/json"),
+                    Header(name="X-RateLimit-Limit", value="100"),
+                    Header(name="X-RateLimit-Remaining", value="95"),
+                    Header(name="X-RateLimit-Reset", value="1700000000"),
+                ],
+            ),
+        ]
+        result = _extract_rate_limit(traces)
+        assert result is not None
+        assert "limit=100" in result
+        assert "remaining=95" in result
+        assert "reset=1700000000" in result
+
+    def test_no_rate_limit_headers(self):
+        traces = [
+            make_trace(
+                "t_0001", "GET", "https://api.example.com/data", 200,
+                timestamp=1000,
+                response_headers=[
+                    Header(name="Content-Type", value="application/json"),
+                ],
+            ),
+        ]
+        result = _extract_rate_limit(traces)
+        assert result is None
+
+    def test_retry_after_only(self):
+        traces = [
+            make_trace(
+                "t_0001", "GET", "https://api.example.com/data", 429,
+                timestamp=1000,
+                response_headers=[
+                    Header(name="Content-Type", value="application/json"),
+                    Header(name="Retry-After", value="30"),
+                ],
+            ),
+        ]
+        result = _extract_rate_limit(traces)
+        assert result is not None
+        assert "retry-after=30" in result
+
+    def test_rate_limit_wired_to_endpoint(self):
+        traces = [
+            make_trace(
+                "t_0001", "GET", "https://api.example.com/data", 200,
+                timestamp=1000,
+                response_headers=[
+                    Header(name="Content-Type", value="application/json"),
+                    Header(name="X-RateLimit-Limit", value="1000"),
+                ],
+            ),
+        ]
+        endpoint = _build_endpoint_mechanical("GET", "/data", traces, [])
+        assert endpoint.rate_limit is not None
+        assert "limit=1000" in endpoint.rate_limit
+
+
+class TestApplyEnrichment:
+    def test_discovery_notes(self):
+        endpoint = EndpointSpec(id="test", path="/test", method="GET")
+        _apply_enrichment(endpoint, {"discovery_notes": "Always called after login"})
+        assert endpoint.discovery_notes == "Always called after login"
+
+    def test_parameter_constraints(self):
+        endpoint = EndpointSpec(
+            id="test", path="/test", method="POST",
+            request=RequestSpec(parameters=[
+                ParameterSpec(name="period", location="body", type="string"),
+            ]),
+        )
+        _apply_enrichment(endpoint, {
+            "parameter_constraints": {"period": "YYYY-MM format, max 24 months history"},
+        })
+        assert endpoint.request.parameters[0].constraints == "YYYY-MM format, max 24 months history"
+
+    def test_rich_response_details(self):
+        endpoint = EndpointSpec(
+            id="test", path="/test", method="GET",
+            responses=[
+                ResponseSpec(status=200),
+                ResponseSpec(status=403),
+            ],
+        )
+        _apply_enrichment(endpoint, {
+            "response_details": {
+                "200": {
+                    "business_meaning": "Success",
+                    "example_scenario": "User views their dashboard",
+                },
+                "403": {
+                    "business_meaning": "Forbidden",
+                    "user_impact": "Cannot access the resource",
+                    "resolution": "Contact admin to request access",
+                },
+            },
+        })
+        assert endpoint.responses[0].business_meaning == "Success"
+        assert endpoint.responses[0].example_scenario == "User views their dashboard"
+        assert endpoint.responses[0].user_impact is None
+        assert endpoint.responses[1].business_meaning == "Forbidden"
+        assert endpoint.responses[1].user_impact == "Cannot access the resource"
+        assert endpoint.responses[1].resolution == "Contact admin to request access"
+
+    def test_flat_response_meanings_fallback(self):
+        endpoint = EndpointSpec(
+            id="test", path="/test", method="GET",
+            responses=[ResponseSpec(status=200)],
+        )
+        _apply_enrichment(endpoint, {
+            "response_meanings": {"200": "Successfully retrieved data"},
+        })
+        assert endpoint.responses[0].business_meaning == "Successfully retrieved data"
+
+    def test_response_details_takes_precedence_over_meanings(self):
+        endpoint = EndpointSpec(
+            id="test", path="/test", method="GET",
+            responses=[ResponseSpec(status=200)],
+        )
+        _apply_enrichment(endpoint, {
+            "response_details": {"200": {"business_meaning": "From details"}},
+            "response_meanings": {"200": "From meanings"},
+        })
+        assert endpoint.responses[0].business_meaning == "From details"
+
+
 def _make_mock_create(
     base_url_response=None,
     groups_response=None,
@@ -282,3 +471,65 @@ class TestBuildSpec:
             all_refs.extend(ep.source_trace_refs)
         assert "t_cdn" not in all_refs
         assert spec.protocols.rest.base_url == "https://api.example.com"
+
+    @pytest.mark.asyncio
+    async def test_api_name_from_enrichment(self, sample_bundle):
+        """When the LLM returns an api_name, it should be used as spec.name."""
+        mock_client = AsyncMock()
+        mock_client.messages.create = _make_mock_create(
+            enrich_response=json.dumps({
+                "endpoints": {},
+                "business_context": {
+                    "api_name": "Acme User Management API",
+                    "domain": "User Management",
+                    "description": "API for managing users",
+                    "user_personas": [],
+                    "key_workflows": [],
+                    "business_glossary": {},
+                },
+            }),
+        )
+        spec = await build_spec(sample_bundle, client=mock_client, model="test-model")
+        assert spec.name == "Acme User Management API"
+
+    @pytest.mark.asyncio
+    async def test_api_name_fallback_to_app_name(self, sample_bundle):
+        """When no api_name is returned, fall back to bundle app name."""
+        mock_client = AsyncMock()
+        mock_client.messages.create = _make_mock_create(
+            enrich_response=json.dumps({
+                "endpoints": {},
+                "business_context": {
+                    "domain": "User Management",
+                    "description": "API for managing users",
+                    "user_personas": [],
+                    "key_workflows": [],
+                    "business_glossary": {},
+                },
+            }),
+        )
+        spec = await build_spec(sample_bundle, client=mock_client, model="test-model")
+        assert spec.name == "Test App API"
+
+    @pytest.mark.asyncio
+    async def test_ws_enrichment_applied(self, sample_bundle):
+        """When the LLM returns websocket_purposes, they should be applied."""
+        mock_client = AsyncMock()
+        mock_client.messages.create = _make_mock_create(
+            enrich_response=json.dumps({
+                "endpoints": {},
+                "business_context": {
+                    "domain": "Test",
+                    "description": "Test API",
+                    "user_personas": [],
+                    "key_workflows": [],
+                    "business_glossary": {},
+                },
+                "websocket_purposes": {
+                    "ws_0001": "Real-time data streaming for live updates",
+                },
+            }),
+        )
+        spec = await build_spec(sample_bundle, client=mock_client, model="test-model")
+        ws = spec.protocols.websocket.connections[0]
+        assert ws.business_purpose == "Real-time data streaming for live updates"

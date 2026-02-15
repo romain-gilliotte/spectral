@@ -10,6 +10,7 @@ from urllib.parse import urlparse
 
 from cli.analyze.correlator import Correlation
 from cli.analyze.schemas import (
+    _detect_format,
     _extract_query_params,
     _infer_json_schema,
     _infer_type_from_values,
@@ -113,6 +114,7 @@ def _build_endpoint_mechanical(
         ui_triggers=ui_triggers,
         request=request_spec,
         responses=response_specs,
+        rate_limit=_extract_rate_limit(traces),
         requires_auth=requires_auth,
         observed_count=len(traces),
         source_trace_refs=[t.meta.id for t in traces],
@@ -158,11 +160,13 @@ def _build_request_spec(traces: list[Trace], path_pattern: str) -> RequestSpec:
     if body_schemas:
         merged = _merge_schemas(body_schemas)
         for key, info in merged.items():
+            fmt = _detect_format(info["values"]) if info["type"] == "string" else None
             parameters.append(
                 ParameterSpec(
                     name=key,
                     location="body",
                     type=info["type"],
+                    format=fmt,
                     required=info["required"],
                     example=str(info["example"]) if info["example"] is not None else None,
                     observed_values=[str(v) for v in info["values"][:5]],
@@ -171,11 +175,14 @@ def _build_request_spec(traces: list[Trace], path_pattern: str) -> RequestSpec:
 
     query_params = _extract_query_params(traces)
     for name, values in query_params.items():
+        qtype = _infer_type_from_values(values)
+        qfmt = _detect_format(values) if qtype == "string" else None
         parameters.append(
             ParameterSpec(
                 name=name,
                 location="query",
-                type=_infer_type_from_values(values),
+                type=qtype,
+                format=qfmt,
                 required=len(values) == len(traces),
                 example=values[0] if values else None,
                 observed_values=list(set(values))[:5],
@@ -222,6 +229,52 @@ def _build_response_specs(traces: list[Trace]) -> list[ResponseSpec]:
         )
 
     return specs
+
+
+_RATE_LIMIT_HEADERS = [
+    "x-ratelimit-limit",
+    "x-ratelimit-remaining",
+    "x-ratelimit-reset",
+    "ratelimit-limit",
+    "ratelimit-remaining",
+    "ratelimit-reset",
+    "retry-after",
+]
+
+
+def _extract_rate_limit(traces: list[Trace]) -> str | None:
+    """Extract rate limit info from response headers across all traces.
+
+    Scans for common rate limit headers and returns a human-readable summary,
+    or None if no rate limit headers are found.
+    """
+    found: dict[str, str] = {}
+    for t in traces:
+        for header in t.meta.response.headers:
+            name_lower = header.name.lower()
+            if name_lower in _RATE_LIMIT_HEADERS and name_lower not in found:
+                found[name_lower] = header.value
+
+    if not found:
+        return None
+
+    parts = []
+    # Normalize to display-friendly names
+    limit = found.get("x-ratelimit-limit") or found.get("ratelimit-limit")
+    remaining = found.get("x-ratelimit-remaining") or found.get("ratelimit-remaining")
+    reset = found.get("x-ratelimit-reset") or found.get("ratelimit-reset")
+    retry = found.get("retry-after")
+
+    if limit:
+        parts.append(f"limit={limit}")
+    if remaining:
+        parts.append(f"remaining={remaining}")
+    if reset:
+        parts.append(f"reset={reset}")
+    if retry:
+        parts.append(f"retry-after={retry}")
+
+    return ", ".join(parts) if parts else None
 
 
 def _has_auth_cookie(trace: Trace) -> bool:

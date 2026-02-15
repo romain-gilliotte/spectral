@@ -107,6 +107,16 @@ def build_endpoint_markdown(endpoint: EndpointSpec, spec: ApiSpec) -> str:
         lines.append("**Requires authentication**")
         lines.append("")
 
+    # Rate limit
+    if endpoint.rate_limit:
+        lines.append(f"**Rate limit:** {endpoint.rate_limit}")
+        lines.append("")
+
+    # Discovery notes
+    if endpoint.discovery_notes:
+        lines.append(f"**Notes:** {endpoint.discovery_notes}")
+        lines.append("")
+
     # UI Triggers
     if endpoint.ui_triggers:
         lines.append("## UI Triggers")
@@ -132,6 +142,8 @@ def build_endpoint_markdown(endpoint: EndpointSpec, spec: ApiSpec) -> str:
         lines.append("|------|----------|------|----------|-------------|")
         for param in endpoint.request.parameters:
             desc = param.business_meaning or ""
+            if param.constraints:
+                desc = f"{desc}. {param.constraints}" if desc else param.constraints
             req = "Yes" if param.required else "No"
             lines.append(
                 f"| `{param.name}` | {param.location} | {param.type} | {req} | {desc} |"
@@ -147,6 +159,15 @@ def build_endpoint_markdown(endpoint: EndpointSpec, spec: ApiSpec) -> str:
             lines.append("")
             if resp.business_meaning:
                 lines.append(resp.business_meaning)
+                lines.append("")
+            if resp.example_scenario:
+                lines.append(f"**Example scenario:** {resp.example_scenario}")
+                lines.append("")
+            if resp.user_impact:
+                lines.append(f"**User impact:** {resp.user_impact}")
+                lines.append("")
+            if resp.resolution:
+                lines.append(f"**Resolution:** {resp.resolution}")
                 lines.append("")
             if resp.content_type:
                 lines.append(f"**Content-Type:** `{resp.content_type}`")

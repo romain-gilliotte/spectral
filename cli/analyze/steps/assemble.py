@@ -27,6 +27,7 @@ class AssembleInput:
     business_context: BusinessContext
     glossary: dict[str, str]
     ws_specs: WebSocketProtocol
+    api_name: str | None = None
 
 
 class AssembleStep(MechanicalStep[AssembleInput, ApiSpec]):
@@ -36,7 +37,7 @@ class AssembleStep(MechanicalStep[AssembleInput, ApiSpec]):
 
     async def _execute(self, input: AssembleInput) -> ApiSpec:
         return ApiSpec(
-            name=input.app_name,
+            name=input.api_name or input.app_name,
             discovery_date=datetime.now(timezone.utc).isoformat(),
             source_captures=[input.source_filename] if input.source_filename else [],
             business_context=input.business_context,

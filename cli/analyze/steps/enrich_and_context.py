@@ -8,7 +8,7 @@ from dataclasses import dataclass
 from cli.analyze.steps.base import LLMStep
 from cli.analyze.tools import _extract_json, _save_debug
 from cli.analyze.utils import _truncate_json
-from cli.capture.models import Trace
+from cli.capture.models import Trace, WsConnection
 from cli.formats.api_spec import (
     BusinessContext,
     EndpointSpec,
@@ -22,6 +22,7 @@ class EnrichInput:
     traces: list[Trace]
     app_name: str
     base_url: str
+    ws_connections: list[WsConnection] | None = None
 
 
 @dataclass
@@ -29,6 +30,8 @@ class EnrichOutput:
     endpoints: list[EndpointSpec]
     business_context: BusinessContext
     glossary: dict[str, str]
+    api_name: str | None = None
+    ws_enrichments: dict[str, str] | None = None  # ws_id → business_purpose
 
 
 class EnrichAndContextStep(LLMStep[EnrichInput, EnrichOutput]):
@@ -80,43 +83,81 @@ class EnrichAndContextStep(LLMStep[EnrichInput, EnrichOutput]):
                     for ref in ep.source_trace_refs if ref in trace_map
                 ))
 
-            # Add parameter names
+            # Add parameter names with observed values for constraint inference
             if ep.request.parameters:
-                summary["parameters"] = [
-                    {"name": p.name, "location": p.location, "type": p.type}
-                    for p in ep.request.parameters
-                ]
+                summary["parameters"] = []
+                for p in ep.request.parameters:
+                    param_info: dict = {"name": p.name, "location": p.location, "type": p.type}
+                    if p.observed_values:
+                        param_info["observed_values"] = p.observed_values[:3]
+                    summary["parameters"].append(param_info)
 
             endpoint_summaries.append(summary)
+
+        # Build WS connection summaries
+        ws_section = ""
+        ws_ids: list[str] = []
+        if input.ws_connections:
+            ws_summaries = []
+            for ws in input.ws_connections:
+                ws_ids.append(ws.meta.id)
+                ws_info: dict = {
+                    "id": ws.meta.id,
+                    "url": ws.meta.url,
+                    "message_count": len(ws.messages),
+                }
+                if ws.meta.protocols:
+                    ws_info["protocols"] = ws.meta.protocols
+                # Include a sample of message payloads
+                msg_samples = []
+                for msg in ws.messages[:3]:
+                    if msg.payload:
+                        try:
+                            payload = json.loads(msg.payload)
+                            msg_samples.append({"direction": msg.meta.direction, "payload": _truncate_json(payload, max_keys=5)})
+                        except (json.JSONDecodeError, UnicodeDecodeError):
+                            pass
+                if msg_samples:
+                    ws_info["sample_messages"] = msg_samples
+                ws_summaries.append(ws_info)
+            ws_section = f"""
+
+Also, these WebSocket connections were observed:
+
+{json.dumps(ws_summaries, indent=1)[:3000]}
+"""
 
         prompt = f"""You are analyzing API endpoints discovered from "{input.app_name}" ({input.base_url}).
 
 Here are all the discovered endpoints with their mechanical data:
 
 {json.dumps(endpoint_summaries, indent=1)[:12000]}
-
-Provide a SINGLE JSON response with two top-level keys:
+{ws_section}
+Provide a SINGLE JSON response with {("three" if ws_ids else "two")} top-level keys:
 
 1. "endpoints": an object keyed by endpoint ID, where each value has:
    - "business_purpose": concise description of what this endpoint does in business terms
    - "user_story": "As a [persona], I want to [action] so that [goal]"
    - "correlation_confidence": 0.0-1.0 confidence in the UI↔API correlation
    - "parameter_meanings": {{param_name: "business meaning"}} for each parameter
-   - "response_meanings": {{status_code_string: "business meaning"}} for each observed status
+   - "parameter_constraints": {{param_name: "constraint text"}} for parameters where constraints can be inferred from observed values (or omit if none)
+   - "response_details": {{status_code_string: {{"business_meaning": "...", "example_scenario": "...", "user_impact": "..." or null, "resolution": "..." or null}}}} for each observed status. For error statuses (4xx/5xx), include user_impact and resolution.
    - "trigger_explanations": array of natural language descriptions for each UI trigger
+   - "discovery_notes": observations, edge cases, or dependencies worth noting about this endpoint (or null)
 
 2. "business_context": an object with:
+   - "api_name": a concise, descriptive name for this API (e.g., "Acme E-Commerce API")
    - "domain": the business domain (e.g., "E-commerce", "Project Management")
    - "description": a one-line description of this API
    - "user_personas": array of user types
    - "key_workflows": array of {{"name": "...", "description": "...", "steps": [...]}}
    - "business_glossary": {{term: "definition"}} for domain-specific terms
-
+{('3. "websocket_purposes": an object keyed by WebSocket connection ID (' + ", ".join(f'"{wid}"' for wid in ws_ids) + '), where each value is a concise business_purpose string describing what this WebSocket connection is used for.' if ws_ids else "")}
 Respond in JSON."""
 
         response = await self.client.messages.create(
             model=self.model,
-            max_tokens=4096,
+            max_tokens=6144,
             messages=[{"role": "user", "content": prompt}],
         )
 
@@ -166,10 +207,23 @@ Respond in JSON."""
         if not isinstance(glossary, dict):
             glossary = {}
 
+        api_name = ctx_data.get("api_name")
+        if not isinstance(api_name, str) or not api_name.strip():
+            api_name = None
+
+        ws_enrichments = data.get("websocket_purposes", {})
+        if not isinstance(ws_enrichments, dict):
+            ws_enrichments = None
+        elif ws_enrichments:
+            # Filter to only string values
+            ws_enrichments = {k: v for k, v in ws_enrichments.items() if isinstance(v, str)}
+
         return EnrichOutput(
             endpoints=input.endpoints,
             business_context=business_context,
             glossary=glossary,
+            api_name=api_name,
+            ws_enrichments=ws_enrichments or None,
         )
 
 
@@ -179,6 +233,8 @@ def _apply_enrichment(endpoint: EndpointSpec, enrich: dict) -> None:
         endpoint.business_purpose = enrich["business_purpose"]
     if enrich.get("user_story"):
         endpoint.user_story = enrich["user_story"]
+    if enrich.get("discovery_notes"):
+        endpoint.discovery_notes = enrich["discovery_notes"]
 
     conf = enrich.get("correlation_confidence")
     if conf is not None:
@@ -193,12 +249,38 @@ def _apply_enrichment(endpoint: EndpointSpec, enrich: dict) -> None:
             if param.name in param_meanings:
                 param.business_meaning = param_meanings[param.name]
 
-    response_meanings = enrich.get("response_meanings", {})
-    if isinstance(response_meanings, dict):
+    param_constraints = enrich.get("parameter_constraints", {})
+    if isinstance(param_constraints, dict):
+        for param in endpoint.request.parameters:
+            if param.name in param_constraints:
+                param.constraints = param_constraints[param.name]
+
+    # Support both rich response_details and flat response_meanings
+    response_details = enrich.get("response_details", {})
+    if isinstance(response_details, dict) and response_details:
         for resp in endpoint.responses:
             key = str(resp.status)
-            if key in response_meanings:
-                resp.business_meaning = response_meanings[key]
+            detail = response_details.get(key)
+            if isinstance(detail, dict):
+                if detail.get("business_meaning"):
+                    resp.business_meaning = detail["business_meaning"]
+                if detail.get("example_scenario"):
+                    resp.example_scenario = detail["example_scenario"]
+                if detail.get("user_impact"):
+                    resp.user_impact = detail["user_impact"]
+                if detail.get("resolution"):
+                    resp.resolution = detail["resolution"]
+            elif isinstance(detail, str):
+                # Tolerate flat string in response_details
+                resp.business_meaning = detail
+    else:
+        # Fallback to flat response_meanings format
+        response_meanings = enrich.get("response_meanings", {})
+        if isinstance(response_meanings, dict):
+            for resp in endpoint.responses:
+                key = str(resp.status)
+                if key in response_meanings:
+                    resp.business_meaning = response_meanings[key]
 
     trigger_explanations = enrich.get("trigger_explanations", [])
     if isinstance(trigger_explanations, list):

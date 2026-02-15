@@ -124,6 +124,7 @@ async def build_spec(
                     traces=filtered_traces,
                     app_name=app_name,
                     base_url=base_url,
+                    ws_connections=list(bundle.ws_connections) or None,
                 )
             )
         except Exception:
@@ -143,10 +144,14 @@ async def build_spec(
     enrich_result, auth, ws_specs = await asyncio.gather(_enrich(), _auth(), _ws())
 
     # Apply enrichment results (or use defaults)
+    api_name = None
+    ws_enrichments = None
     if enrich_result is not None:
         final_endpoints = enrich_result.endpoints
         business_context = enrich_result.business_context
         glossary = enrich_result.glossary
+        api_name = enrich_result.api_name
+        ws_enrichments = enrich_result.ws_enrichments
     else:
         final_endpoints = endpoints
         business_context = BusinessContext(
@@ -167,7 +172,14 @@ async def build_spec(
             business_context=business_context,
             glossary=glossary,
             ws_specs=ws_specs,
+            api_name=api_name,
         )
     )
+
+    # Apply WS enrichments (business_purpose) to WebSocket connections
+    if ws_enrichments:
+        for ws_conn in spec.protocols.websocket.connections:
+            if ws_conn.id in ws_enrichments:
+                ws_conn.business_purpose = ws_enrichments[ws_conn.id]
 
     return spec
