@@ -1,0 +1,70 @@
+"""Step: Detect the business API base URL using LLM."""
+
+from __future__ import annotations
+
+from cli.analyze.steps.base import LLMStep, StepValidationError
+from cli.analyze.tools import (
+    INVESTIGATION_TOOLS,
+    _TOOL_EXECUTORS,
+    _call_with_tools,
+    _extract_json,
+)
+from cli.analyze.utils import _compact_url
+
+
+class DetectBaseUrlStep(LLMStep[list[tuple[str, str]], str]):
+    """Ask the LLM to identify the business API base URL from captured traffic.
+
+    Input: list of (method, url) pairs.
+    Output: base URL string like "https://api.example.com" or "https://www.example.com/api".
+    """
+
+    name = "detect_base_url"
+
+    async def _execute(self, input: list[tuple[str, str]]) -> str:
+        unique_pairs = sorted(set(input))
+        compacted_pairs = sorted(set(
+            (method, _compact_url(url)) for method, url in unique_pairs
+        ))
+        lines = [f"  {method} {url}" for method, url in compacted_pairs]
+
+        prompt = f"""You are analyzing HTTP traffic captured from a web application.
+Identify the base URL of the **business API** (the main application API, not CDN, analytics, tracking, fonts, or third-party services).
+
+The base URL can be:
+- Just the origin: https://api.example.com
+- Origin + path prefix: https://www.example.com/api
+
+Rules:
+- Pick the single most important API base URL — the one serving the app's core business endpoints.
+- Ignore CDN domains, analytics (google-analytics, hotjar, segment, etc.), ad trackers, font services, static asset hosts.
+- If the API endpoints share a common path prefix (e.g. /api/v1), include it.
+- Return ONLY the base URL string, no trailing slash.
+
+Observed requests:
+{chr(10).join(lines)}
+
+Respond with a JSON object:
+{{"base_url": "https://..."}}"""
+
+        text = await _call_with_tools(
+            self.client,
+            self.model,
+            [{"role": "user", "content": prompt}],
+            INVESTIGATION_TOOLS,
+            _TOOL_EXECUTORS,
+            debug_dir=self.debug_dir,
+            call_name="detect_api_base_url",
+        )
+
+        result = _extract_json(text)
+        if isinstance(result, dict) and "base_url" in result:
+            return result["base_url"].rstrip("/")
+        raise ValueError(f"Expected {{\"base_url\": \"...\"}} from detect_api_base_url, got: {text[:200]}")
+
+    def _validate_output(self, output: str) -> None:
+        if not output.startswith("http"):
+            raise StepValidationError(
+                f"Invalid base URL: {output}",
+                {"base_url": output},
+            )

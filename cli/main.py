@@ -32,7 +32,7 @@ def analyze(capture_path: str, output: str, model: str, debug: bool):
     """Analyze a capture bundle and produce an enriched API spec."""
     import anthropic
 
-    from cli.analyze.spec_builder import build_spec
+    from cli.analyze.pipeline import build_spec
     from cli.capture.loader import load_bundle
 
     console.print(f"[bold]Loading capture bundle:[/bold] {capture_path}")
@@ -138,7 +138,7 @@ def pipeline(capture_path: str, types: str, output: str, model: str, debug: bool
     """Run the full pipeline: analyze + generate."""
     import anthropic
 
-    from cli.analyze.spec_builder import build_spec
+    from cli.analyze.pipeline import build_spec
     from cli.capture.loader import load_bundle
 
     output_dir = Path(output)

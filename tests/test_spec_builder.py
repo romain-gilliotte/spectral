@@ -1,24 +1,18 @@
-"""Tests for the spec builder (mechanical utilities and LLM-first pipeline)."""
+"""Tests for the spec builder (mechanical utilities and pipeline)."""
 
 import json
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from cli.analyze.spec_builder import (
+from cli.analyze.schemas import _detect_format, _extract_query_params, _infer_json_schema
+from cli.analyze.steps import EndpointGroup
+from cli.analyze.steps.mechanical_extraction import (
     _build_endpoint_mechanical,
-    _build_request_spec,
-    _build_response_specs,
-    _detect_base_url,
-    _detect_format,
-    _extract_query_params,
     _find_traces_for_group,
-    _get_header,
-    _infer_json_schema,
     _make_endpoint_id,
-    build_spec,
 )
-from cli.analyze.llm import EndpointGroup
+from cli.analyze.pipeline import build_spec
 from cli.formats.capture_bundle import Header
 from tests.conftest import make_trace
 
@@ -85,19 +79,6 @@ class TestQueryParamExtraction:
         assert "page" in params
         assert "hello" in params["q"]
         assert "world" in params["q"]
-
-
-class TestBaseUrlDetection:
-    def test_most_common_base_url(self):
-        traces = [
-            make_trace("t_0001", "GET", "https://api.example.com/a", 200, 1000),
-            make_trace("t_0002", "GET", "https://api.example.com/b", 200, 2000),
-            make_trace("t_0003", "GET", "https://cdn.example.com/img.png", 200, 3000),
-        ]
-        assert _detect_base_url(traces) == "https://api.example.com"
-
-    def test_empty_traces(self):
-        assert _detect_base_url([]) == ""
 
 
 class TestEndpointId:
@@ -169,95 +150,87 @@ class TestBuildEndpointMechanical:
         assert path_params[0].name == "user_id"
 
 
-class TestBuildSpec:
-    """Tests for the full LLM-first build_spec pipeline with mocked LLM."""
+def _make_mock_create(
+    base_url_response=None,
+    groups_response=None,
+    auth_response=None,
+    enrich_response=None,
+    detail_response=None,
+    context_response=None,
+):
+    """Build a mock client.messages.create that routes by prompt content."""
 
-    @pytest.mark.asyncio
-    async def test_full_build(self, sample_bundle):
-        """Test build_spec with mocked LLM calls."""
-        mock_client = AsyncMock()
-
-        # Mock analyze_endpoints response
-        endpoint_groups_response = json.dumps([
-            {
-                "method": "GET",
-                "pattern": "/api/users",
-                "urls": ["https://api.example.com/api/users"],
-            },
-            {
-                "method": "GET",
-                "pattern": "/api/users/{user_id}/orders",
-                "urls": [
-                    "https://api.example.com/api/users/123/orders",
-                    "https://api.example.com/api/users/456/orders",
-                ],
-            },
-            {
-                "method": "POST",
-                "pattern": "/api/orders",
-                "urls": ["https://api.example.com/api/orders"],
-            },
+    if base_url_response is None:
+        base_url_response = json.dumps({"base_url": "https://api.example.com"})
+    if groups_response is None:
+        groups_response = json.dumps([
+            {"method": "GET", "pattern": "/api/users", "urls": ["https://api.example.com/api/users"]},
+            {"method": "GET", "pattern": "/api/users/{user_id}/orders",
+             "urls": ["https://api.example.com/api/users/123/orders", "https://api.example.com/api/users/456/orders"]},
+            {"method": "POST", "pattern": "/api/orders", "urls": ["https://api.example.com/api/orders"]},
         ])
-
-        # Mock auth response
+    if auth_response is None:
         auth_response = json.dumps({
-            "type": "bearer_token",
-            "obtain_flow": "login_form",
-            "token_header": "Authorization",
-            "token_prefix": "Bearer",
+            "type": "bearer_token", "obtain_flow": "login_form",
+            "token_header": "Authorization", "token_prefix": "Bearer",
             "business_process": "Token-based auth",
             "user_journey": ["Login with credentials", "Receive bearer token"],
         })
-
-        # Mock endpoint detail response
-        detail_response = json.dumps({
-            "business_purpose": "List users",
-            "user_story": "As a user, I want to list users",
-            "correlation_confidence": 0.9,
-            "parameter_meanings": {},
-            "response_meanings": {"200": "Success"},
-            "trigger_explanations": [],
+    if enrich_response is None:
+        enrich_response = json.dumps({
+            "endpoints": {},
+            "business_context": {
+                "domain": "User Management",
+                "description": "API for managing users and orders",
+                "user_personas": ["admin", "user"],
+                "key_workflows": [{"name": "browse_users", "description": "Browse user list", "steps": ["login", "view_users"]}],
+                "business_glossary": {"user": "A registered account"},
+            },
         })
+    # detail_response and context_response kept for backward compat but not used in new pipeline
 
-        # Mock business context response
-        context_response = json.dumps({
-            "domain": "User Management",
-            "description": "API for managing users and orders",
-            "user_personas": ["admin", "user"],
-            "key_workflows": [{"name": "browse_users", "description": "Browse user list", "steps": ["login", "view_users"]}],
-            "business_glossary": {"user": "A registered account"},
-        })
+    async def mock_create(**kwargs):
+        mock_response = MagicMock()
+        mock_content = MagicMock()
+        mock_content.type = "text"
+        mock_response.stop_reason = "end_turn"
+        msg = kwargs.get("messages", [{}])[0].get("content", "")
 
-        # Mock detect_api_base_url response
-        base_url_response = json.dumps({"base_url": "https://api.example.com"})
+        if "base URL" in msg and "business API" in msg:
+            mock_content.text = base_url_response
+        elif "Group these observed URLs" in msg:
+            mock_content.text = groups_response
+        elif "authentication mechanism" in msg:
+            mock_content.text = auth_response
+        elif "SINGLE JSON response" in msg:
+            mock_content.text = enrich_response
+        elif "business domain" in msg or "Based on these API endpoints" in msg:
+            # Fallback for old-style context call (shouldn't happen in new pipeline)
+            mock_content.text = context_response or json.dumps({
+                "domain": "", "description": "", "user_personas": [],
+                "key_workflows": [], "business_glossary": {},
+            })
+        else:
+            # Fallback for old-style detail call
+            mock_content.text = detail_response or json.dumps({
+                "business_purpose": "test", "user_story": "test",
+                "correlation_confidence": 0.5, "parameter_meanings": {},
+                "response_meanings": {}, "trigger_explanations": [],
+            })
 
-        # Set up mock to return different responses for different calls
-        call_count = [0]
+        mock_response.content = [mock_content]
+        return mock_response
 
-        async def mock_create(**kwargs):
-            call_count[0] += 1
-            msg = kwargs.get("messages", [{}])[0].get("content", "")
+    return mock_create
 
-            mock_response = MagicMock()
-            mock_content = MagicMock()
-            mock_content.type = "text"
-            mock_response.stop_reason = "end_turn"
 
-            if "base URL" in msg and "business API" in msg:
-                mock_content.text = base_url_response
-            elif "Group these observed URLs" in msg:
-                mock_content.text = endpoint_groups_response
-            elif "authentication mechanism" in msg:
-                mock_content.text = auth_response
-            elif "business domain" in msg or "Based on these API endpoints" in msg:
-                mock_content.text = context_response
-            else:
-                mock_content.text = detail_response
+class TestBuildSpec:
+    """Tests for the full pipeline with mocked LLM."""
 
-            mock_response.content = [mock_content]
-            return mock_response
-
-        mock_client.messages.create = mock_create
+    @pytest.mark.asyncio
+    async def test_full_build(self, sample_bundle):
+        mock_client = AsyncMock()
+        mock_client.messages.create = _make_mock_create()
 
         spec = await build_spec(
             sample_bundle,
@@ -276,36 +249,8 @@ class TestBuildSpec:
 
     @pytest.mark.asyncio
     async def test_websocket_specs_built(self, sample_bundle):
-        """WebSocket specs should be built regardless of LLM."""
         mock_client = AsyncMock()
-
-        groups_response = json.dumps([
-            {"method": "GET", "pattern": "/api/users", "urls": ["https://api.example.com/api/users"]},
-            {"method": "GET", "pattern": "/api/users/{user_id}/orders",
-             "urls": ["https://api.example.com/api/users/123/orders", "https://api.example.com/api/users/456/orders"]},
-            {"method": "POST", "pattern": "/api/orders", "urls": ["https://api.example.com/api/orders"]},
-        ])
-
-        async def mock_create(**kwargs):
-            mock_response = MagicMock()
-            mock_content = MagicMock()
-            mock_content.type = "text"
-            mock_response.stop_reason = "end_turn"
-            msg = kwargs.get("messages", [{}])[0].get("content", "")
-            if "base URL" in msg and "business API" in msg:
-                mock_content.text = json.dumps({"base_url": "https://api.example.com"})
-            elif "Group these observed URLs" in msg:
-                mock_content.text = groups_response
-            elif "authentication" in msg:
-                mock_content.text = json.dumps({"type": "bearer_token", "token_header": "Authorization", "token_prefix": "Bearer"})
-            elif "business domain" in msg or "Based on these API endpoints" in msg:
-                mock_content.text = json.dumps({"domain": "", "description": "", "user_personas": [], "key_workflows": [], "business_glossary": {}})
-            else:
-                mock_content.text = json.dumps({"business_purpose": "test", "user_story": "test", "correlation_confidence": 0.5, "parameter_meanings": {}, "response_meanings": {}, "trigger_explanations": []})
-            mock_response.content = [mock_content]
-            return mock_response
-
-        mock_client.messages.create = mock_create
+        mock_client.messages.create = _make_mock_create()
 
         spec = await build_spec(sample_bundle, client=mock_client, model="test-model")
 
@@ -317,43 +262,21 @@ class TestBuildSpec:
 
     @pytest.mark.asyncio
     async def test_traces_filtered_by_base_url(self, sample_bundle):
-        """Traces not matching the detected base URL should be excluded from the spec."""
-        # Add a CDN trace that should be filtered out
+        """Traces not matching the detected base URL should be excluded."""
         from tests.conftest import make_trace as mt
         cdn_trace = mt("t_cdn", "GET", "https://cdn.example.com/style.css", 200, 999500)
         sample_bundle.traces.append(cdn_trace)
 
         mock_client = AsyncMock()
-
-        # LLM returns base URL that excludes the CDN trace
-        groups_response = json.dumps([
-            {"method": "GET", "pattern": "/api/users", "urls": ["https://api.example.com/api/users"]},
-        ])
-
-        async def mock_create(**kwargs):
-            mock_response = MagicMock()
-            mock_content = MagicMock()
-            mock_content.type = "text"
-            mock_response.stop_reason = "end_turn"
-            msg = kwargs.get("messages", [{}])[0].get("content", "")
-            if "base URL" in msg and "business API" in msg:
-                mock_content.text = json.dumps({"base_url": "https://api.example.com"})
-            elif "Group these observed URLs" in msg:
-                mock_content.text = groups_response
-            elif "authentication" in msg:
-                mock_content.text = json.dumps({"type": "none"})
-            elif "business domain" in msg or "Based on these API endpoints" in msg:
-                mock_content.text = json.dumps({"domain": "", "description": "", "user_personas": [], "key_workflows": [], "business_glossary": {}})
-            else:
-                mock_content.text = json.dumps({"business_purpose": "test", "user_story": "test", "correlation_confidence": 0.5, "parameter_meanings": {}, "response_meanings": {}, "trigger_explanations": []})
-            mock_response.content = [mock_content]
-            return mock_response
-
-        mock_client.messages.create = mock_create
+        mock_client.messages.create = _make_mock_create(
+            groups_response=json.dumps([
+                {"method": "GET", "pattern": "/api/users", "urls": ["https://api.example.com/api/users"]},
+            ]),
+            auth_response=json.dumps({"type": "none"}),
+        )
 
         spec = await build_spec(sample_bundle, client=mock_client, model="test-model")
 
-        # CDN trace should not appear in any endpoint's source_trace_refs
         all_refs = []
         for ep in spec.protocols.rest.endpoints:
             all_refs.extend(ep.source_trace_refs)

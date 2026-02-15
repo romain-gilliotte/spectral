@@ -1,0 +1,173 @@
+"""Orchestrator for the analysis pipeline.
+
+Coordinates the Step instances to build an enriched API spec from a capture
+bundle. Auth and WebSocket analysis run in parallel with the main branch.
+"""
+
+from __future__ import annotations
+
+import asyncio
+from datetime import datetime, timezone
+from pathlib import Path
+
+from cli.analyze.correlator import correlate
+from cli.analyze.steps.analyze_auth import AnalyzeAuthStep, _detect_auth_mechanical
+from cli.analyze.steps.assemble import AssembleInput, AssembleStep
+from cli.analyze.steps.build_ws_specs import BuildWsSpecsStep
+from cli.analyze.steps.detect_base_url import DetectBaseUrlStep
+from cli.analyze.steps.enrich_and_context import EnrichAndContextStep, EnrichInput
+from cli.analyze.steps.extract_pairs import ExtractPairsStep
+from cli.analyze.steps.filter_traces import FilterInput, FilterTracesStep
+from cli.analyze.steps.group_endpoints import GroupEndpointsStep
+from cli.analyze.steps.mechanical_extraction import (
+    MechanicalExtractionInput,
+    MechanicalExtractionStep,
+)
+from cli.analyze.steps.strip_prefix import StripPrefixInput, StripPrefixStep
+from cli.capture.models import CaptureBundle
+from cli.formats.api_spec import ApiSpec, AuthInfo, BusinessContext
+
+
+async def build_spec(
+    bundle: CaptureBundle,
+    client,
+    model: str,
+    source_filename: str = "",
+    on_progress=None,
+    enable_debug: bool = False,
+) -> ApiSpec:
+    """Build an enriched API spec from a capture bundle.
+
+    Pipeline:
+    1. Extract (method, url) pairs from traces
+    2. LLM detects business API base URL
+    3. Filter traces by base URL
+    4. LLM groups URLs into endpoint patterns
+    5. Strip base_url path prefix from patterns
+    6. Mechanical extraction (params, schemas, triggers)
+    7. LLM enrichment + business context (single call)  [parallel with auth + ws]
+    8. Auth analysis via LLM (on ALL unfiltered traces)  [parallel]
+    9. WebSocket specs (mechanical)                       [parallel]
+    10. Assemble final spec
+    """
+
+    def progress(msg: str):
+        if on_progress:
+            on_progress(msg)
+
+    # Debug directory
+    debug_dir = None
+    if enable_debug:
+        run_ts = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.%f")[:-3] + "Z"
+        debug_dir = Path("debug") / run_ts
+        debug_dir.mkdir(parents=True, exist_ok=True)
+        progress(f"Debug logs → {debug_dir}")
+
+    all_traces = list(bundle.traces)
+    correlations = correlate(bundle)
+
+    app_name = (
+        bundle.manifest.app.name + " API" if bundle.manifest.app.name else "Discovered API"
+    )
+
+    # Step 1: Extract pairs
+    extract_step = ExtractPairsStep()
+    url_method_pairs = await extract_step.run(bundle)
+
+    # Step 2: Detect base URL (LLM)
+    progress("Detecting API base URL (LLM)...")
+    detect_url_step = DetectBaseUrlStep(client, model, debug_dir)
+    base_url = await detect_url_step.run(url_method_pairs)
+    progress(f"  API base URL: {base_url}")
+
+    # Step 3: Filter traces
+    filter_step = FilterTracesStep()
+    total_before = len(all_traces)
+    filtered_traces = await filter_step.run(FilterInput(traces=all_traces, base_url=base_url))
+    progress(f"  Kept {len(filtered_traces)}/{total_before} traces under {base_url}")
+
+    # Step 4: Group endpoints (LLM)
+    progress("Grouping URLs into endpoints (LLM)...")
+    filtered_pairs = [(t.meta.request.method.upper(), t.meta.request.url) for t in filtered_traces]
+    group_step = GroupEndpointsStep(client, model, debug_dir)
+    endpoint_groups = await group_step.run(filtered_pairs)
+
+    # Step 5: Strip prefix
+    strip_step = StripPrefixStep()
+    endpoint_groups = await strip_step.run(StripPrefixInput(groups=endpoint_groups, base_url=base_url))
+
+    # Debug mode: limit endpoints
+    if debug_dir is not None and len(endpoint_groups) > 10:
+        progress(f"Debug mode: limiting to 10/{len(endpoint_groups)} endpoints")
+        endpoint_groups = endpoint_groups[:10]
+
+    # Step 6: Mechanical extraction
+    progress(f"Extracting {len(endpoint_groups)} endpoints...")
+    mech_step = MechanicalExtractionStep()
+    endpoints = await mech_step.run(
+        MechanicalExtractionInput(
+            groups=endpoint_groups,
+            traces=filtered_traces,
+            correlations=correlations,
+        )
+    )
+
+    # Steps 7, 8, 9 run in parallel
+    progress("Enriching endpoints + analyzing auth + building WS specs...")
+
+    async def _enrich():
+        enrich_step = EnrichAndContextStep(client, model, debug_dir)
+        try:
+            return await enrich_step.run(
+                EnrichInput(
+                    endpoints=endpoints,
+                    traces=filtered_traces,
+                    app_name=app_name,
+                    base_url=base_url,
+                )
+            )
+        except Exception:
+            return None
+
+    async def _auth():
+        auth_step = AnalyzeAuthStep(client, model, debug_dir)
+        try:
+            return await auth_step.run(all_traces)
+        except Exception:
+            return _detect_auth_mechanical(all_traces)
+
+    async def _ws():
+        ws_step = BuildWsSpecsStep()
+        return await ws_step.run(bundle.ws_connections)
+
+    enrich_result, auth, ws_specs = await asyncio.gather(_enrich(), _auth(), _ws())
+
+    # Apply enrichment results (or use defaults)
+    if enrich_result is not None:
+        final_endpoints = enrich_result.endpoints
+        business_context = enrich_result.business_context
+        glossary = enrich_result.glossary
+    else:
+        final_endpoints = endpoints
+        business_context = BusinessContext(
+            domain="",
+            description=f"API discovered from {bundle.manifest.app.base_url}",
+        )
+        glossary = {}
+
+    # Step 10: Assemble
+    assemble_step = AssembleStep()
+    spec = await assemble_step.run(
+        AssembleInput(
+            app_name=app_name,
+            source_filename=source_filename,
+            base_url=base_url,
+            endpoints=final_endpoints,
+            auth=auth,
+            business_context=business_context,
+            glossary=glossary,
+            ws_specs=ws_specs,
+        )
+    )
+
+    return spec

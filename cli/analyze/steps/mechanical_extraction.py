@@ -1,0 +1,234 @@
+"""Step: Mechanical extraction of endpoint specs from grouped traces."""
+
+from __future__ import annotations
+
+import json
+import re
+from collections import defaultdict
+from dataclasses import dataclass
+from urllib.parse import urlparse
+
+from cli.analyze.correlator import Correlation
+from cli.analyze.schemas import (
+    _extract_query_params,
+    _infer_json_schema,
+    _infer_type_from_values,
+    _merge_schemas,
+)
+from cli.analyze.steps import EndpointGroup
+from cli.analyze.steps.base import MechanicalStep
+from cli.analyze.utils import _get_header, _pattern_to_regex
+from cli.capture.models import Trace
+from cli.formats.api_spec import (
+    EndpointSpec,
+    ParameterSpec,
+    RequestSpec,
+    ResponseSpec,
+    UiTrigger,
+)
+
+
+@dataclass
+class MechanicalExtractionInput:
+    groups: list[EndpointGroup]
+    traces: list[Trace]
+    correlations: list[Correlation]
+
+
+class MechanicalExtractionStep(MechanicalStep[MechanicalExtractionInput, list[EndpointSpec]]):
+    """Build EndpointSpec for each group using only mechanical extraction."""
+
+    name = "mechanical_extraction"
+
+    async def _execute(self, input: MechanicalExtractionInput) -> list[EndpointSpec]:
+        endpoints = []
+        for group in input.groups:
+            group_traces = _find_traces_for_group(group, input.traces)
+            endpoint = _build_endpoint_mechanical(
+                group.method, group.pattern, group_traces, input.correlations,
+            )
+            endpoints.append(endpoint)
+        return endpoints
+
+
+def _find_traces_for_group(group: EndpointGroup, traces: list[Trace]) -> list[Trace]:
+    """Find traces whose URLs are listed in the endpoint group."""
+    url_set = set(group.urls)
+    matched = [
+        t for t in traces
+        if t.meta.request.url in url_set
+        and t.meta.request.method.upper() == group.method
+    ]
+
+    # Also try pattern matching to catch traces the LLM didn't list
+    pattern_re = _pattern_to_regex(group.pattern)
+    for t in traces:
+        if t not in matched:
+            parsed = urlparse(t.meta.request.url)
+            if (
+                t.meta.request.method.upper() == group.method
+                and pattern_re.match(parsed.path)
+            ):
+                matched.append(t)
+
+    return matched
+
+
+def _build_endpoint_mechanical(
+    method: str,
+    path_pattern: str,
+    traces: list[Trace],
+    correlations: list[Correlation],
+) -> EndpointSpec:
+    """Build an endpoint spec from grouped traces (mechanical only)."""
+    endpoint_id = _make_endpoint_id(method, path_pattern)
+
+    ui_triggers: list[UiTrigger] = []
+    for corr in correlations:
+        for t in corr.traces:
+            if t in traces:
+                ui_triggers.append(
+                    UiTrigger(
+                        action=corr.context.meta.action,
+                        element_selector=corr.context.meta.element.selector,
+                        element_text=corr.context.meta.element.text,
+                        page_url=corr.context.meta.page.url,
+                    )
+                )
+                break
+
+    request_spec = _build_request_spec(traces, path_pattern)
+    response_specs = _build_response_specs(traces)
+
+    requires_auth = any(
+        _get_header(t.meta.request.headers, "authorization") is not None
+        or _has_auth_cookie(t)
+        for t in traces
+    )
+
+    return EndpointSpec(
+        id=endpoint_id,
+        path=path_pattern,
+        method=method,
+        ui_triggers=ui_triggers,
+        request=request_spec,
+        responses=response_specs,
+        requires_auth=requires_auth,
+        observed_count=len(traces),
+        source_trace_refs=[t.meta.id for t in traces],
+    )
+
+
+def _make_endpoint_id(method: str, path: str) -> str:
+    """Generate a readable endpoint ID from method and path."""
+    clean = path.strip("/").replace("/", "_").replace("{", "").replace("}", "")
+    clean = re.sub(r"[^a-zA-Z0-9_]", "_", clean)
+    return f"{method.lower()}_{clean}" if clean else method.lower()
+
+
+def _build_request_spec(traces: list[Trace], path_pattern: str) -> RequestSpec:
+    """Build request spec from observed traces."""
+    parameters: list[ParameterSpec] = []
+
+    path_params = re.findall(r"\{(\w+)\}", path_pattern)
+    for param_name in path_params:
+        parameters.append(
+            ParameterSpec(
+                name=param_name,
+                location="path",
+                type="string",
+                required=True,
+            )
+        )
+
+    content_type = None
+    body_schemas: list[dict] = []
+    for trace in traces:
+        ct = _get_header(trace.meta.request.headers, "content-type")
+        if ct:
+            content_type = ct
+        if trace.request_body:
+            try:
+                data = json.loads(trace.request_body)
+                if isinstance(data, dict):
+                    body_schemas.append(data)
+            except (json.JSONDecodeError, UnicodeDecodeError):
+                pass
+
+    if body_schemas:
+        merged = _merge_schemas(body_schemas)
+        for key, info in merged.items():
+            parameters.append(
+                ParameterSpec(
+                    name=key,
+                    location="body",
+                    type=info["type"],
+                    required=info["required"],
+                    example=str(info["example"]) if info["example"] is not None else None,
+                    observed_values=[str(v) for v in info["values"][:5]],
+                )
+            )
+
+    query_params = _extract_query_params(traces)
+    for name, values in query_params.items():
+        parameters.append(
+            ParameterSpec(
+                name=name,
+                location="query",
+                type=_infer_type_from_values(values),
+                required=len(values) == len(traces),
+                example=values[0] if values else None,
+                observed_values=list(set(values))[:5],
+            )
+        )
+
+    return RequestSpec(content_type=content_type, parameters=parameters)
+
+
+def _build_response_specs(traces: list[Trace]) -> list[ResponseSpec]:
+    """Build response specs from observed traces, grouped by status code."""
+    by_status: dict[int, list[Trace]] = defaultdict(list)
+    for t in traces:
+        by_status[t.meta.response.status].append(t)
+
+    specs: list[ResponseSpec] = []
+    for status, status_traces in sorted(by_status.items()):
+        ct = _get_header(status_traces[0].meta.response.headers, "content-type")
+
+        schema = None
+        example_body = None
+        body_samples: list[dict] = []
+        for t in status_traces:
+            if t.response_body:
+                try:
+                    data = json.loads(t.response_body)
+                    if example_body is None:
+                        example_body = data
+                    if isinstance(data, dict):
+                        body_samples.append(data)
+                except (json.JSONDecodeError, UnicodeDecodeError):
+                    pass
+
+        if body_samples:
+            schema = _infer_json_schema(body_samples)
+
+        specs.append(
+            ResponseSpec(
+                status=status,
+                content_type=ct,
+                schema=schema,
+                example_body=example_body,
+            )
+        )
+
+    return specs
+
+
+def _has_auth_cookie(trace: Trace) -> bool:
+    """Check if a trace has auth-related cookies."""
+    cookie = _get_header(trace.meta.request.headers, "cookie")
+    if cookie and any(
+        name in cookie.lower() for name in ["session", "token", "auth", "jwt"]
+    ):
+        return True
+    return False

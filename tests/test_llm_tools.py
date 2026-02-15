@@ -6,15 +6,15 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from cli.analyze.llm import (
+from cli.analyze.tools import (
     _call_with_tools,
     _execute_decode_base64,
     _execute_decode_jwt,
     _execute_decode_url,
     _TOOL_EXECUTORS,
-    detect_api_base_url,
     INVESTIGATION_TOOLS,
 )
+from cli.analyze.steps.detect_base_url import DetectBaseUrlStep
 
 
 # --- Executor unit tests (sync, no mocks) ---
@@ -228,18 +228,18 @@ class TestCallWithTools:
         assert result == "done"
 
 
-class TestDetectApiBaseUrl:
+class TestDetectBaseUrlStep:
     @pytest.mark.asyncio
     async def test_returns_base_url(self):
-        """detect_api_base_url should parse the LLM response and return the base_url string."""
+        """DetectBaseUrlStep should parse the LLM response and return the base_url string."""
         async def mock_create(**kwargs):
             return _make_text_response('{"base_url": "https://www.example.com/api"}')
 
         client = MagicMock()
         client.messages.create = mock_create
 
-        result = await detect_api_base_url(
-            client, "model",
+        step = DetectBaseUrlStep(client, "model")
+        result = await step.run(
             [("GET", "https://www.example.com/api/users"), ("GET", "https://cdn.example.com/style.css")],
         )
         assert result == "https://www.example.com/api"
@@ -253,7 +253,8 @@ class TestDetectApiBaseUrl:
         client = MagicMock()
         client.messages.create = mock_create
 
-        result = await detect_api_base_url(client, "model", [("GET", "https://api.example.com/v1")])
+        step = DetectBaseUrlStep(client, "model")
+        result = await step.run([("GET", "https://api.example.com/v1")])
         assert result == "https://api.example.com"
 
     @pytest.mark.asyncio
@@ -265,7 +266,8 @@ class TestDetectApiBaseUrl:
         client = MagicMock()
         client.messages.create = mock_create
 
-        result = await detect_api_base_url(client, "model", [("GET", "https://api.example.com/users")])
+        step = DetectBaseUrlStep(client, "model")
+        result = await step.run([("GET", "https://api.example.com/users")])
         assert result == "https://api.example.com"
 
     @pytest.mark.asyncio
@@ -277,12 +279,6 @@ class TestDetectApiBaseUrl:
         client = MagicMock()
         client.messages.create = mock_create
 
+        step = DetectBaseUrlStep(client, "model")
         with pytest.raises(ValueError, match="Expected"):
-            await detect_api_base_url(client, "model", [("GET", "https://example.com/api")])
-
-
-def _async_return(value):
-    """Create an async function that returns a fixed value."""
-    async def fn(**kwargs):
-        return value
-    return fn
+            await step.run([("GET", "https://example.com/api")])

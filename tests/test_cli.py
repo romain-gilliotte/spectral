@@ -27,16 +27,13 @@ def _make_mock_anthropic_module():
         "user_journey": ["Login"], "obtain_flow": "login_form",
     })
 
-    detail_response = json.dumps({
-        "business_purpose": "Test endpoint", "user_story": "As a user, I want to test",
-        "correlation_confidence": 0.9, "parameter_meanings": {},
-        "response_meanings": {}, "trigger_explanations": [],
-    })
-
-    context_response = json.dumps({
-        "domain": "Testing", "description": "Test API",
-        "user_personas": ["tester"], "key_workflows": [],
-        "business_glossary": {},
+    enrich_response = json.dumps({
+        "endpoints": {},
+        "business_context": {
+            "domain": "Testing", "description": "Test API",
+            "user_personas": ["tester"], "key_workflows": [],
+            "business_glossary": {},
+        },
     })
 
     base_url_response = json.dumps({"base_url": "https://api.example.com"})
@@ -53,10 +50,11 @@ def _make_mock_anthropic_module():
             mock_content.text = groups_response
         elif "authentication" in msg:
             mock_content.text = auth_response
-        elif "business domain" in msg or "Based on these API endpoints" in msg:
-            mock_content.text = context_response
+        elif "SINGLE JSON response" in msg:
+            mock_content.text = enrich_response
         else:
-            mock_content.text = detail_response
+            # Fallback
+            mock_content.text = enrich_response
         mock_response.content = [mock_content]
         return mock_response
 
@@ -116,7 +114,7 @@ class TestGenerateCommand:
         """Helper to create a spec file from a sample bundle using mocked LLM."""
         import asyncio
         from unittest.mock import AsyncMock, MagicMock
-        from cli.analyze.spec_builder import build_spec
+        from cli.analyze.pipeline import build_spec
 
         mock_client = AsyncMock()
 
@@ -126,6 +124,14 @@ class TestGenerateCommand:
              "urls": ["https://api.example.com/api/users/123/orders", "https://api.example.com/api/users/456/orders"]},
             {"method": "POST", "pattern": "/api/orders", "urls": ["https://api.example.com/api/orders"]},
         ])
+
+        enrich_response = json.dumps({
+            "endpoints": {},
+            "business_context": {
+                "domain": "", "description": "", "user_personas": [],
+                "key_workflows": [], "business_glossary": {},
+            },
+        })
 
         async def mock_create(**kwargs):
             mock_response = MagicMock()
@@ -139,10 +145,10 @@ class TestGenerateCommand:
                 mock_content.text = groups_response
             elif "authentication" in msg:
                 mock_content.text = json.dumps({"type": "bearer_token", "token_header": "Authorization", "token_prefix": "Bearer"})
-            elif "business domain" in msg or "Based on these API endpoints" in msg:
-                mock_content.text = json.dumps({"domain": "", "description": "", "user_personas": [], "key_workflows": [], "business_glossary": {}})
+            elif "SINGLE JSON response" in msg:
+                mock_content.text = enrich_response
             else:
-                mock_content.text = json.dumps({"business_purpose": "test", "user_story": "test", "correlation_confidence": 0.5, "parameter_meanings": {}, "response_meanings": {}, "trigger_explanations": []})
+                mock_content.text = enrich_response
             mock_response.content = [mock_content]
             return mock_response
 
@@ -371,5 +377,3 @@ class TestPipelineCommand:
         assert (output_dir / "api_spec.json").exists()
         assert (output_dir / "openapi.yaml").exists()
         assert (output_dir / "client.py").exists()
-
-

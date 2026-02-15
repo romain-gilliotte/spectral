@@ -1,5 +1,9 @@
 # api-discover — Project Specification
 
+## Style preferences
+
+- **No code samples in documentation.** Documentation files (`_documentation/`) should describe concepts in prose and tables, not paste code. The code lives in the code.
+
 ## Development environment
 
 - Package manager is **uv**. Use `uv run` to execute commands (no need to activate the venv):
@@ -43,11 +47,24 @@ api-discover/
 │   │   ├── loader.py       # Unzips and loads a capture bundle (+ write_bundle)
 │   │   └── models.py       # Data classes for traces, contexts, timeline (wraps Pydantic + binary)
 │   ├── analyze/            # Analysis engine
+│   │   ├── pipeline.py     # Orchestrator: build_spec() with parallel branches
 │   │   ├── correlator.py   # Time-window correlation: UI action → API calls
 │   │   ├── protocol.py     # Protocol detection (REST, GraphQL, WebSocket, gRPC, binary)
-│   │   ├── llm.py          # LLM client: 5 async functions (endpoints, auth, detail, context, correction)
-│   │   ├── validator.py    # Mechanical validation: coverage, pattern match, schema, auth coherence
-│   │   └── spec_builder.py # LLM-first pipeline: groups → enrich → validate → correct
+│   │   ├── tools.py        # LLM tool loop (_call_with_tools), investigation tools, _extract_json
+│   │   ├── utils.py        # Shared utilities (_pattern_to_regex, _compact_url, _sanitize_headers)
+│   │   ├── schemas.py      # JSON schema inference, annotated schemas, format detection
+│   │   └── steps/          # Pipeline steps (Step[In,Out] architecture)
+│   │       ├── base.py             # Step, LLMStep, MechanicalStep, StepValidationError
+│   │       ├── detect_base_url.py  # LLMStep: identify business API base URL
+│   │       ├── group_endpoints.py  # LLMStep: group URLs into endpoint patterns
+│   │       ├── analyze_auth.py     # LLMStep: detect auth mechanism from all traces
+│   │       ├── enrich_and_context.py # LLMStep: batch enrichment + business context
+│   │       ├── extract_pairs.py    # MechanicalStep: traces → (method, url) pairs
+│   │       ├── filter_traces.py    # MechanicalStep: keep traces matching base URL
+│   │       ├── strip_prefix.py     # MechanicalStep: remove base URL path prefix
+│   │       ├── mechanical_extraction.py # MechanicalStep: groups → EndpointSpec[]
+│   │       ├── build_ws_specs.py   # MechanicalStep: WS connections → WS protocol
+│   │       └── assemble.py         # MechanicalStep: combine all parts → ApiSpec
 │   ├── generate/           # Output generators
 │   │   ├── openapi.py      # Enriched OpenAPI 3.1 output
 │   │   ├── mcp_server.py   # MCP server scaffold generation (FastMCP)
@@ -63,9 +80,12 @@ api-discover/
 │   ├── test_loader.py
 │   ├── test_protocol.py
 │   ├── test_correlator.py
-│   ├── test_spec_builder.py
-│   ├── test_validator.py
+│   ├── test_spec_builder.py # Pipeline, mechanical extraction, schema inference
+│   ├── test_schemas.py      # Annotated schemas, type inference, format detection
+│   ├── test_steps.py        # Step base classes (Step, LLMStep, MechanicalStep)
+│   ├── test_llm_tools.py    # Tool executors, _call_with_tools, DetectBaseUrlStep
 │   ├── test_generators.py
+│   ├── test_client.py
 │   └── test_cli.py
 ├── pyproject.toml
 └── README.md
@@ -551,44 +571,43 @@ When storing a trace, the extension finds the most recent context(s) within a 2-
 
 ---
 
-## Analysis pipeline (LLM-first architecture)
+## Analysis pipeline (Step-based architecture)
 
-The `build_spec()` function in `spec_builder.py` implements an LLM-first pipeline:
+The `build_spec()` function in `pipeline.py` orchestrates a Step-based pipeline with three parallel branches. Each step is a typed `Step[In, Out]` with `run()` method, optional validation, and retry for LLM steps. See `_documentation/00-overview.md` for the full pipeline diagram.
 
-1. **Extract** — Collect `(method, url)` pairs from all traces
-2. **LLM: Group endpoints** — Ask the LLM to group URLs into endpoint patterns with `{param}` syntax
-3. **For each group:**
-   - Mechanical extraction: query params, response codes, JSON schemas, auth headers
-   - LLM enrichment: business purpose, user story, parameter meanings, trigger explanations
-4. **LLM: Auth analysis** — Detect auth type, flow, token handling from auth-related traces
-5. **LLM: Business context** — Infer domain, description, workflows, glossary from all endpoints
-6. **Build WebSocket specs** — Mechanical extraction from WS connections + protocol detection
-7. **Assemble ApiSpec** — Combine all parts into the final spec
-8. **Mechanical validation** — Check coverage, pattern match, schema consistency, auth coherence
-9. **LLM: Correction** — If validation errors, ask LLM to fix the spec (one iteration only)
+**Main branch** (sequential):
+1. **Extract pairs** — `MechanicalStep`: collect `(method, url)` pairs from all traces
+2. **Detect base URL** — `LLMStep`: identify the business API origin (with investigation tools)
+3. **Filter traces** — `MechanicalStep`: keep only traces matching the base URL
+4. **Group endpoints** — `LLMStep`: group URLs into endpoint patterns with `{param}` syntax (with investigation tools)
+5. **Strip prefix** — `MechanicalStep`: remove base URL path prefix from patterns
+6. **Mechanical extraction** — `MechanicalStep`: build `EndpointSpec[]` with schemas, params, UI triggers
+7. **Enrich + context** — `LLMStep`: single batch call for ALL endpoint enrichments + business context + glossary
 
-### LLM functions (`cli/analyze/llm.py`)
+**Parallel branches** (run via `asyncio.gather` alongside step 7):
+- **Auth analysis** — `LLMStep`: detect auth mechanism from ALL unfiltered traces (summary-based, no tools)
+- **WebSocket specs** — `MechanicalStep`: extract WS protocol specs from captured connections
 
-| Function | Purpose | Input |
-|---|---|---|
-| `analyze_endpoints` | Group URLs into endpoint patterns | List of `(method, url)` pairs |
-| `analyze_endpoint_detail` | Enrich one endpoint with business meaning | Endpoint summary + samples + UI triggers |
-| `analyze_auth` | Detect authentication mechanism | Auth-related trace summaries |
-| `analyze_business_context` | Infer domain, workflows, glossary | All endpoint summaries + app info |
-| `correct_spec` | Fix validation errors in spec | Spec endpoints + validation errors |
+**Assembly** — `MechanicalStep`: combine all outputs into `ApiSpec`
 
-All functions use `_extract_json()` to robustly parse LLM JSON responses (handles markdown blocks, nested objects).
+### Step classes (`cli/analyze/steps/base.py`)
 
-### Mechanical validation (`cli/analyze/validator.py`)
-
-| Check | What it validates |
+| Class | Behavior |
 |---|---|
-| Coverage | Every trace is assigned to an endpoint |
-| Pattern match | Each trace URL matches its endpoint's path pattern |
-| Schema consistency | Observed JSON bodies match generated schemas (required keys, no extra keys) |
-| Auth coherence | If auth headers seen in traces, auth type must be detected in spec |
+| `Step[In, Out]` | Base: calls `_execute()` then `_validate_output()` |
+| `MechanicalStep` | No retry — validation failure is a bug |
+| `LLMStep` | Retries on `StepValidationError` (max_retries=1), appends errors to conversation |
 
-Returns structured `ValidationError` objects that can be serialized and fed back to the LLM for correction.
+### LLM steps
+
+| Step | File | Tools | Validation |
+|---|---|---|---|
+| Detect base URL | `detect_base_url.py` | decode_base64, decode_url, decode_jwt | Valid URL (scheme + host) |
+| Group endpoints | `group_endpoints.py` | decode_base64, decode_url, decode_jwt | Coverage, pattern match, no duplicates |
+| Enrich + context | `enrich_and_context.py` | none | Best-effort (no validation) |
+| Auth analysis | `analyze_auth.py` | none | Best-effort (fallback to mechanical) |
+
+All LLM steps use `_extract_json()` to robustly parse LLM JSON responses (handles markdown blocks, nested objects).
 
 ---
 
@@ -603,26 +622,21 @@ Returns structured `ValidationError` objects that can be serialized and fed back
 - [x] Chrome extension: popup UI — Start/Stop/Export buttons, live stats, status indicators
 - [x] Tests: model roundtrips, bundle read/write, binary safety, lookups
 
-### Phase 2: Mechanical analysis
+### Phase 2: Analysis engine
 - [x] Protocol detection (`cli/analyze/protocol.py`) — REST, GraphQL, gRPC, binary, WS sub-protocols
 - [x] Time-window correlation (`cli/analyze/correlator.py`) — UI action → API calls with configurable window
-- [x] Endpoint grouping by (method, normalized path pattern) — via LLM in spec_builder
-- [x] Path parameter inference from URL variations (numeric, UUID, hex hash detection)
-- [x] Request/response JSON schema inference with format detection (date, email, UUID, URI)
-- [x] Query parameter extraction from URLs
-- [x] Auth detection (Bearer, Basic, cookie-based) — mechanical fallback + LLM analysis
-- [x] Base URL detection (most common origin)
-- [x] Mechanical validation (`cli/analyze/validator.py`) — coverage, patterns, schemas, auth
-- [x] Full spec builder (`cli/analyze/spec_builder.py`) — LLM-first pipeline with validation + correction
-- [x] Tests: protocol detection, correlator logic, path params, schema inference, auth, validation, full builds
-
-### Phase 3: LLM analysis
-- [x] LLM client (`cli/analyze/llm.py`) — Anthropic API, async, 5 specialized functions
-- [x] Endpoint grouping via LLM (`analyze_endpoints`)
-- [x] Per-endpoint enrichment: business_purpose, user_story, parameter meanings (`analyze_endpoint_detail`)
-- [x] Business context + glossary inference (`analyze_business_context`)
-- [x] Auth flow reconstruction from traces (`analyze_auth`)
-- [x] Spec correction from validation errors (`correct_spec`)
+- [x] Step-based pipeline (`cli/analyze/pipeline.py`) — orchestrator with parallel branches via asyncio.gather
+- [x] Step abstraction (`cli/analyze/steps/base.py`) — Step[In,Out], LLMStep (retry), MechanicalStep
+- [x] LLM base URL detection (`steps/detect_base_url.py`) — with investigation tools
+- [x] LLM endpoint grouping (`steps/group_endpoints.py`) — with investigation tools + validation
+- [x] LLM batch enrichment + business context (`steps/enrich_and_context.py`) — single call for all endpoints
+- [x] LLM auth analysis (`steps/analyze_auth.py`) — on all unfiltered traces, with mechanical fallback
+- [x] Mechanical extraction (`steps/mechanical_extraction.py`) — schemas, params, UI triggers, trace matching
+- [x] JSON schema inference with format detection (`cli/analyze/schemas.py`) — date, email, UUID, URI
+- [x] Annotated schemas (`cli/analyze/schemas.py`) — schema + observed values per property
+- [x] Investigation tools (`cli/analyze/tools.py`) — decode_base64, decode_url, decode_jwt, tool loop
+- [x] Shared utilities (`cli/analyze/utils.py`) — _pattern_to_regex, _compact_url, _sanitize_headers
+- [x] Tests: pipeline, steps, schemas, tools, protocol, correlator, mechanical extraction
 - [ ] Real-world testing with actual API keys
 - [ ] Prompt tuning for better business_purpose / user_story quality
 
@@ -641,14 +655,17 @@ Returns structured `ValidationError` objects that can be serialized and fed back
 - [ ] Privacy controls: exclude domains, redact headers/cookies
 
 ### Test coverage
-137 tests across 8 test files, all passing:
+207 tests across 11 test files, all passing:
 - `tests/test_formats.py` — Pydantic model roundtrips and defaults
 - `tests/test_loader.py` — Bundle read/write, binary safety, lookups
 - `tests/test_protocol.py` — Protocol detection for HTTP and WebSocket
 - `tests/test_correlator.py` — Time-window correlation logic
-- `tests/test_spec_builder.py` — Path params, schema inference, auth detection, full builds
-- `tests/test_validator.py` — Validation: coverage, pattern match, schema consistency, auth coherence
+- `tests/test_spec_builder.py` — Pipeline builds, mechanical extraction, schema inference, trace matching
+- `tests/test_schemas.py` — Annotated schemas, type inference, format detection, schema merging
+- `tests/test_steps.py` — Step base classes: execution, validation, retry logic
+- `tests/test_llm_tools.py` — Tool executors, _call_with_tools loop, DetectBaseUrlStep
 - `tests/test_generators.py` — All 5 generators (structure, content, file output)
+- `tests/test_client.py` — ApiClient: init, auth, calls, login flow, path extraction
 - `tests/test_cli.py` — All CLI commands via Click test runner
 
 ---
@@ -666,13 +683,15 @@ Chrome DevTools Protocol gives us `Network.webSocketFrameSent` and `Network.webS
 
 ### LLM-first analysis strategy
 The analysis pipeline is LLM-first (not mechanical-first with LLM enrichment):
-1. The LLM groups URLs into endpoint patterns — this is more accurate than mechanical heuristics for complex APIs
-2. For each group, mechanical extraction provides the raw data (schemas, params, headers)
-3. The LLM enriches each endpoint with business semantics using focused per-endpoint prompts
-4. Mechanical validation catches LLM mistakes (uncovered traces, pattern mismatches, schema inconsistencies)
-5. The LLM corrects its own mistakes based on structured validation errors (one iteration)
+1. The LLM identifies the business API base URL — filtering out CDN, analytics, trackers
+2. The LLM groups URLs into endpoint patterns — this is more accurate than mechanical heuristics for complex APIs
+3. For each group, mechanical extraction provides the raw data (schemas, params, headers)
+4. A single batch LLM call enriches ALL endpoints with business semantics + infers business context + glossary
+5. Per-step validation catches LLM mistakes (coverage, pattern mismatches) and retries once
 
-This keeps token usage low (focused prompts, not the entire bundle) while leveraging the LLM's strength at pattern recognition and semantic inference.
+Auth analysis runs in parallel on ALL unfiltered traces (external auth providers would be filtered out by base URL detection). Three branches converge at assembly via `asyncio.gather`.
+
+This keeps token usage low (batch enrichment instead of N+1 calls) while leveraging the LLM's strength at pattern recognition and semantic inference.
 
 ### Path parameter inference
 In the LLM-first pipeline, path parameters are inferred by the LLM during URL grouping. The LLM sees all observed URLs and identifies variable segments (IDs, UUIDs, hashes) to produce patterns like `/api/users/{user_id}/orders`.
@@ -680,11 +699,12 @@ In the LLM-first pipeline, path parameters are inferred by the LLM during URL gr
 The mechanical `_pattern_to_regex()` helper converts these patterns to regexes for validation: `{param}` → `[^/]+`.
 
 ### Schema inference (mechanical)
-Given multiple JSON response bodies for the same endpoint, merge them:
-- Union of all keys seen
+Given multiple JSON response bodies for the same endpoint, build annotated schemas (`cli/analyze/schemas.py`):
+- Union of all keys seen across samples
 - For each key: infer type from values (string, number, boolean, array, object)
 - Mark keys as optional if not present in all responses
 - Detect common formats: ISO dates, emails, UUIDs, URLs
+- Annotated schemas add up to 5 `observed` values per property for LLM context
 
 ---
 
