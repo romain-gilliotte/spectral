@@ -16,6 +16,9 @@ capture_*
 debug/
 docs/
 
+# Auto-downloaded tool JARs (apktool, uber-apk-signer)
+tools/*.jar
+
 # Generated test artifacts
 *.generated.json
 indy-api.json

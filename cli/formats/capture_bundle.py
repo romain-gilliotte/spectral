@@ -33,10 +33,11 @@ class CaptureManifest(BaseModel):
     capture_id: str
     created_at: str
     app: AppInfo
-    browser: BrowserInfo
-    extension_version: str = "0.1.0"
+    browser: BrowserInfo | None = None
+    extension_version: str | None = "0.1.0"
     duration_ms: int
     stats: CaptureStats
+    capture_method: str = "chrome_extension"
 
 
 class RequestMeta(BaseModel):
