@@ -109,7 +109,7 @@ def _build_operation(endpoint: EndpointSpec, spec: ApiSpec) -> dict:
             if desc_parts:
                 p["description"] = ". ".join(desc_parts)
             if param.example:
-                p["schema"]["example"] = param.example
+                p["schema"]["examples"] = [param.example]
             if param.format:
                 p["schema"]["format"] = param.format
             parameters.append(p)
@@ -132,7 +132,7 @@ def _build_operation(endpoint: EndpointSpec, spec: ApiSpec) -> dict:
             if desc_parts:
                 prop["description"] = ". ".join(desc_parts)
             if param.example:
-                prop["example"] = param.example
+                prop["examples"] = [param.example]
             if param.format:
                 prop["format"] = param.format
             properties[param.name] = prop
