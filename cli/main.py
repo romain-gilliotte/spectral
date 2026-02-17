@@ -1,4 +1,4 @@
-"""CLI entry point for api-discover."""
+"""CLI entry point for spectral."""
 
 from __future__ import annotations
 
@@ -18,7 +18,7 @@ console = Console()
 
 
 @click.group()
-@click.version_option(version="0.1.0", prog_name="api-discover")
+@click.version_option(version="0.1.0", prog_name="spectral")
 def cli():
     """Automatically discover and document web application APIs."""
 
@@ -208,10 +208,10 @@ def call_command(spec_path: str, args: tuple, list_endpoints: bool, token: str |
 
     \b
     Examples:
-      api-discover call spec.json --list
-      api-discover call spec.json get_users
-      api-discover call spec.json get_user user_id=123 --token eyJ...
-      api-discover call spec.json login --username user@x.com --password secret
+      spectral call spec.json --list
+      spectral call spec.json get_users
+      spectral call spec.json get_user user_id=123 --token eyJ...
+      spectral call spec.json login --username user@x.com --password secret
     """
     from cli.client import ApiClient
 
@@ -270,7 +270,7 @@ def android():
 def list_cmd(filter: str | None):
     """List installed packages on the connected device.
 
-    Optionally filter by a substring, e.g.: api-discover android list spotify
+    Optionally filter by a substring, e.g.: spectral android list spotify
     """
     from cli.android.adb import check_adb, list_packages
 
@@ -351,9 +351,9 @@ def patch(apk_path: str, output: str | None):
 
     console.print()
     console.print("[bold]Next steps:[/bold]")
-    console.print(f"  1. Install: api-discover android install {out}")
+    console.print(f"  1. Install: spectral android install {out}")
     console.print("  2. Install mitmproxy CA cert on the device:")
-    console.print("     - Start proxy: api-discover android capture")
+    console.print("     - Start proxy: spectral android capture")
     console.print("     - On device, visit http://mitm.it and install the cert")
     console.print("  3. Configure device WiFi proxy to point to this machine")
 

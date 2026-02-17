@@ -34,7 +34,7 @@ def _ensure_mitmproxy():
     except ImportError:
         raise ImportError(
             "mitmproxy is required for Android capture.\n"
-            "Install it with: uv add 'api-discover[android]'\n"
+            "Install it with: uv add 'spectral[android]'\n"
             "  or: pip install mitmproxy>=10.0"
         )
 
@@ -415,7 +415,7 @@ def run_proxy(
                 click.echo(f"    {count:4d}  {domain}")
             click.echo(f"\n  Re-run with -d to capture specific domains, e.g.:")
             top = sorted(domains.items(), key=lambda x: -x[1])[0][0]
-            click.echo(f"    api-discover android capture -d '{top}'\n")
+            click.echo(f"    spectral android capture -d '{top}'\n")
         else:
             click.echo("\n  No domains discovered.\n")
         return None

@@ -1,4 +1,4 @@
-"""Analysis engine for api-discover."""
+"""Analysis engine for spectral."""
 
 from cli.analyze.pipeline import build_spec
 

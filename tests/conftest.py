@@ -1,4 +1,4 @@
-"""Shared test fixtures for api-discover tests."""
+"""Shared test fixtures for spectral tests."""
 
 from __future__ import annotations
 
