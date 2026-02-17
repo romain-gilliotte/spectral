@@ -103,7 +103,6 @@ class TestCorrelate:
 
     def test_ws_message_correlation(self):
         """WebSocket messages should also be correlated."""
-        import json
         ctx = make_context("c_0001", timestamp=1000)
         msg = make_ws_message("ws_0001_m001", "ws_0001", 1500, "send", b'{"test":1}')
         ws_conn = make_ws_connection("ws_0001", "wss://example.com/ws", 900, messages=[msg])

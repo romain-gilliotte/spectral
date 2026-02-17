@@ -7,11 +7,11 @@ from unittest.mock import MagicMock
 import pytest
 
 from cli.analyze.tools import (
-    _call_with_tools,
-    _execute_decode_base64,
+    call_with_tools,
+    execute_decode_base64,
     _execute_decode_jwt,
     _execute_decode_url,
-    _TOOL_EXECUTORS,
+    TOOL_EXECUTORS,
     INVESTIGATION_TOOLS,
 )
 from cli.analyze.steps.detect_base_url import DetectBaseUrlStep
@@ -23,12 +23,12 @@ from cli.analyze.steps.detect_base_url import DetectBaseUrlStep
 class TestDecodeBase64:
     def test_simple_text(self):
         encoded = base64.b64encode(b"hello world").decode()
-        assert _execute_decode_base64(encoded) == "hello world"
+        assert execute_decode_base64(encoded) == "hello world"
 
     def test_json_payload(self):
         payload = json.dumps({"page": 1, "size": 20})
         encoded = base64.b64encode(payload.encode()).decode()
-        result = _execute_decode_base64(encoded)
+        result = execute_decode_base64(encoded)
         assert json.loads(result) == {"page": 1, "size": 20}
 
     def test_urlsafe_variant(self):
@@ -36,23 +36,23 @@ class TestDecodeBase64:
         data = b"\xfb\xff\xfe"  # produces +//+ in standard, uses -_ in urlsafe
         encoded = base64.urlsafe_b64encode(data).decode()
         assert "-" in encoded or "_" in encoded  # sanity
-        result = _execute_decode_base64(encoded)
+        result = execute_decode_base64(encoded)
         assert result.startswith("<binary:")
 
     def test_missing_padding(self):
         encoded = base64.b64encode(b"test").decode().rstrip("=")
-        assert _execute_decode_base64(encoded) == "test"
+        assert execute_decode_base64(encoded) == "test"
 
     def test_binary_returns_hex(self):
         data = bytes(range(256))
         encoded = base64.b64encode(data).decode()
-        result = _execute_decode_base64(encoded)
+        result = execute_decode_base64(encoded)
         assert result.startswith("<binary:")
         assert "00010203" in result
 
     def test_invalid_input(self):
         with pytest.raises(ValueError, match="Cannot base64-decode"):
-            _execute_decode_base64("!!!not-base64!!!")
+            execute_decode_base64("!!!not-base64!!!")
 
 
 class TestDecodeUrl:
@@ -82,7 +82,7 @@ class TestDecodeJwt:
             _execute_decode_jwt("not-a-jwt")
 
 
-# --- _call_with_tools tests (async, mocked client) ---
+# --- call_with_tools tests (async, mocked client) ---
 
 
 def _make_text_response(text: str):
@@ -122,9 +122,9 @@ class TestCallWithTools:
         client = MagicMock()
         client.messages.create = mock_create
 
-        result = await _call_with_tools(
+        result = await call_with_tools(
             client, "model", [{"role": "user", "content": "hi"}],
-            INVESTIGATION_TOOLS, _TOOL_EXECUTORS,
+            INVESTIGATION_TOOLS, TOOL_EXECUTORS,
         )
         assert result == '{"endpoints": []}'
         assert call_count[0] == 1
@@ -147,9 +147,9 @@ class TestCallWithTools:
         client = MagicMock()
         client.messages.create = mock_create
 
-        result = await _call_with_tools(
+        result = await call_with_tools(
             client, "model", [{"role": "user", "content": "analyze"}],
-            INVESTIGATION_TOOLS, _TOOL_EXECUTORS,
+            INVESTIGATION_TOOLS, TOOL_EXECUTORS,
         )
         assert "/api/data/{param}" in result
         assert call_count[0] == 2
@@ -176,9 +176,9 @@ class TestCallWithTools:
         client = MagicMock()
         client.messages.create = mock_create
 
-        result = await _call_with_tools(
+        result = await call_with_tools(
             client, "model", [{"role": "user", "content": "go"}],
-            INVESTIGATION_TOOLS, _TOOL_EXECUTORS,
+            INVESTIGATION_TOOLS, TOOL_EXECUTORS,
         )
         assert result == "[]"
 
@@ -194,9 +194,9 @@ class TestCallWithTools:
         client.messages.create = mock_create
 
         with pytest.raises(ValueError, match="exceeded 3 iterations"):
-            await _call_with_tools(
+            await call_with_tools(
                 client, "model", [{"role": "user", "content": "go"}],
-                INVESTIGATION_TOOLS, _TOOL_EXECUTORS,
+                INVESTIGATION_TOOLS, TOOL_EXECUTORS,
                 max_iterations=3,
             )
 
@@ -221,9 +221,9 @@ class TestCallWithTools:
         client = MagicMock()
         client.messages.create = mock_create
 
-        result = await _call_with_tools(
+        result = await call_with_tools(
             client, "model", [{"role": "user", "content": "go"}],
-            INVESTIGATION_TOOLS, _TOOL_EXECUTORS,
+            INVESTIGATION_TOOLS, TOOL_EXECUTORS,
         )
         assert result == "done"
 

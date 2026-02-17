@@ -1,6 +1,6 @@
 """Pydantic models for the enriched API specification format (.json)."""
 
-from __future__ import annotations
+from typing import Any
 
 from pydantic import BaseModel, Field
 
@@ -8,14 +8,14 @@ from pydantic import BaseModel, Field
 class WorkflowStep(BaseModel):
     name: str
     description: str = ""
-    steps: list[str] = Field(default_factory=list)
+    steps: list[str] = []
 
 
 class BusinessContext(BaseModel):
     domain: str = ""
     description: str = ""
-    user_personas: list[str] = Field(default_factory=list)
-    key_workflows: list[WorkflowStep] = Field(default_factory=list)
+    user_personas: list[str] = []
+    key_workflows: list[WorkflowStep] = []
 
 
 class LoginEndpointConfig(BaseModel):
@@ -41,7 +41,7 @@ class AuthInfo(BaseModel):
     type: str = ""
     obtain_flow: str = ""
     business_process: str | None = None
-    user_journey: list[str] = Field(default_factory=list)
+    user_journey: list[str] = []
     token_header: str | None = None
     token_prefix: str | None = None
     login_config: LoginEndpointConfig | None = None
@@ -66,12 +66,12 @@ class ParameterSpec(BaseModel):
     business_meaning: str | None = None  # LLM-inferred
     example: str | None = None
     constraints: str | None = None  # LLM-inferred
-    observed_values: list[str] = Field(default_factory=list)
+    observed_values: list[str] = []
 
 
 class RequestSpec(BaseModel):
     content_type: str | None = None
-    parameters: list[ParameterSpec] = Field(default_factory=list)
+    parameters: list[ParameterSpec] = []
 
 
 class ResponseSpec(BaseModel):
@@ -79,8 +79,8 @@ class ResponseSpec(BaseModel):
     content_type: str | None = None
     business_meaning: str | None = None  # LLM-inferred
     example_scenario: str | None = None  # LLM-inferred
-    schema_: dict | None = Field(default=None, alias="schema")
-    example_body: dict | str | list | None = None
+    schema_: dict[str, Any] | None = Field(default=None, alias="schema")
+    example_body: dict[str, Any] | str | list[Any] | None = None
     user_impact: str | None = None  # LLM-inferred
     resolution: str | None = None  # LLM-inferred
 
@@ -93,28 +93,28 @@ class EndpointSpec(BaseModel):
     method: str
     business_purpose: str | None = None  # LLM-inferred
     user_story: str | None = None  # LLM-inferred
-    ui_triggers: list[UiTrigger] = Field(default_factory=list)
+    ui_triggers: list[UiTrigger] = []
     request: RequestSpec = Field(default_factory=RequestSpec)
-    responses: list[ResponseSpec] = Field(default_factory=list)
+    responses: list[ResponseSpec] = []
     rate_limit: str | None = None
     requires_auth: bool = False
     correlation_confidence: float | None = None  # LLM-inferred
     discovery_notes: str | None = None
     observed_count: int = 0
-    source_trace_refs: list[str] = Field(default_factory=list)
+    source_trace_refs: list[str] = []
 
 
 class RestProtocol(BaseModel):
     base_url: str = ""
-    endpoints: list[EndpointSpec] = Field(default_factory=list)
+    endpoints: list[EndpointSpec] = []
 
 
 class WsMessageSpec(BaseModel):
     direction: str = ""
     label: str = ""
     business_purpose: str | None = None  # LLM-inferred
-    payload_schema: dict | None = None
-    example_payload: dict | str | None = None
+    payload_schema: dict[str, Any] | None = None
+    example_payload: dict[str, Any] | str | None = None
 
 
 class WsConnectionSpec(BaseModel):
@@ -122,11 +122,11 @@ class WsConnectionSpec(BaseModel):
     url: str
     subprotocol: str | None = None
     business_purpose: str | None = None  # LLM-inferred
-    messages: list[WsMessageSpec] = Field(default_factory=list)
+    messages: list[WsMessageSpec] = []
 
 
 class WebSocketProtocol(BaseModel):
-    connections: list[WsConnectionSpec] = Field(default_factory=list)
+    connections: list[WsConnectionSpec] = []
 
 
 class Protocols(BaseModel):
@@ -138,7 +138,7 @@ class ApiSpec(BaseModel):
     api_spec_version: str = "1.0.0"
     name: str = ""
     discovery_date: str = ""
-    source_captures: list[str] = Field(default_factory=list)
+    source_captures: list[str] = []
     business_context: BusinessContext = Field(default_factory=BusinessContext)
     auth: AuthInfo = Field(default_factory=AuthInfo)
     protocols: Protocols = Field(default_factory=Protocols)

@@ -1,6 +1,5 @@
 """Tests for Pydantic models in cli/formats/."""
 
-import json
 
 from cli.formats.api_spec import (
     ApiSpec,
@@ -15,15 +14,11 @@ from cli.formats.api_spec import (
     ResponseSpec,
     RestProtocol,
     UiTrigger,
-    WebSocketProtocol,
     WsConnectionSpec,
     WsMessageSpec,
 )
 from cli.formats.capture_bundle import (
-    AppInfo,
-    BrowserInfo,
     CaptureManifest,
-    CaptureStats,
     ContextMeta,
     ElementInfo,
     Header,

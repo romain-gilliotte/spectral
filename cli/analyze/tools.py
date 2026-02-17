@@ -5,12 +5,14 @@ from __future__ import annotations
 import base64
 import json
 import re
+from collections.abc import Callable
 from datetime import datetime, timezone
 from pathlib import Path
+from typing import Any
 from urllib.parse import unquote
 
 
-def _save_debug(debug_dir: Path | None, call_name: str, prompt: str, response_text: str) -> None:
+def save_debug(debug_dir: Path | None, call_name: str, prompt: str, response_text: str) -> None:
     """Save an LLM call's prompt and response to the debug directory."""
     if debug_dir is None:
         return
@@ -19,11 +21,12 @@ def _save_debug(debug_dir: Path | None, call_name: str, prompt: str, response_te
     path.write_text(f"=== PROMPT ===\n{prompt}\n\n=== RESPONSE ===\n{response_text}\n")
 
 
-def _extract_json(text: str) -> dict | list:
+def extract_json(text: str) -> dict[str, Any] | list[Any]:
     """Extract JSON from LLM response text, handling markdown code blocks."""
     text = text.strip()
     try:
-        return json.loads(text)
+        parsed: dict[str, Any] | list[Any] = json.loads(text)
+        return parsed
     except json.JSONDecodeError:
         pass
 
@@ -31,7 +34,8 @@ def _extract_json(text: str) -> dict | list:
     match = re.search(r"```(?:json)?\s*\n?(.*?)```", text, re.DOTALL)
     if match:
         try:
-            return json.loads(match.group(1).strip())
+            parsed = json.loads(match.group(1).strip())
+            return parsed
         except json.JSONDecodeError:
             pass
 
@@ -48,7 +52,8 @@ def _extract_json(text: str) -> dict | list:
                 depth -= 1
                 if depth == 0:
                     try:
-                        return json.loads(text[start : i + 1])
+                        parsed = json.loads(text[start : i + 1])
+                        return parsed
                     except json.JSONDecodeError:
                         break
 
@@ -57,7 +62,7 @@ def _extract_json(text: str) -> dict | list:
 
 # --- Investigation tools for LLM tool_use ---
 
-INVESTIGATION_TOOLS = [
+INVESTIGATION_TOOLS: list[dict[str, Any]] = [
     {
         "name": "decode_base64",
         "description": "Decode a base64-encoded string (standard or URL-safe, auto-padding). Returns the decoded text (UTF-8) or a hex dump if the content is binary.",
@@ -103,7 +108,7 @@ INVESTIGATION_TOOLS = [
 ]
 
 
-def _execute_decode_base64(value: str) -> str:
+def execute_decode_base64(value: str) -> str:
     """Decode a base64 string (standard or URL-safe, with auto-padding)."""
     padded = value + "=" * (-len(value) % 4)
     raw = None
@@ -135,7 +140,7 @@ def _execute_decode_jwt(token: str) -> str:
     parts = token.split(".")
     if len(parts) < 2:
         raise ValueError("Invalid JWT: expected at least 2 dot-separated parts")
-    decoded = {}
+    decoded: dict[str, Any] = {}
     for label, part in zip(("header", "payload"), parts[:2]):
         padded = part + "=" * (-len(part) % 4)
         raw = base64.urlsafe_b64decode(padded)
@@ -143,19 +148,19 @@ def _execute_decode_jwt(token: str) -> str:
     return json.dumps(decoded, indent=2)
 
 
-_TOOL_EXECUTORS: dict[str, callable] = {
-    "decode_base64": lambda inp: _execute_decode_base64(inp["value"]),
+TOOL_EXECUTORS: dict[str, Callable[[dict[str, Any]], str]] = {
+    "decode_base64": lambda inp: execute_decode_base64(inp["value"]),
     "decode_url": lambda inp: _execute_decode_url(inp["value"]),
     "decode_jwt": lambda inp: _execute_decode_jwt(inp["token"]),
 }
 
 
-async def _call_with_tools(
-    client,
+async def call_with_tools(
+    client: Any,
     model: str,
-    messages: list[dict],
-    tools: list[dict],
-    executors: dict[str, callable],
+    messages: list[dict[str, Any]],
+    tools: list[dict[str, Any]],
+    executors: dict[str, Callable[[dict[str, Any]], str]],
     max_tokens: int = 4096,
     max_iterations: int = 10,
     debug_dir: Path | None = None,
@@ -163,7 +168,7 @@ async def _call_with_tools(
 ) -> str:
     """Call the LLM with tool_use support, looping until a text response is produced."""
     for _ in range(max_iterations):
-        response = await client.messages.create(
+        response: Any = await client.messages.create(
             model=model,
             max_tokens=max_tokens,
             tools=tools,
@@ -171,17 +176,17 @@ async def _call_with_tools(
         )
 
         if response.stop_reason != "tool_use":
-            parts = []
+            parts: list[str] = []
             for block in response.content:
                 if getattr(block, "type", None) == "text":
                     parts.append(block.text)
             text = "\n".join(parts)
-            _save_debug(debug_dir, call_name, messages[0]["content"], text)
+            save_debug(debug_dir, call_name, str(messages[0].get("content", "")), text)
             return text
 
         # Process tool calls
         messages.append({"role": "assistant", "content": response.content})
-        tool_results = []
+        tool_results: list[dict[str, Any]] = []
         for block in response.content:
             if getattr(block, "type", None) != "tool_use":
                 continue
@@ -210,4 +215,4 @@ async def _call_with_tools(
                 })
         messages.append({"role": "user", "content": tool_results})
 
-    raise ValueError(f"_call_with_tools exceeded {max_iterations} iterations")
+    raise ValueError(f"call_with_tools exceeded {max_iterations} iterations")

@@ -3,10 +3,18 @@
 from __future__ import annotations
 
 import json
+from typing import Any, cast
 
-from cli.analyze.steps.base import LLMStep, StepValidationError
-from cli.analyze.tools import _extract_json, _save_debug
-from cli.analyze.utils import _get_header, _sanitize_headers, _truncate_json
+from cli.analyze.steps.base import LLMStep
+from cli.analyze.tools import (
+    extract_json,
+    save_debug,
+)
+from cli.analyze.utils import (
+    get_header,
+    sanitize_headers,
+    truncate_json,
+)
 from cli.capture.models import Trace
 from cli.formats.api_spec import (
     AuthInfo,
@@ -25,7 +33,7 @@ class AnalyzeAuthStep(LLMStep[list[Trace], AuthInfo]):
     name = "analyze_auth"
 
     async def _execute(self, input: list[Trace]) -> AuthInfo:
-        auth_summary = _prepare_auth_summary(input)
+        auth_summary: list[dict[str, Any]] = _prepare_auth_summary(input)
 
         prompt = f"""Analyze the authentication mechanism used by this web application.
 
@@ -57,43 +65,45 @@ Look for these patterns:
 
 Respond in JSON."""
 
-        response = await self.client.messages.create(
+        response: Any = await self.client.messages.create(
             model=self.model,
             max_tokens=2048,
             messages=[{"role": "user", "content": prompt}],
         )
 
-        _save_debug(self.debug_dir, "analyze_auth", prompt, response.content[0].text)
-        data = _extract_json(response.content[0].text)
+        save_debug(self.debug_dir, "analyze_auth", prompt, response.content[0].text)
+        data = extract_json(response.content[0].text)
         if not isinstance(data, dict):
             return AuthInfo()
 
         login_config = None
-        login_data = data.get("login_endpoint")
-        if isinstance(login_data, dict) and login_data.get("url"):
+        login_data_raw: Any = data.get("login_endpoint")
+        if isinstance(login_data_raw, dict) and cast(dict[str, Any], login_data_raw).get("url"):
+            ld = cast(dict[str, Any], login_data_raw)
             login_config = LoginEndpointConfig(
-                url=login_data["url"],
-                method=login_data.get("method", "POST"),
-                credential_fields=login_data.get("credential_fields", {}),
-                extra_fields=login_data.get("extra_fields", {}),
-                token_response_path=login_data.get("token_response_path", "access_token"),
-                refresh_token_response_path=login_data.get("refresh_token_response_path", ""),
+                url=str(ld["url"]),
+                method=str(ld.get("method", "POST")),
+                credential_fields=ld.get("credential_fields", {}),
+                extra_fields=ld.get("extra_fields", {}),
+                token_response_path=str(ld.get("token_response_path", "access_token")),
+                refresh_token_response_path=str(ld.get("refresh_token_response_path", "")),
             )
 
         refresh_config = None
-        refresh_data = data.get("refresh_endpoint_config")
-        if isinstance(refresh_data, dict) and refresh_data.get("url"):
+        refresh_data_raw: Any = data.get("refresh_endpoint_config")
+        if isinstance(refresh_data_raw, dict) and cast(dict[str, Any], refresh_data_raw).get("url"):
+            rd = cast(dict[str, Any], refresh_data_raw)
             refresh_config = RefreshEndpointConfig(
-                url=refresh_data["url"],
-                method=refresh_data.get("method", "POST"),
-                token_field=refresh_data.get("token_field", "refresh_token"),
-                extra_fields=refresh_data.get("extra_fields", {}),
-                token_response_path=refresh_data.get("token_response_path", "access_token"),
+                url=str(rd["url"]),
+                method=str(rd.get("method", "POST")),
+                token_field=str(rd.get("token_field", "refresh_token")),
+                extra_fields=rd.get("extra_fields", {}),
+                token_response_path=str(rd.get("token_response_path", "access_token")),
             )
 
         return AuthInfo(
-            type=data.get("type", ""),
-            obtain_flow=data.get("obtain_flow", ""),
+            type=str(data.get("type", "")),
+            obtain_flow=str(data.get("obtain_flow", "")),
             business_process=data.get("business_process"),
             user_journey=data.get("user_journey", []),
             token_header=data.get("token_header"),
@@ -104,7 +114,7 @@ Respond in JSON."""
         )
 
 
-def _prepare_auth_summary(traces: list[Trace]) -> list[dict]:
+def _prepare_auth_summary(traces: list[Trace]) -> list[dict[str, Any]]:
     """Prepare trace summaries relevant to authentication."""
     _AUTH_URL_KEYWORDS = [
         "auth", "login", "token", "oauth", "callback", "session", "signin",
@@ -112,8 +122,8 @@ def _prepare_auth_summary(traces: list[Trace]) -> list[dict]:
     ]
     _LOGIN_URL_KEYWORDS = ["auth", "login", "signin", "token"]
 
-    summaries = []
-    login_summaries = []
+    summaries: list[dict[str, Any]] = []
+    login_summaries: list[dict[str, Any]] = []
 
     for t in traces:
         headers_dict = {h.name: h.value for h in t.meta.request.headers}
@@ -137,12 +147,12 @@ def _prepare_auth_summary(traces: list[Trace]) -> list[dict]:
             and any(kw in url_lower for kw in _LOGIN_URL_KEYWORDS)
         )
 
-        summary: dict = {
+        summary: dict[str, Any] = {
             "method": t.meta.request.method,
             "url": t.meta.request.url,
             "response_status": t.meta.response.status,
-            "request_headers": _sanitize_headers(headers_dict),
-            "response_headers": _sanitize_headers(resp_headers_dict),
+            "request_headers": sanitize_headers(headers_dict),
+            "response_headers": sanitize_headers(resp_headers_dict),
         }
 
         body_max_keys = 15 if is_login_post else 5
@@ -150,14 +160,14 @@ def _prepare_auth_summary(traces: list[Trace]) -> list[dict]:
         if t.request_body:
             try:
                 body = json.loads(t.request_body)
-                summary["request_body_snippet"] = _truncate_json(body, max_keys=body_max_keys)
+                summary["request_body_snippet"] = truncate_json(body, max_keys=body_max_keys)
             except (json.JSONDecodeError, UnicodeDecodeError):
                 pass
 
         if t.response_body:
             try:
                 body = json.loads(t.response_body)
-                summary["response_body_snippet"] = _truncate_json(body, max_keys=body_max_keys)
+                summary["response_body_snippet"] = truncate_json(body, max_keys=body_max_keys)
             except (json.JSONDecodeError, UnicodeDecodeError):
                 pass
 
@@ -175,20 +185,20 @@ def _prepare_auth_summary(traces: list[Trace]) -> list[dict]:
                 "method": t.meta.request.method,
                 "url": t.meta.request.url,
                 "response_status": t.meta.response.status,
-                "request_headers": _sanitize_headers(headers_dict),
+                "request_headers": sanitize_headers(headers_dict),
             })
 
     return summaries
 
 
-def _detect_auth_mechanical(traces: list[Trace]) -> AuthInfo:
+def detect_auth_mechanical(traces: list[Trace]) -> AuthInfo:
     """Fallback mechanical auth detection."""
     auth_type = ""
     token_header = None
     token_prefix = None
 
     for trace in traces:
-        auth_value = _get_header(trace.meta.request.headers, "authorization")
+        auth_value = get_header(trace.meta.request.headers, "authorization")
         if auth_value:
             token_header = "Authorization"
             if auth_value.startswith("Bearer "):
@@ -214,7 +224,7 @@ def _detect_auth_mechanical(traces: list[Trace]) -> AuthInfo:
 
     if not auth_type:
         for trace in traces:
-            cookie = _get_header(trace.meta.request.headers, "cookie")
+            cookie = get_header(trace.meta.request.headers, "cookie")
             if cookie and any(
                 name in cookie.lower() for name in ["session", "token", "auth", "jwt"]
             ):

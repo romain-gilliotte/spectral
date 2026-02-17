@@ -1,7 +1,5 @@
 """Time-window correlation: UI action -> API calls."""
 
-from __future__ import annotations
-
 from dataclasses import dataclass, field
 
 from cli.capture.models import CaptureBundle, Context, Trace, WsMessage
@@ -15,8 +13,8 @@ class Correlation:
     """A correlation between a UI context and API traces/messages."""
 
     context: Context
-    traces: list[Trace] = field(default_factory=list)
-    ws_messages: list[WsMessage] = field(default_factory=list)
+    traces: list[Trace] = field(default_factory=lambda: list[Trace]())
+    ws_messages: list[WsMessage] = field(default_factory=lambda: list[WsMessage]())
 
 
 def correlate(
@@ -72,7 +70,7 @@ def find_uncorrelated_traces(
     bundle: CaptureBundle, correlations: list[Correlation]
 ) -> list[Trace]:
     """Find traces that were not correlated with any context."""
-    correlated_ids = set()
+    correlated_ids: set[str] = set()
     for corr in correlations:
         for t in corr.traces:
             correlated_ids.add(t.meta.id)

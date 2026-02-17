@@ -4,10 +4,14 @@ from __future__ import annotations
 
 import json
 from dataclasses import dataclass
+from typing import Any, cast
 
 from cli.analyze.steps.base import LLMStep
-from cli.analyze.tools import _extract_json, _save_debug
-from cli.analyze.utils import _truncate_json
+from cli.analyze.tools import (
+    extract_json,
+    save_debug,
+)
+from cli.analyze.utils import truncate_json
 from cli.capture.models import Trace, WsConnection
 from cli.formats.api_spec import (
     BusinessContext,
@@ -31,7 +35,7 @@ class EnrichOutput:
     business_context: BusinessContext
     glossary: dict[str, str]
     api_name: str | None = None
-    ws_enrichments: dict[str, str] | None = None  # ws_id → business_purpose
+    ws_enrichments: dict[str, str] | None = None  # ws_id -> business_purpose
 
 
 class EnrichAndContextStep(LLMStep[EnrichInput, EnrichOutput]):
@@ -48,14 +52,14 @@ class EnrichAndContextStep(LLMStep[EnrichInput, EnrichOutput]):
         trace_map = {t.meta.id: t for t in input.traces}
 
         # Build compact summaries of all endpoints
-        endpoint_summaries = []
+        endpoint_summaries: list[dict[str, Any]] = []
         for ep in input.endpoints:
-            summary = {
-                "id": ep.id,
-                "method": ep.method,
-                "path": ep.path,
-                "observed_count": ep.observed_count,
-            }
+            summary: dict[str, Any] = dict(
+                id=ep.id,
+                method=ep.method,
+                path=ep.path,
+                observed_count=ep.observed_count,
+            )
 
             # Add UI triggers
             if ep.ui_triggers:
@@ -70,12 +74,12 @@ class EnrichAndContextStep(LLMStep[EnrichInput, EnrichOutput]):
                 t = ep_traces[0]
                 if t.request_body:
                     try:
-                        summary["sample_request_body"] = _truncate_json(json.loads(t.request_body), max_keys=8)
+                        summary["sample_request_body"] = truncate_json(json.loads(t.request_body), max_keys=8)
                     except (json.JSONDecodeError, UnicodeDecodeError):
                         pass
                 if t.response_body:
                     try:
-                        summary["sample_response_body"] = _truncate_json(json.loads(t.response_body), max_keys=8)
+                        summary["sample_response_body"] = truncate_json(json.loads(t.response_body), max_keys=8)
                     except (json.JSONDecodeError, UnicodeDecodeError):
                         pass
                 summary["response_statuses"] = list(set(
@@ -85,12 +89,15 @@ class EnrichAndContextStep(LLMStep[EnrichInput, EnrichOutput]):
 
             # Add parameter names with observed values for constraint inference
             if ep.request.parameters:
-                summary["parameters"] = []
+                params_list: list[dict[str, Any]] = []
                 for p in ep.request.parameters:
-                    param_info: dict = {"name": p.name, "location": p.location, "type": p.type}
+                    param_info: dict[str, Any] = dict(
+                        name=p.name, location=p.location, type=p.type,
+                    )
                     if p.observed_values:
                         param_info["observed_values"] = p.observed_values[:3]
-                    summary["parameters"].append(param_info)
+                    params_list.append(param_info)
+                summary["parameters"] = params_list
 
             endpoint_summaries.append(summary)
 
@@ -98,23 +105,23 @@ class EnrichAndContextStep(LLMStep[EnrichInput, EnrichOutput]):
         ws_section = ""
         ws_ids: list[str] = []
         if input.ws_connections:
-            ws_summaries = []
+            ws_summaries: list[dict[str, Any]] = []
             for ws in input.ws_connections:
                 ws_ids.append(ws.meta.id)
-                ws_info: dict = {
-                    "id": ws.meta.id,
-                    "url": ws.meta.url,
-                    "message_count": len(ws.messages),
-                }
+                ws_info: dict[str, Any] = dict(
+                    id=ws.meta.id,
+                    url=ws.meta.url,
+                    message_count=len(ws.messages),
+                )
                 if ws.meta.protocols:
                     ws_info["protocols"] = ws.meta.protocols
                 # Include a sample of message payloads
-                msg_samples = []
+                msg_samples: list[dict[str, Any]] = []
                 for msg in ws.messages[:3]:
                     if msg.payload:
                         try:
                             payload = json.loads(msg.payload)
-                            msg_samples.append({"direction": msg.meta.direction, "payload": _truncate_json(payload, max_keys=5)})
+                            msg_samples.append({"direction": msg.meta.direction, "payload": truncate_json(payload, max_keys=5)})
                         except (json.JSONDecodeError, UnicodeDecodeError):
                             pass
                 if msg_samples:
@@ -155,14 +162,14 @@ Provide a SINGLE JSON response with {("three" if ws_ids else "two")} top-level k
 {('3. "websocket_purposes": an object keyed by WebSocket connection ID (' + ", ".join(f'"{wid}"' for wid in ws_ids) + '), where each value is a concise business_purpose string describing what this WebSocket connection is used for.' if ws_ids else "")}
 Respond in JSON."""
 
-        response = await self.client.messages.create(
+        response: Any = await self.client.messages.create(
             model=self.model,
             max_tokens=6144,
             messages=[{"role": "user", "content": prompt}],
         )
 
-        _save_debug(self.debug_dir, "enrich_and_context", prompt, response.content[0].text)
-        data = _extract_json(response.content[0].text)
+        save_debug(self.debug_dir, "enrich_and_context", prompt, response.content[0].text)
+        data = extract_json(response.content[0].text)
 
         if not isinstance(data, dict):
             return EnrichOutput(
@@ -172,62 +179,71 @@ Respond in JSON."""
             )
 
         # Apply per-endpoint enrichments
-        enrichments = data.get("endpoints", {})
-        if isinstance(enrichments, dict):
+        enrichments_raw: Any = data.get("endpoints", {})
+        if isinstance(enrichments_raw, dict):
+            enrichments_dict = cast(dict[str, Any], enrichments_raw)
             for ep in input.endpoints:
-                enrich = enrichments.get(ep.id, {})
-                if not isinstance(enrich, dict):
+                enrich_raw: Any = enrichments_dict.get(ep.id, {})
+                if not isinstance(enrich_raw, dict):
                     continue
-                _apply_enrichment(ep, enrich)
+                _apply_enrichment(ep, cast(dict[str, Any], enrich_raw))
 
         # Parse business context
-        ctx_data = data.get("business_context", {})
-        if not isinstance(ctx_data, dict):
-            ctx_data = {}
+        ctx_raw: Any = data.get("business_context", {})
+        if not isinstance(ctx_raw, dict):
+            ctx_raw = {}
+        ctx_data = cast(dict[str, Any], ctx_raw)
 
-        workflows = []
-        for wf in ctx_data.get("key_workflows", []):
-            if isinstance(wf, dict):
-                workflows.append(
-                    WorkflowStep(
-                        name=wf.get("name", ""),
-                        description=wf.get("description", ""),
-                        steps=wf.get("steps", []),
+        workflows: list[WorkflowStep] = []
+        wf_list: Any = ctx_data.get("key_workflows", [])
+        if isinstance(wf_list, list):
+            for wf_raw_item in cast(list[Any], wf_list):
+                if isinstance(wf_raw_item, dict):
+                    wf = cast(dict[str, Any], wf_raw_item)
+                    workflows.append(
+                        WorkflowStep(
+                            name=str(wf.get("name", "")),
+                            description=str(wf.get("description", "")),
+                            steps=wf.get("steps", []),
+                        )
                     )
-                )
 
         business_context = BusinessContext(
-            domain=ctx_data.get("domain", ""),
-            description=ctx_data.get("description", ""),
+            domain=str(ctx_data.get("domain", "")),
+            description=str(ctx_data.get("description", "")),
             user_personas=ctx_data.get("user_personas", []),
             key_workflows=workflows,
         )
 
-        glossary = ctx_data.get("business_glossary", {})
-        if not isinstance(glossary, dict):
-            glossary = {}
+        glossary_raw: Any = ctx_data.get("business_glossary", {})
+        glossary: dict[str, str] = {}
+        if isinstance(glossary_raw, dict):
+            glossary = cast(dict[str, str], glossary_raw)
 
-        api_name = ctx_data.get("api_name")
-        if not isinstance(api_name, str) or not api_name.strip():
-            api_name = None
+        api_name_raw: Any = ctx_data.get("api_name")
+        api_name: str | None = None
+        if isinstance(api_name_raw, str) and api_name_raw.strip():
+            api_name = api_name_raw
 
-        ws_enrichments = data.get("websocket_purposes", {})
-        if not isinstance(ws_enrichments, dict):
-            ws_enrichments = None
-        elif ws_enrichments:
+        ws_enrichments: dict[str, str] | None = None
+        ws_raw: Any = data.get("websocket_purposes", {})
+        if isinstance(ws_raw, dict):
+            ws_dict = cast(dict[str, Any], ws_raw)
             # Filter to only string values
-            ws_enrichments = {k: v for k, v in ws_enrichments.items() if isinstance(v, str)}
+            ws_enrichments = {str(k): v for k, v in ws_dict.items() if isinstance(v, str)}
+            if not ws_enrichments:
+                ws_enrichments = None
 
         return EnrichOutput(
             endpoints=input.endpoints,
             business_context=business_context,
             glossary=glossary,
             api_name=api_name,
-            ws_enrichments=ws_enrichments or None,
+            ws_enrichments=ws_enrichments,
         )
 
 
-def _apply_enrichment(endpoint: EndpointSpec, enrich: dict) -> None:
+def _apply_enrichment(endpoint: EndpointSpec, enrich: dict[str, Any]) -> None:
     """Apply enrichment data from the batch LLM response to an endpoint."""
     if enrich.get("business_purpose"):
         endpoint.business_purpose = enrich["business_purpose"]
@@ -236,32 +252,34 @@ def _apply_enrichment(endpoint: EndpointSpec, enrich: dict) -> None:
     if enrich.get("discovery_notes"):
         endpoint.discovery_notes = enrich["discovery_notes"]
 
-    conf = enrich.get("correlation_confidence")
+    conf: Any = enrich.get("correlation_confidence")
     if conf is not None:
         try:
             endpoint.correlation_confidence = float(conf)
         except (ValueError, TypeError):
             pass
 
-    param_meanings = enrich.get("parameter_meanings", {})
+    param_meanings: Any = enrich.get("parameter_meanings", {})
     if isinstance(param_meanings, dict):
         for param in endpoint.request.parameters:
             if param.name in param_meanings:
                 param.business_meaning = param_meanings[param.name]
 
-    param_constraints = enrich.get("parameter_constraints", {})
+    param_constraints: Any = enrich.get("parameter_constraints", {})
     if isinstance(param_constraints, dict):
         for param in endpoint.request.parameters:
             if param.name in param_constraints:
                 param.constraints = param_constraints[param.name]
 
     # Support both rich response_details and flat response_meanings
-    response_details = enrich.get("response_details", {})
-    if isinstance(response_details, dict) and response_details:
+    response_details_raw: Any = enrich.get("response_details", {})
+    if isinstance(response_details_raw, dict) and response_details_raw:
+        rd = cast(dict[str, Any], response_details_raw)
         for resp in endpoint.responses:
             key = str(resp.status)
-            detail = response_details.get(key)
-            if isinstance(detail, dict):
+            detail_raw: Any = rd.get(key)
+            if isinstance(detail_raw, dict):
+                detail = cast(dict[str, Any], detail_raw)
                 if detail.get("business_meaning"):
                     resp.business_meaning = detail["business_meaning"]
                 if detail.get("example_scenario"):
@@ -270,20 +288,22 @@ def _apply_enrichment(endpoint: EndpointSpec, enrich: dict) -> None:
                     resp.user_impact = detail["user_impact"]
                 if detail.get("resolution"):
                     resp.resolution = detail["resolution"]
-            elif isinstance(detail, str):
+            elif isinstance(detail_raw, str):
                 # Tolerate flat string in response_details
-                resp.business_meaning = detail
+                resp.business_meaning = detail_raw
     else:
         # Fallback to flat response_meanings format
-        response_meanings = enrich.get("response_meanings", {})
-        if isinstance(response_meanings, dict):
+        response_meanings_raw: Any = enrich.get("response_meanings", {})
+        if isinstance(response_meanings_raw, dict):
+            rm = cast(dict[str, Any], response_meanings_raw)
             for resp in endpoint.responses:
                 key = str(resp.status)
-                if key in response_meanings:
-                    resp.business_meaning = response_meanings[key]
+                if key in rm:
+                    resp.business_meaning = rm[key]
 
-    trigger_explanations = enrich.get("trigger_explanations", [])
-    if isinstance(trigger_explanations, list):
+    trigger_explanations_raw: Any = enrich.get("trigger_explanations", [])
+    if isinstance(trigger_explanations_raw, list):
+        trigger_explanations = cast(list[Any], trigger_explanations_raw)
         for i, trigger in enumerate(endpoint.ui_triggers):
             if i < len(trigger_explanations):
                 trigger.user_explanation = trigger_explanations[i]

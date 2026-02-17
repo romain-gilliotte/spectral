@@ -7,8 +7,13 @@ import subprocess
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 import click
+
+if TYPE_CHECKING:
+    from mitmproxy.http import HTTPFlow, Headers as mitmproxy_Headers
+    from mitmproxy.tls import ClientHelloData
 
 from cli.capture.loader import write_bundle
 from cli.capture.models import CaptureBundle, Trace, WsConnection, WsMessage
@@ -27,10 +32,11 @@ from cli.formats.capture_bundle import (
 )
 
 
-def _ensure_mitmproxy():
+def _ensure_mitmproxy() -> None:
     """Lazy-import mitmproxy, raising a clear error if not installed."""
     try:
-        import mitmproxy  # noqa: F401
+        import mitmproxy as _mitmproxy  # noqa: F401
+        del _mitmproxy
     except ImportError:
         raise ImportError(
             "mitmproxy is required for Android capture.\n"
@@ -39,20 +45,26 @@ def _ensure_mitmproxy():
         )
 
 
-def flow_to_trace(flow, trace_id: str) -> Trace:
+def _header_items(headers: mitmproxy_Headers) -> list[tuple[str, str]]:
+    """Extract header items from mitmproxy Headers, typed for pyright."""
+    items: list[tuple[str, str]] = list(headers.items(multi=True))  # pyright: ignore[reportUnknownMemberType, reportUnknownArgumentType]
+    return items
+
+
+def flow_to_trace(flow: HTTPFlow, trace_id: str) -> Trace:
     """Convert a mitmproxy HTTPFlow to a Trace."""
     req = flow.request
     resp = flow.response
 
-    req_headers = [Header(name=k, value=v) for k, v in req.headers.items(multi=True)]
+    req_headers = [Header(name=k, value=v) for k, v in _header_items(req.headers)]
     req_body = req.content or b""
 
-    resp_headers = []
+    resp_headers: list[Header] = []
     resp_body = b""
     status = 0
     status_text = ""
     if resp:
-        resp_headers = [Header(name=k, value=v) for k, v in resp.headers.items(multi=True)]
+        resp_headers = [Header(name=k, value=v) for k, v in _header_items(resp.headers)]
         resp_body = resp.content or b""
         status = resp.status_code
         status_text = resp.reason or ""
@@ -89,7 +101,7 @@ def flow_to_trace(flow, trace_id: str) -> Trace:
 
 
 def ws_flow_to_connection(
-    flow, ws_id: str, messages: list[WsMessage],
+    flow: HTTPFlow, ws_id: str, messages: list[WsMessage],
 ) -> WsConnection:
     """Convert mitmproxy WebSocket data to a WsConnection."""
     meta = WsConnectionMeta(
@@ -102,9 +114,9 @@ def ws_flow_to_connection(
     return WsConnection(meta=meta, messages=messages)
 
 
-def _extract_ws_protocols(flow) -> list[str]:
+def _extract_ws_protocols(flow: HTTPFlow) -> list[str]:
     """Extract WebSocket sub-protocols from the handshake."""
-    proto = flow.request.headers.get("Sec-WebSocket-Protocol", "")
+    proto = str(flow.request.headers.get("Sec-WebSocket-Protocol", "") or "")  # pyright: ignore[reportUnknownMemberType, reportUnknownArgumentType]
     if proto:
         return [p.strip() for p in proto.split(",")]
     return []
@@ -113,10 +125,10 @@ def _extract_ws_protocols(flow) -> list[str]:
 class DiscoveryAddon:
     """mitmproxy addon that logs domains without MITM (passthrough TLS)."""
 
-    def __init__(self):
+    def __init__(self) -> None:
         self.domains: dict[str, int] = {}  # domain → request count
 
-    def tls_clienthello(self, data):
+    def tls_clienthello(self, data: ClientHelloData) -> None:
         """Skip MITM — just log the SNI and pass through."""
         sni = data.context.client.sni
         if sni:
@@ -124,7 +136,7 @@ class DiscoveryAddon:
             click.echo(f"  {sni}  ({self.domains[sni]})")
         data.ignore_connection = True
 
-    def request(self, flow):
+    def request(self, flow: HTTPFlow) -> None:
         """Log plain HTTP requests (non-TLS)."""
         host = flow.request.host
         if host:
@@ -135,19 +147,20 @@ class DiscoveryAddon:
 class CaptureAddon:
     """mitmproxy addon that collects flows into Trace/WsConnection objects."""
 
-    def __init__(self):
+    def __init__(self) -> None:
         self.traces: list[Trace] = []
         self.ws_connections: list[WsConnection] = []
-        self._trace_counter = 0
-        self._ws_counter = 0
+        self._trace_counter: int = 0
+        self._ws_counter: int = 0
         self._ws_msg_counters: dict[str, int] = {}
         self._ws_messages: dict[str, list[WsMessage]] = {}
-        self._ws_flows: dict[str, object] = {}
+        self._ws_flows: dict[str, HTTPFlow] = {}
+        self._flow_ws_ids: dict[str, str] = {}  # flow.id -> ws_id
         self.domains_seen: set[str] = set()
 
-    def response(self, flow):
+    def response(self, flow: HTTPFlow) -> None:
         """Called when a full HTTP response has been received."""
-        if hasattr(flow, "websocket") and flow.websocket:
+        if flow.websocket:
             return
 
         self._trace_counter += 1
@@ -159,11 +172,11 @@ class CaptureAddon:
         status = flow.response.status_code if flow.response else "?"
         click.echo(f"  {trace_id}  {flow.request.method:<6} {status}  {flow.request.pretty_url}")
 
-    def websocket_start(self, flow):
+    def websocket_start(self, flow: HTTPFlow) -> None:
         """Called when a WebSocket connection is established."""
         self._ws_counter += 1
         ws_id = f"ws_{self._ws_counter:04d}"
-        flow._capture_ws_id = ws_id
+        self._flow_ws_ids[flow.id] = ws_id
         self._ws_msg_counters[ws_id] = 0
         self._ws_messages[ws_id] = []
         self._ws_flows[ws_id] = flow
@@ -171,14 +184,15 @@ class CaptureAddon:
 
         click.echo(f"  {ws_id}  WS OPEN  {flow.request.pretty_url}")
 
-    def websocket_message(self, flow):
+    def websocket_message(self, flow: HTTPFlow) -> None:
         """Called for each WebSocket message."""
-        ws_id = getattr(flow, "_capture_ws_id", None)
+        ws_id = self._flow_ws_ids.get(flow.id)
         if ws_id is None:
             return
 
         from mitmproxy.websocket import WebSocketMessage
 
+        assert flow.websocket is not None
         msg: WebSocketMessage = flow.websocket.messages[-1]
         self._ws_msg_counters[ws_id] += 1
         msg_num = self._ws_msg_counters[ws_id]
@@ -206,9 +220,9 @@ class CaptureAddon:
         arrow = ">>>" if direction == "send" else "<<<"
         click.echo(f"  {msg_id}  WS {arrow}  {len(payload)}B {opcode}")
 
-    def websocket_end(self, flow):
+    def websocket_end(self, flow: HTTPFlow) -> None:
         """Called when a WebSocket connection closes."""
-        ws_id = getattr(flow, "_capture_ws_id", None)
+        ws_id = self._flow_ws_ids.get(flow.id)
         if ws_id is None:
             return
 
@@ -357,9 +371,9 @@ def run_proxy(
     loop = asyncio.new_event_loop()
     opts = Options(listen_port=port, mode=["regular"])
     if allow_hosts:
-        opts.update(allow_hosts=allow_hosts)
+        opts.update(allow_hosts=allow_hosts)  # pyright: ignore[reportUnknownMemberType]
     master = DumpMaster(opts, loop=loop)
-    master.addons.add(discovery_addon if discovery_mode else addon)
+    master.addons.add(discovery_addon if discovery_mode else addon)  # pyright: ignore[reportUnknownMemberType]
 
     proxy_thread = threading.Thread(
         target=loop.run_until_complete, args=(master.run(),), daemon=True,
@@ -374,12 +388,12 @@ def run_proxy(
     # --- Show instructions ---
 
     if discovery_mode:
-        click.echo(f"\n  Discovery mode — no MITM, just logging domains.")
-        click.echo(f"  Re-run with -d <domain> to capture traffic.\n")
+        click.echo("\n  Discovery mode — no MITM, just logging domains.")
+        click.echo("  Re-run with -d <domain> to capture traffic.\n")
     else:
-        click.echo(f"\n  Install the CA certificate (if not already done):")
-        click.echo(f"     Settings → Security → Install from storage → CA certificate")
-        click.echo(f"     → select mitmproxy-ca-cert.crt\n")
+        click.echo("\n  Install the CA certificate (if not already done):")
+        click.echo("     Settings → Security → Install from storage → CA certificate")
+        click.echo("     → select mitmproxy-ca-cert.crt\n")
 
     if not proxy_set:
         click.echo(
@@ -393,7 +407,7 @@ def run_proxy(
 
     start_time = time.time()
 
-    signal.signal(signal.SIGINT, lambda *_: _shutdown())
+    signal.signal(signal.SIGINT, lambda *_: _shutdown())  # pyright: ignore[reportUnknownLambdaType, reportUnknownArgumentType]
 
     while proxy_thread.is_alive():
         proxy_thread.join(timeout=1)
@@ -402,24 +416,27 @@ def run_proxy(
 
     if not proxy_set:
         click.echo(
-            f"\n  Don't forget to remove the proxy on your device:\n"
-            f"  Settings → Wi-Fi → your network → Proxy → None\n"
+            "\n  Don't forget to remove the proxy on your device:\n"
+            "  Settings → Wi-Fi → your network → Proxy → None\n"
         )
 
     if discovery_mode:
         # Print domain summary
+        assert discovery_addon is not None
         domains = discovery_addon.domains
         if domains:
             click.echo(f"\n  Discovered {len(domains)} domain(s):\n")
             for domain, count in sorted(domains.items(), key=lambda x: -x[1]):
                 click.echo(f"    {count:4d}  {domain}")
-            click.echo(f"\n  Re-run with -d to capture specific domains, e.g.:")
+            click.echo("\n  Re-run with -d to capture specific domains, e.g.:")
             top = sorted(domains.items(), key=lambda x: -x[1])[0][0]
             click.echo(f"    spectral android capture -d '{top}'\n")
         else:
             click.echo("\n  No domains discovered.\n")
         return None
 
+    assert addon is not None
+    assert output_path is not None
     bundle = addon.build_bundle(app_name, start_time, end_time)
 
     output_path.parent.mkdir(parents=True, exist_ok=True)

@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-import re
 from pathlib import Path
+from typing import Any
 
 import yaml
 
@@ -19,9 +19,9 @@ def generate_openapi(spec: ApiSpec, output_path: str | Path) -> None:
         yaml.dump(openapi, f, default_flow_style=False, sort_keys=False, allow_unicode=True)
 
 
-def build_openapi_dict(spec: ApiSpec) -> dict:
+def build_openapi_dict(spec: ApiSpec) -> dict[str, Any]:
     """Build an OpenAPI 3.1 dictionary from an enriched API spec."""
-    openapi: dict = {
+    openapi: dict[str, Any] = {
         "openapi": "3.1.0",
         "info": {
             "title": spec.name,
@@ -35,7 +35,8 @@ def build_openapi_dict(spec: ApiSpec) -> dict:
 
     # Servers
     if spec.protocols.rest.base_url:
-        openapi["servers"].append({"url": spec.protocols.rest.base_url})
+        servers: list[dict[str, Any]] = openapi["servers"]
+        servers.append({"url": spec.protocols.rest.base_url})
 
     # Security schemes
     if spec.auth.type == "bearer_token":
@@ -71,14 +72,15 @@ def build_openapi_dict(spec: ApiSpec) -> dict:
             openapi["paths"][path] = {}
 
         operation = _build_operation(endpoint, spec)
-        openapi["paths"][path][method] = operation
+        paths: dict[str, Any] = openapi["paths"]
+        paths[path][method] = operation
 
     return openapi
 
 
-def _build_operation(endpoint: EndpointSpec, spec: ApiSpec) -> dict:
+def _build_operation(endpoint: EndpointSpec, spec: ApiSpec) -> dict[str, Any]:
     """Build an OpenAPI operation object for an endpoint."""
-    operation: dict = {
+    operation: dict[str, Any] = {
         "operationId": endpoint.id,
         "summary": endpoint.business_purpose or f"{endpoint.method} {endpoint.path}",
     }
@@ -92,16 +94,16 @@ def _build_operation(endpoint: EndpointSpec, spec: ApiSpec) -> dict:
         operation["tags"] = [tag]
 
     # Parameters (path + query)
-    parameters = []
+    parameters: list[dict[str, Any]] = []
     for param in endpoint.request.parameters:
         if param.location in ("path", "query"):
-            p: dict = {
+            p: dict[str, Any] = {
                 "name": param.name,
                 "in": param.location,
                 "required": param.required,
                 "schema": {"type": param.type},
             }
-            desc_parts = []
+            desc_parts: list[str] = []
             if param.business_meaning:
                 desc_parts.append(param.business_meaning)
             if param.constraints:
@@ -109,9 +111,11 @@ def _build_operation(endpoint: EndpointSpec, spec: ApiSpec) -> dict:
             if desc_parts:
                 p["description"] = ". ".join(desc_parts)
             if param.example:
-                p["schema"]["examples"] = [param.example]
+                schema_dict: dict[str, Any] = p["schema"]
+                schema_dict["examples"] = [param.example]
             if param.format:
-                p["schema"]["format"] = param.format
+                schema_dict2: dict[str, Any] = p["schema"]
+                schema_dict2["format"] = param.format
             parameters.append(p)
 
     if parameters:
@@ -120,17 +124,17 @@ def _build_operation(endpoint: EndpointSpec, spec: ApiSpec) -> dict:
     # Request body (body params)
     body_params = [p for p in endpoint.request.parameters if p.location == "body"]
     if body_params:
-        properties = {}
-        required = []
+        properties: dict[str, Any] = {}
+        required: list[str] = []
         for param in body_params:
-            prop: dict = {"type": param.type}
-            desc_parts = []
+            prop: dict[str, Any] = {"type": param.type}
+            body_desc_parts: list[str] = []
             if param.business_meaning:
-                desc_parts.append(param.business_meaning)
+                body_desc_parts.append(param.business_meaning)
             if param.constraints:
-                desc_parts.append(param.constraints)
-            if desc_parts:
-                prop["description"] = ". ".join(desc_parts)
+                body_desc_parts.append(param.constraints)
+            if body_desc_parts:
+                prop["description"] = ". ".join(body_desc_parts)
             if param.example:
                 prop["examples"] = [param.example]
             if param.format:
@@ -139,7 +143,7 @@ def _build_operation(endpoint: EndpointSpec, spec: ApiSpec) -> dict:
             if param.required:
                 required.append(param.name)
 
-        body_schema: dict = {"type": "object", "properties": properties}
+        body_schema: dict[str, Any] = {"type": "object", "properties": properties}
         if required:
             body_schema["required"] = required
 
@@ -152,12 +156,13 @@ def _build_operation(endpoint: EndpointSpec, spec: ApiSpec) -> dict:
     # Responses
     operation["responses"] = {}
     for resp in endpoint.responses:
-        resp_obj: dict = {
+        resp_obj: dict[str, Any] = {
             "description": resp.business_meaning or f"Status {resp.status}",
         }
         if resp.schema_:
             ct = resp.content_type or "application/json"
-            resp_obj["content"] = {ct: {"schema": resp.schema_}}
+            schema_value: dict[str, Any] = resp.schema_
+            resp_obj["content"] = {ct: {"schema": schema_value}}
         operation["responses"][str(resp.status)] = resp_obj
 
     if not operation["responses"]:

@@ -1,10 +1,6 @@
 """Tests for capture bundle loader/writer."""
 
-import json
-import tempfile
-from pathlib import Path
 
-import pytest
 
 from cli.capture.loader import (
     load_bundle,

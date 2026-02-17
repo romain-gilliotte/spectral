@@ -4,7 +4,10 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
-from cli.analyze.steps.base import LLMStep, MechanicalStep, Step, StepValidationError
+from cli.analyze.steps.base import LLMStep as LLMStep
+from cli.analyze.steps.base import MechanicalStep as MechanicalStep
+from cli.analyze.steps.base import Step as Step
+from cli.analyze.steps.base import StepValidationError as StepValidationError
 
 
 @dataclass
@@ -13,7 +16,7 @@ class EndpointGroup:
 
     method: str
     pattern: str
-    urls: list[str] = field(default_factory=list)
+    urls: list[str] = field(default_factory=lambda: [])
 
 
 __all__ = [

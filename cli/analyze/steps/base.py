@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 from pathlib import Path
-from typing import Generic, TypeVar
+from typing import Any, Generic, TypeVar
 
 In = TypeVar("In")
 Out = TypeVar("Out")
@@ -13,9 +13,9 @@ Out = TypeVar("Out")
 class StepValidationError(Exception):
     """Raised when a step's output fails validation."""
 
-    def __init__(self, message: str, details: dict | None = None):
+    def __init__(self, message: str, details: dict[str, Any] | None = None):
         super().__init__(message)
-        self.details = details or {}
+        self.details: dict[str, Any] = details or {}
 
 
 class Step(ABC, Generic[In, Out]):
@@ -65,8 +65,8 @@ class LLMStep(Step[In, Out]):
 
     max_retries: int = 1
 
-    def __init__(self, client, model: str, debug_dir: Path | None = None):
-        self.client = client
+    def __init__(self, client: Any, model: str, debug_dir: Path | None = None):
+        self.client: Any = client
         self.model = model
         self.debug_dir = debug_dir
 

@@ -15,7 +15,6 @@ from cli.formats.capture_bundle import (
     ContextMeta,
     ElementInfo,
     Header,
-    Initiator,
     PageInfo,
     RequestMeta,
     ResponseMeta,

@@ -7,11 +7,13 @@ bundle. Auth and WebSocket analysis run in parallel with the main branch.
 from __future__ import annotations
 
 import asyncio
+from collections.abc import Callable
 from datetime import datetime, timezone
 from pathlib import Path
+from typing import Any
 
 from cli.analyze.correlator import correlate
-from cli.analyze.steps.analyze_auth import AnalyzeAuthStep, _detect_auth_mechanical
+from cli.analyze.steps.analyze_auth import AnalyzeAuthStep, detect_auth_mechanical
 from cli.analyze.steps.assemble import AssembleInput, AssembleStep
 from cli.analyze.steps.build_ws_specs import BuildWsSpecsStep
 from cli.analyze.steps.detect_base_url import DetectBaseUrlStep
@@ -25,15 +27,15 @@ from cli.analyze.steps.mechanical_extraction import (
 )
 from cli.analyze.steps.strip_prefix import StripPrefixInput, StripPrefixStep
 from cli.capture.models import CaptureBundle
-from cli.formats.api_spec import ApiSpec, AuthInfo, BusinessContext
+from cli.formats.api_spec import ApiSpec, BusinessContext
 
 
 async def build_spec(
     bundle: CaptureBundle,
-    client,
+    client: Any,
     model: str,
     source_filename: str = "",
-    on_progress=None,
+    on_progress: Callable[[str], None] | None = None,
     enable_debug: bool = False,
     skip_enrich: bool = False,
 ) -> ApiSpec:
@@ -52,7 +54,7 @@ async def build_spec(
     10. Assemble final spec
     """
 
-    def progress(msg: str):
+    def progress(msg: str) -> None:
         if on_progress:
             on_progress(msg)
 
@@ -119,7 +121,7 @@ async def build_spec(
     else:
         progress("Enriching endpoints + analyzing auth + building WS specs...")
 
-    async def _enrich():
+    async def _enrich() -> Any:
         if skip_enrich:
             return None
         enrich_step = EnrichAndContextStep(client, model, debug_dir)
@@ -136,22 +138,23 @@ async def build_spec(
         except Exception:
             return None
 
-    async def _auth():
+    async def _auth() -> Any:
         auth_step = AnalyzeAuthStep(client, model, debug_dir)
         try:
             return await auth_step.run(all_traces)
         except Exception:
-            return _detect_auth_mechanical(all_traces)
+            return detect_auth_mechanical(all_traces)
 
-    async def _ws():
+    async def _ws() -> Any:
         ws_step = BuildWsSpecsStep()
         return await ws_step.run(bundle.ws_connections)
 
     enrich_result, auth, ws_specs = await asyncio.gather(_enrich(), _auth(), _ws())
 
     # Apply enrichment results (or use defaults)
-    api_name = None
-    ws_enrichments = None
+    api_name: str | None = None
+    ws_enrichments: dict[str, str] | None = None
+    glossary: dict[str, str]
     if enrich_result is not None:
         final_endpoints = enrich_result.endpoints
         business_context = enrich_result.business_context

@@ -1,6 +1,6 @@
 """Pydantic models for the capture bundle format (.zip)."""
 
-from __future__ import annotations
+from typing import Any
 
 from pydantic import BaseModel, Field
 
@@ -43,7 +43,7 @@ class CaptureManifest(BaseModel):
 class RequestMeta(BaseModel):
     method: str
     url: str
-    headers: list[Header] = Field(default_factory=list)
+    headers: list[Header] = []
     body_file: str | None = None
     body_size: int = 0
     body_encoding: str | None = None
@@ -52,7 +52,7 @@ class RequestMeta(BaseModel):
 class ResponseMeta(BaseModel):
     status: int
     status_text: str = ""
-    headers: list[Header] = Field(default_factory=list)
+    headers: list[Header] = []
     body_file: str | None = None
     body_size: int = 0
     body_encoding: str | None = None
@@ -82,7 +82,7 @@ class TraceMeta(BaseModel):
     response: ResponseMeta
     timing: TimingInfo = Field(default_factory=TimingInfo)
     initiator: Initiator = Field(default_factory=Initiator)
-    context_refs: list[str] = Field(default_factory=list)
+    context_refs: list[str] = []
 
 
 class WsConnectionMeta(BaseModel):
@@ -90,9 +90,9 @@ class WsConnectionMeta(BaseModel):
     timestamp: int
     url: str
     handshake_trace_ref: str | None = None
-    protocols: list[str] = Field(default_factory=list)
+    protocols: list[str] = []
     message_count: int = 0
-    context_refs: list[str] = Field(default_factory=list)
+    context_refs: list[str] = []
 
 
 class WsMessageMeta(BaseModel):
@@ -103,7 +103,7 @@ class WsMessageMeta(BaseModel):
     opcode: str = "text"  # "text" | "binary" | "ping" | "pong" | "close"
     payload_file: str | None = None
     payload_size: int = 0
-    context_refs: list[str] = Field(default_factory=list)
+    context_refs: list[str] = []
 
 
 class ElementInfo(BaseModel):
@@ -117,12 +117,12 @@ class ElementInfo(BaseModel):
 class PageContent(BaseModel):
     """Rich page context for LLM analysis."""
 
-    headings: list[str] = Field(default_factory=list)
-    navigation: list[str] = Field(default_factory=list)
+    headings: list[str] = []
+    navigation: list[str] = []
     main_text: str = ""
-    forms: list[dict] = Field(default_factory=list)  # [{id, fields, submitLabel}]
-    tables: list[str] = Field(default_factory=list)  # Header rows
-    alerts: list[str] = Field(default_factory=list)
+    forms: list[dict[str, Any]] = []  # [{id, fields, submitLabel}]
+    tables: list[str] = []  # Header rows
+    alerts: list[str] = []
 
 
 class PageInfo(BaseModel):
@@ -154,4 +154,4 @@ class TimelineEvent(BaseModel):
 
 
 class Timeline(BaseModel):
-    events: list[TimelineEvent] = Field(default_factory=list)
+    events: list[TimelineEvent] = []

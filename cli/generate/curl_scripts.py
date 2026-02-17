@@ -81,7 +81,7 @@ def _build_curl_command(endpoint: EndpointSpec, spec: ApiSpec) -> str:
     # Add query parameters
     query_params = [p for p in endpoint.request.parameters if p.location == "query"]
     if query_params:
-        query_parts = []
+        query_parts: list[str] = []
         for p in query_params:
             val = p.example or f"<{p.name}>"
             query_parts.append(f"{p.name}={val}")

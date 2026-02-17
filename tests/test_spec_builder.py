@@ -1,11 +1,11 @@
 """Tests for the spec builder (mechanical utilities and pipeline)."""
 
 import json
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from cli.analyze.schemas import _detect_format, _extract_query_params, _infer_json_schema
+from cli.analyze.schemas import detect_format, extract_query_params, infer_json_schema
 from cli.analyze.steps import EndpointGroup
 from cli.analyze.steps.enrich_and_context import _apply_enrichment
 from cli.analyze.steps.mechanical_extraction import (
@@ -26,7 +26,7 @@ class TestSchemaInference:
             {"name": "Alice", "age": 30, "active": True},
             {"name": "Bob", "age": 25, "active": False},
         ]
-        schema = _infer_json_schema(samples)
+        schema = infer_json_schema(samples)
         assert schema["type"] == "object"
         assert "name" in schema["properties"]
         assert schema["properties"]["name"]["type"] == "string"
@@ -39,36 +39,36 @@ class TestSchemaInference:
             {"name": "Alice", "email": "alice@example.com"},
             {"name": "Bob"},
         ]
-        schema = _infer_json_schema(samples)
+        schema = infer_json_schema(samples)
         assert "name" in schema.get("required", [])
         assert "email" not in schema.get("required", [])
 
     def test_date_format_detection(self):
         values = ["2024-01-15T10:30:00Z", "2024-02-20T14:00:00Z"]
-        assert _detect_format(values) == "date-time"
+        assert detect_format(values) == "date-time"
 
     def test_date_only_format(self):
         values = ["2024-01-15", "2024-02-20"]
-        assert _detect_format(values) == "date"
+        assert detect_format(values) == "date"
 
     def test_email_format(self):
         values = ["alice@example.com", "bob@test.org"]
-        assert _detect_format(values) == "email"
+        assert detect_format(values) == "email"
 
     def test_uuid_format(self):
         values = [
             "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
             "11111111-2222-3333-4444-555555555555",
         ]
-        assert _detect_format(values) == "uuid"
+        assert detect_format(values) == "uuid"
 
     def test_uri_format(self):
         values = ["https://example.com/page1", "https://example.com/page2"]
-        assert _detect_format(values) == "uri"
+        assert detect_format(values) == "uri"
 
     def test_no_format(self):
         values = ["hello", "world"]
-        assert _detect_format(values) is None
+        assert detect_format(values) is None
 
 
 class TestQueryParamExtraction:
@@ -77,7 +77,7 @@ class TestQueryParamExtraction:
             make_trace("t_0001", "GET", "https://api.example.com/search?q=hello&page=1", 200, 1000),
             make_trace("t_0002", "GET", "https://api.example.com/search?q=world&page=2", 200, 2000),
         ]
-        params = _extract_query_params(traces)
+        params = extract_query_params(traces)
         assert "q" in params
         assert "page" in params
         assert "hello" in params["q"]
@@ -154,7 +154,7 @@ class TestBuildEndpointMechanical:
 
 
 class TestFormatDetectionInExtraction:
-    """Test that _detect_format is wired into mechanical extraction for params."""
+    """Test that detect_format is wired into mechanical extraction for params."""
 
     def test_body_param_date_format(self):
         traces = [

@@ -5,12 +5,16 @@ from __future__ import annotations
 import asyncio
 import json
 import sys
+from collections.abc import Callable
 from pathlib import Path
 
 import click
 from dotenv import load_dotenv
 from rich.console import Console
 from rich.table import Table
+
+from cli.capture.models import CaptureBundle
+from cli.formats.api_spec import ApiSpec
 
 load_dotenv()
 
@@ -19,7 +23,7 @@ console = Console()
 
 @click.group()
 @click.version_option(version="0.1.0", prog_name="spectral")
-def cli():
+def cli() -> None:
     """Automatically discover and document web application APIs."""
 
 
@@ -29,7 +33,7 @@ def cli():
 @click.option("--model", default="claude-sonnet-4-5-20250929", help="LLM model to use")
 @click.option("--debug", is_flag=True, default=False, help="Save LLM prompts/responses to debug/")
 @click.option("--skip-enrich", is_flag=True, default=False, help="Skip LLM enrichment step (business context, glossary, etc.)")
-def analyze(capture_path: str, output: str, model: str, debug: bool, skip_enrich: bool):
+def analyze(capture_path: str, output: str, model: str, debug: bool, skip_enrich: bool) -> None:
     """Analyze a capture bundle and produce an enriched API spec."""
     import anthropic
 
@@ -46,7 +50,7 @@ def analyze(capture_path: str, output: str, model: str, debug: bool, skip_enrich
 
     client = anthropic.AsyncAnthropic(max_retries=3)
 
-    def on_progress(msg):
+    def on_progress(msg: str) -> None:
         console.print(f"  {msg}")
 
     console.print(f"[bold]Analyzing with LLM ({model})...[/bold]")
@@ -81,14 +85,12 @@ def analyze(capture_path: str, output: str, model: str, debug: bool, skip_enrich
     help="Output type to generate",
 )
 @click.option("-o", "--output", required=True, help="Output path (file or directory)")
-def generate(spec_path: str, output_type: str, output: str):
+def generate(spec_path: str, output_type: str, output: str) -> None:
     """Generate outputs from an enriched API spec."""
-    from cli.formats.api_spec import ApiSpec
-
     console.print(f"[bold]Loading API spec:[/bold] {spec_path}")
     spec = ApiSpec.model_validate_json(Path(spec_path).read_text())
 
-    generators = {
+    generators: dict[str, Callable[[ApiSpec, str], None]] = {
         "openapi": _generate_openapi,
         "mcp-server": _generate_mcp_server,
         "python-client": _generate_python_client,
@@ -101,27 +103,27 @@ def generate(spec_path: str, output_type: str, output: str):
     console.print(f"[green]Generated {output_type} at {output}[/green]")
 
 
-def _generate_openapi(spec, output):
+def _generate_openapi(spec: ApiSpec, output: str) -> None:
     from cli.generate.openapi import generate_openapi
     generate_openapi(spec, output)
 
 
-def _generate_mcp_server(spec, output):
+def _generate_mcp_server(spec: ApiSpec, output: str) -> None:
     from cli.generate.mcp_server import generate_mcp_server
     generate_mcp_server(spec, output)
 
 
-def _generate_python_client(spec, output):
+def _generate_python_client(spec: ApiSpec, output: str) -> None:
     from cli.generate.python_client import generate_python_client
     generate_python_client(spec, output)
 
 
-def _generate_markdown_docs(spec, output):
+def _generate_markdown_docs(spec: ApiSpec, output: str) -> None:
     from cli.generate.markdown_docs import generate_markdown_docs
     generate_markdown_docs(spec, output)
 
 
-def _generate_curl_scripts(spec, output):
+def _generate_curl_scripts(spec: ApiSpec, output: str) -> None:
     from cli.generate.curl_scripts import generate_curl_scripts
     generate_curl_scripts(spec, output)
 
@@ -137,7 +139,7 @@ def _generate_curl_scripts(spec, output):
 @click.option("--model", default="claude-sonnet-4-5-20250929", help="LLM model to use")
 @click.option("--debug", is_flag=True, default=False, help="Save LLM prompts/responses to debug/")
 @click.option("--skip-enrich", is_flag=True, default=False, help="Skip LLM enrichment step (business context, glossary, etc.)")
-def pipeline(capture_path: str, types: str, output: str, model: str, debug: bool, skip_enrich: bool):
+def pipeline(capture_path: str, types: str, output: str, model: str, debug: bool, skip_enrich: bool) -> None:
     """Run the full pipeline: analyze + generate."""
     import anthropic
 
@@ -153,7 +155,7 @@ def pipeline(capture_path: str, types: str, output: str, model: str, debug: bool
 
     client = anthropic.AsyncAnthropic(max_retries=3)
 
-    def on_progress(msg):
+    def on_progress(msg: str) -> None:
         console.print(f"  {msg}")
 
     console.print(f"[bold]Analyzing with LLM ({model})...[/bold]")
@@ -176,7 +178,7 @@ def pipeline(capture_path: str, types: str, output: str, model: str, debug: bool
 
     # Generate outputs
     type_list = [t.strip() for t in types.split(",")]
-    gen_map = {
+    gen_map: dict[str, tuple[str, Callable[[ApiSpec, str], None]]] = {
         "openapi": ("openapi.yaml", _generate_openapi),
         "mcp-server": ("mcp-server/", _generate_mcp_server),
         "python-client": ("client.py", _generate_python_client),
@@ -203,7 +205,7 @@ def pipeline(capture_path: str, types: str, output: str, model: str, debug: bool
 @click.option("--username", default=None, help="Username for login")
 @click.option("--password", default=None, help="Password for login")
 @click.option("--base-url", default=None, help="Override base URL")
-def call_command(spec_path: str, args: tuple, list_endpoints: bool, token: str | None, username: str | None, password: str | None, base_url: str | None):
+def call_command(spec_path: str, args: tuple[str, ...], list_endpoints: bool, token: str | None, username: str | None, password: str | None, base_url: str | None) -> None:
     """Call an API endpoint from an enriched spec.
 
     \b
@@ -213,6 +215,8 @@ def call_command(spec_path: str, args: tuple, list_endpoints: bool, token: str |
       spectral call spec.json get_user user_id=123 --token eyJ...
       spectral call spec.json login --username user@x.com --password secret
     """
+    from typing import Any
+
     from cli.client import ApiClient
 
     try:
@@ -228,7 +232,7 @@ def call_command(spec_path: str, args: tuple, list_endpoints: bool, token: str |
         sys.exit(1)
 
     if list_endpoints or not args:
-        endpoints = client.endpoints()
+        endpoints: list[dict[str, Any]] = client.endpoints()
         table = Table(title="Available Endpoints")
         table.add_column("ID", style="cyan")
         table.add_column("Method")
@@ -239,8 +243,8 @@ def call_command(spec_path: str, args: tuple, list_endpoints: bool, token: str |
         console.print(table)
         return
 
-    endpoint_id = args[0]
-    kwargs = {}
+    endpoint_id: str = args[0]
+    kwargs: dict[str, str] = {}
     for arg in args[1:]:
         if "=" in arg:
             key, value = arg.split("=", 1)
@@ -261,13 +265,13 @@ def call_command(spec_path: str, args: tuple, list_endpoints: bool, token: str |
 
 
 @cli.group()
-def android():
+def android() -> None:
     """Android APK capture tools (pull, patch, MITM proxy)."""
 
 
 @android.command("list")
 @click.argument("filter", default=None, required=False)
-def list_cmd(filter: str | None):
+def list_cmd(filter: str | None) -> None:
     """List installed packages on the connected device.
 
     Optionally filter by a substring, e.g.: spectral android list spotify
@@ -289,7 +293,7 @@ def list_cmd(filter: str | None):
 @android.command()
 @click.argument("package")
 @click.option("-o", "--output", default=None, help="Output path (file for single APK, directory for splits)")
-def pull(package: str, output: str | None):
+def pull(package: str, output: str | None) -> None:
     """Pull all APKs for a package from a connected Android device.
 
     Single APK apps are saved as a file. Split APK apps (App Bundles)
@@ -329,7 +333,7 @@ def pull(package: str, output: str | None):
 @android.command()
 @click.argument("apk_path", type=click.Path(exists=True))
 @click.option("-o", "--output", default=None, help="Output path (file for single APK, directory for splits)")
-def patch(apk_path: str, output: str | None):
+def patch(apk_path: str, output: str | None) -> None:
     """Patch an APK or directory of split APKs to trust user CA certificates for MITM."""
     from cli.android.patch import patch_apk, patch_apk_dir
 
@@ -360,7 +364,7 @@ def patch(apk_path: str, output: str | None):
 
 @android.command()
 @click.argument("apk_path", type=click.Path(exists=True))
-def install(apk_path: str):
+def install(apk_path: str) -> None:
     """Install an APK or directory of split APKs to the device."""
     from cli.android.adb import check_adb, install_apk
 
@@ -381,7 +385,7 @@ def install(apk_path: str):
 @click.option("-p", "--port", default=8080, help="Proxy listen port")
 @click.option("-o", "--output", default=None, help="Output bundle path (.zip)")
 @click.option("-d", "--domain", "domains", multiple=True, help="Only intercept these domains (regex). Can be repeated.")
-def capture(port: int, output: str | None, domains: tuple[str, ...]):
+def capture(port: int, output: str | None, domains: tuple[str, ...]) -> None:
     """Capture traffic from an Android app via MITM proxy.
 
     Without -d, runs in discovery mode: logs domains without MITM.
@@ -394,7 +398,7 @@ def capture(port: int, output: str | None, domains: tuple[str, ...]):
 
     if discovery_mode:
         console.print(f"[bold]Starting domain discovery on port {port}[/bold]")
-        console.print(f"  No -d specified — passthrough mode, logging domains only.")
+        console.print("  No -d specified — passthrough mode, logging domains only.")
         output_path = Path(output) if output else None
         app_name = "android-app"
     else:
@@ -414,7 +418,7 @@ def capture(port: int, output: str | None, domains: tuple[str, ...]):
 @cli.command()
 @click.argument("capture_path", type=click.Path(exists=True))
 @click.option("--trace", "trace_id", default=None, help="Show details for a specific trace")
-def inspect(capture_path: str, trace_id: str | None):
+def inspect(capture_path: str, trace_id: str | None) -> None:
     """Inspect a capture bundle."""
     from cli.capture.loader import load_bundle
 
@@ -426,10 +430,10 @@ def inspect(capture_path: str, trace_id: str | None):
         _inspect_summary(bundle)
 
 
-def _inspect_summary(bundle):
+def _inspect_summary(bundle: CaptureBundle) -> None:
     """Print a summary of the capture bundle."""
     m = bundle.manifest
-    console.print(f"[bold]Capture Bundle Summary[/bold]")
+    console.print("[bold]Capture Bundle Summary[/bold]")
     console.print(f"  Capture ID: {m.capture_id}")
     console.print(f"  Created: {m.created_at}")
     console.print(f"  App: {m.app.name} ({m.app.base_url})")
@@ -471,7 +475,7 @@ def _inspect_summary(bundle):
         console.print(trace_table)
 
 
-def _inspect_trace(bundle, trace_id: str):
+def _inspect_trace(bundle: CaptureBundle, trace_id: str) -> None:
     """Print details for a specific trace."""
     trace = bundle.get_trace(trace_id)
     if not trace:
@@ -512,7 +516,7 @@ def _inspect_trace(bundle, trace_id: str):
         console.print(f"\n[bold]Context refs:[/bold] {', '.join(m.context_refs)}")
 
 
-def _print_body(body: bytes):
+def _print_body(body: bytes) -> None:
     """Pretty-print a body payload."""
     try:
         text = body.decode("utf-8")

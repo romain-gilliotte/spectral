@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from typing import Any
 
 from cli.formats.api_spec import ApiSpec, EndpointSpec
 
@@ -176,14 +177,16 @@ def build_endpoint_markdown(endpoint: EndpointSpec, spec: ApiSpec) -> str:
                 lines.append("**Example:**")
                 lines.append("")
                 lines.append("```json")
-                lines.append(json.dumps(resp.example_body, indent=2))
+                example_body_value: dict[str, Any] | str | list[Any] = resp.example_body
+                lines.append(json.dumps(example_body_value, indent=2))
                 lines.append("```")
                 lines.append("")
             if resp.schema_:
                 lines.append("**Schema:**")
                 lines.append("")
                 lines.append("```json")
-                lines.append(json.dumps(resp.schema_, indent=2))
+                schema_value: dict[str, Any] = resp.schema_
+                lines.append(json.dumps(schema_value, indent=2))
                 lines.append("```")
                 lines.append("")
 

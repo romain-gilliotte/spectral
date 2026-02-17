@@ -2,7 +2,7 @@
 
 import json
 from pathlib import Path
-from unittest.mock import AsyncMock, MagicMock, patch, PropertyMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
 from click.testing import CliRunner
 
@@ -113,7 +113,7 @@ class TestGenerateCommand:
     def _create_spec_file(self, sample_bundle, tmp_path) -> Path:
         """Helper to create a spec file from a sample bundle using mocked LLM."""
         import asyncio
-        from unittest.mock import AsyncMock, MagicMock
+        from unittest.mock import MagicMock
         from cli.analyze.pipeline import build_spec
 
         mock_client = AsyncMock()

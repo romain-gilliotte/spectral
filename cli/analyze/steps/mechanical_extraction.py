@@ -6,19 +6,23 @@ import json
 import re
 from collections import defaultdict
 from dataclasses import dataclass
+from typing import Any, cast
 from urllib.parse import urlparse
 
 from cli.analyze.correlator import Correlation
 from cli.analyze.schemas import (
-    _detect_format,
-    _extract_query_params,
-    _infer_json_schema,
-    _infer_type_from_values,
-    _merge_schemas,
+    detect_format,
+    extract_query_params,
+    infer_json_schema,
+    infer_type_from_values,
+    merge_schemas,
 )
 from cli.analyze.steps import EndpointGroup
 from cli.analyze.steps.base import MechanicalStep
-from cli.analyze.utils import _get_header, _pattern_to_regex
+from cli.analyze.utils import (
+    get_header,
+    pattern_to_regex,
+)
 from cli.capture.models import Trace
 from cli.formats.api_spec import (
     EndpointSpec,
@@ -42,7 +46,7 @@ class MechanicalExtractionStep(MechanicalStep[MechanicalExtractionInput, list[En
     name = "mechanical_extraction"
 
     async def _execute(self, input: MechanicalExtractionInput) -> list[EndpointSpec]:
-        endpoints = []
+        endpoints: list[EndpointSpec] = []
         for group in input.groups:
             group_traces = _find_traces_for_group(group, input.traces)
             endpoint = _build_endpoint_mechanical(
@@ -62,7 +66,7 @@ def _find_traces_for_group(group: EndpointGroup, traces: list[Trace]) -> list[Tr
     ]
 
     # Also try pattern matching to catch traces the LLM didn't list
-    pattern_re = _pattern_to_regex(group.pattern)
+    pattern_re = pattern_to_regex(group.pattern)
     for t in traces:
         if t not in matched:
             parsed = urlparse(t.meta.request.url)
@@ -102,7 +106,7 @@ def _build_endpoint_mechanical(
     response_specs = _build_response_specs(traces)
 
     requires_auth = any(
-        _get_header(t.meta.request.headers, "authorization") is not None
+        get_header(t.meta.request.headers, "authorization") is not None
         or _has_auth_cookie(t)
         for t in traces
     )
@@ -144,39 +148,39 @@ def _build_request_spec(traces: list[Trace], path_pattern: str) -> RequestSpec:
         )
 
     content_type = None
-    body_schemas: list[dict] = []
+    body_schemas: list[dict[str, Any]] = []
     for trace in traces:
-        ct = _get_header(trace.meta.request.headers, "content-type")
+        ct = get_header(trace.meta.request.headers, "content-type")
         if ct:
             content_type = ct
         if trace.request_body:
             try:
-                data = json.loads(trace.request_body)
+                data: Any = json.loads(trace.request_body)
                 if isinstance(data, dict):
-                    body_schemas.append(data)
+                    body_schemas.append(cast(dict[str, Any], data))
             except (json.JSONDecodeError, UnicodeDecodeError):
                 pass
 
     if body_schemas:
-        merged = _merge_schemas(body_schemas)
+        merged = merge_schemas(body_schemas)
         for key, info in merged.items():
-            fmt = _detect_format(info["values"]) if info["type"] == "string" else None
+            fmt = detect_format(info["values"]) if info["type"] == "string" else None
             parameters.append(
                 ParameterSpec(
                     name=key,
                     location="body",
-                    type=info["type"],
+                    type=str(info["type"]),
                     format=fmt,
-                    required=info["required"],
+                    required=bool(info["required"]),
                     example=str(info["example"]) if info["example"] is not None else None,
                     observed_values=[str(v) for v in info["values"][:5]],
                 )
             )
 
-    query_params = _extract_query_params(traces)
+    query_params = extract_query_params(traces)
     for name, values in query_params.items():
-        qtype = _infer_type_from_values(values)
-        qfmt = _detect_format(values) if qtype == "string" else None
+        qtype = infer_type_from_values(values)
+        qfmt = detect_format(values) if qtype == "string" else None
         parameters.append(
             ParameterSpec(
                 name=name,
@@ -200,24 +204,24 @@ def _build_response_specs(traces: list[Trace]) -> list[ResponseSpec]:
 
     specs: list[ResponseSpec] = []
     for status, status_traces in sorted(by_status.items()):
-        ct = _get_header(status_traces[0].meta.response.headers, "content-type")
+        ct = get_header(status_traces[0].meta.response.headers, "content-type")
 
-        schema = None
-        example_body = None
-        body_samples: list[dict] = []
+        schema: dict[str, Any] | None = None
+        example_body: Any = None
+        body_samples: list[dict[str, Any]] = []
         for t in status_traces:
             if t.response_body:
                 try:
-                    data = json.loads(t.response_body)
+                    resp_data: Any = json.loads(t.response_body)
                     if example_body is None:
-                        example_body = data
-                    if isinstance(data, dict):
-                        body_samples.append(data)
+                        example_body = resp_data
+                    if isinstance(resp_data, dict):
+                        body_samples.append(cast(dict[str, Any], resp_data))
                 except (json.JSONDecodeError, UnicodeDecodeError):
                     pass
 
         if body_samples:
-            schema = _infer_json_schema(body_samples)
+            schema = infer_json_schema(body_samples)
 
         specs.append(
             ResponseSpec(
@@ -258,7 +262,7 @@ def _extract_rate_limit(traces: list[Trace]) -> str | None:
     if not found:
         return None
 
-    parts = []
+    parts: list[str] = []
     # Normalize to display-friendly names
     limit = found.get("x-ratelimit-limit") or found.get("ratelimit-limit")
     remaining = found.get("x-ratelimit-remaining") or found.get("ratelimit-remaining")
@@ -279,7 +283,7 @@ def _extract_rate_limit(traces: list[Trace]) -> str | None:
 
 def _has_auth_cookie(trace: Trace) -> bool:
     """Check if a trace has auth-related cookies."""
-    cookie = _get_header(trace.meta.request.headers, "cookie")
+    cookie = get_header(trace.meta.request.headers, "cookie")
     if cookie and any(
         name in cookie.lower() for name in ["session", "token", "auth", "jwt"]
     ):

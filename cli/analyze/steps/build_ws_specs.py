@@ -3,9 +3,10 @@
 from __future__ import annotations
 
 import json
+from typing import Any
 
 from cli.analyze.protocol import detect_ws_protocol
-from cli.analyze.schemas import _infer_json_schema
+from cli.analyze.schemas import infer_json_schema
 from cli.analyze.steps.base import MechanicalStep
 from cli.capture.models import WsConnection
 from cli.formats.api_spec import (
@@ -27,14 +28,14 @@ class BuildWsSpecsStep(MechanicalStep[list[WsConnection], WebSocketProtocol]):
 
             messages: list[WsMessageSpec] = []
             for msg in ws_conn.messages:
-                payload_example = None
-                payload_schema = None
+                payload_example: Any = None
+                payload_schema: dict[str, Any] | None = None
                 if msg.payload:
                     try:
                         data = json.loads(msg.payload)
                         payload_example = data
                         if isinstance(data, dict):
-                            payload_schema = _infer_json_schema([data])
+                            payload_schema = infer_json_schema([data])
                     except (json.JSONDecodeError, UnicodeDecodeError):
                         pass
 

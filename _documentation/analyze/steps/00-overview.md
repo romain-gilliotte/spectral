@@ -42,7 +42,7 @@ Three classes:
 |---|---|
 | **Detect base URL** | Valid URL (scheme + host). At least N% of traces match. Not a known CDN/tracker domain. |
 | **Group endpoints** | Every filtered trace URL assigned to a group. Each URL matches its group's pattern. No duplicate `(method, pattern)`. |
-| **Auth analysis** | Best-effort — no validation yet. Empty fields acceptable. Fallback to `_detect_auth_mechanical()`. |
+| **Auth analysis** | Best-effort — no validation yet. Empty fields acceptable. Fallback to `detect_auth_mechanical()`. |
 | **Enrich + context** | Best-effort — no validation, `_validate_output` returns `[]`. Empty fields are acceptable. |
 
 ---

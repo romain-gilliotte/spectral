@@ -2,14 +2,13 @@
 
 from __future__ import annotations
 
-import json
 import os
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 import requests
 
-from cli.formats.api_spec import ApiSpec
+from cli.formats.api_spec import ApiSpec, EndpointSpec
 
 
 class ApiClient:
@@ -62,7 +61,7 @@ class ApiClient:
     def session(self) -> requests.Session:
         return self._session
 
-    def endpoints(self) -> list[dict]:
+    def endpoints(self) -> list[dict[str, Any]]:
         """List available endpoints (id, method, path, purpose)."""
         return [
             {
@@ -107,7 +106,7 @@ class ApiClient:
                 return response.text
         return None
 
-    def _do_call(self, endpoint, kwargs: dict) -> requests.Response:
+    def _do_call(self, endpoint: EndpointSpec, kwargs: dict[str, Any]) -> requests.Response:
         """Execute the HTTP request for an endpoint."""
         # Classify params
         param_locations: dict[str, str] = {}
@@ -222,14 +221,14 @@ class ApiClient:
         return f"{self._base_url}{url}"
 
     @staticmethod
-    def _extract_path(data: dict, dot_path: str) -> Any:
+    def _extract_path(data: dict[str, Any], dot_path: str) -> Any:
         """Traverse a dict with dot-notation: 'data.access_token' -> data["data"]["access_token"]."""
         if not dot_path:
             return None
         current: Any = data
         for key in dot_path.split("."):
             if isinstance(current, dict):
-                current = current.get(key)
+                current = cast(dict[str, Any], current).get(key)
             else:
                 return None
         return current

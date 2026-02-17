@@ -4,8 +4,10 @@ from __future__ import annotations
 
 import json
 import re
+from typing import Any
 
-from cli.capture.models import Trace, WsConnection, WsMessage
+from cli.capture.models import Trace, WsConnection
+from cli.formats.capture_bundle import Header
 
 
 def detect_trace_protocol(trace: Trace) -> str:
@@ -58,7 +60,7 @@ def detect_ws_protocol(ws_conn: WsConnection) -> str:
                 data = json.loads(msg.payload)
                 if isinstance(data, dict):
                     # GraphQL-WS protocol
-                    if data.get("type") in (
+                    if data.get("type") in (  # pyright: ignore[reportUnknownMemberType]
                         "connection_init",
                         "subscribe",
                         "next",
@@ -85,9 +87,9 @@ def _is_graphql(url: str, method: str, body: bytes, content_type: str | None) ->
     # Body-based detection for POST requests
     if method == "POST" and body and content_type and "json" in content_type.lower():
         try:
-            data = json.loads(body)
+            data: Any = json.loads(body)
             if isinstance(data, dict) and "query" in data:
-                query_val = data["query"]
+                query_val = data["query"]  # pyright: ignore[reportUnknownVariableType]
                 if isinstance(query_val, str) and re.search(
                     r"\b(query|mutation|subscription)\b", query_val
                 ):
@@ -102,7 +104,7 @@ def _is_graphql(url: str, method: str, body: bytes, content_type: str | None) ->
     return False
 
 
-def _get_header(headers: list, name: str) -> str | None:
+def _get_header(headers: list[Header], name: str) -> str | None:
     """Get a header value by name (case-insensitive)."""
     name_lower = name.lower()
     for h in headers:

@@ -49,7 +49,7 @@ def list_packages(filter_str: str | None = None) -> list[str]:
     if result.returncode != 0:
         raise AdbError(f"Failed to list packages: {result.stderr.strip()}")
 
-    packages = []
+    packages: list[str] = []
     for line in result.stdout.strip().splitlines():
         # Lines are "package:com.example.app"
         if line.startswith("package:"):
@@ -75,7 +75,7 @@ def get_apk_paths(package: str) -> list[str]:
     if result.returncode != 0:
         raise AdbError(f"Package not found: {package}\n{result.stderr.strip()}")
 
-    paths = []
+    paths: list[str] = []
     for line in result.stdout.strip().splitlines():
         # Lines are "package:/data/app/.../base.apk"
         if line.startswith("package:"):

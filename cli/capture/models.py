@@ -4,8 +4,6 @@ These wrap the Pydantic metadata models with their associated binary payloads,
 providing convenient access to all data from a loaded capture bundle.
 """
 
-from __future__ import annotations
-
 from dataclasses import dataclass, field
 
 from cli.formats.capture_bundle import (
@@ -28,19 +26,19 @@ class Trace:
 
 
 @dataclass
-class WsConnection:
-    """A WebSocket connection with all its messages."""
-
-    meta: WsConnectionMeta
-    messages: list[WsMessage] = field(default_factory=list)
-
-
-@dataclass
 class WsMessage:
     """A single WebSocket message with its payload."""
 
     meta: WsMessageMeta
     payload: bytes = b""
+
+
+@dataclass
+class WsConnection:
+    """A WebSocket connection with all its messages."""
+
+    meta: WsConnectionMeta
+    messages: list[WsMessage] = field(default_factory=lambda: list[WsMessage]())
 
 
 @dataclass
@@ -55,9 +53,9 @@ class CaptureBundle:
     """A fully loaded capture bundle with all data in memory."""
 
     manifest: CaptureManifest
-    traces: list[Trace] = field(default_factory=list)
-    ws_connections: list[WsConnection] = field(default_factory=list)
-    contexts: list[Context] = field(default_factory=list)
+    traces: list[Trace] = field(default_factory=lambda: list[Trace]())
+    ws_connections: list[WsConnection] = field(default_factory=lambda: list[WsConnection]())
+    contexts: list[Context] = field(default_factory=lambda: list[Context]())
     timeline: Timeline = field(default_factory=Timeline)
 
     def get_trace(self, trace_id: str) -> Trace | None:

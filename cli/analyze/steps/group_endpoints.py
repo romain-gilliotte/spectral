@@ -2,15 +2,17 @@
 
 from __future__ import annotations
 
+from typing import Any, cast
+
 from cli.analyze.steps import EndpointGroup
 from cli.analyze.steps.base import LLMStep, StepValidationError
 from cli.analyze.tools import (
     INVESTIGATION_TOOLS,
-    _TOOL_EXECUTORS,
-    _call_with_tools,
-    _extract_json,
+    TOOL_EXECUTORS,
+    call_with_tools,
+    extract_json,
 )
-from cli.analyze.utils import _compact_url
+from cli.analyze.utils import compact_url
 
 
 class GroupEndpointsStep(LLMStep[list[tuple[str, str]], list[EndpointGroup]]):
@@ -25,14 +27,14 @@ class GroupEndpointsStep(LLMStep[list[tuple[str, str]], list[EndpointGroup]]):
     async def _execute(self, input: list[tuple[str, str]]) -> list[EndpointGroup]:
         unique_pairs = sorted(set(input))
         compacted_pairs = sorted(set(
-            (method, _compact_url(url)) for method, url in unique_pairs
+            (method, compact_url(url)) for method, url in unique_pairs
         ))
         lines = [f"  {method} {url}" for method, url in compacted_pairs]
 
         # Build mapping from compacted URL back to original URLs
         compact_to_originals: dict[tuple[str, str], list[str]] = {}
         for method, url in unique_pairs:
-            key = (method, _compact_url(url))
+            key = (method, compact_url(url))
             compact_to_originals.setdefault(key, []).append(url)
 
         prompt = f"""You are analyzing HTTP traffic captured from a web application.
@@ -59,35 +61,36 @@ Respond with a JSON array:
   {{"method": "GET", "pattern": "/api/users/{{user_id}}/orders", "urls": ["https://example.com/api/users/123/orders", "https://example.com/api/users/456/orders"]}}
 ]"""
 
-        text = await _call_with_tools(
+        text = await call_with_tools(
             self.client,
             self.model,
             [{"role": "user", "content": prompt}],
             INVESTIGATION_TOOLS,
-            _TOOL_EXECUTORS,
+            TOOL_EXECUTORS,
             debug_dir=self.debug_dir,
             call_name="analyze_endpoints",
         )
 
-        result = _extract_json(text)
+        result = extract_json(text)
         if not isinstance(result, list):
             raise ValueError("Expected a JSON array from analyze_endpoints")
 
         # Expand compacted URLs back to originals
-        groups = []
+        groups: list[EndpointGroup] = []
         for item in result:
-            compacted_urls = item.get("urls", [])
-            original_urls = []
+            item_dict: dict[str, Any] = cast(dict[str, Any], item) if isinstance(item, dict) else {}
+            compacted_urls: list[Any] = item_dict.get("urls", [])
+            original_urls: list[str] = []
             for curl in compacted_urls:
-                key = (item["method"], curl)
+                key = (item_dict["method"], curl)
                 if key in compact_to_originals:
                     original_urls.extend(compact_to_originals[key])
                 else:
-                    original_urls.append(curl)
+                    original_urls.append(str(curl))
             groups.append(
                 EndpointGroup(
-                    method=item["method"],
-                    pattern=item["pattern"],
+                    method=str(item_dict["method"]),
+                    pattern=str(item_dict["pattern"]),
                     urls=original_urls,
                 )
             )
@@ -96,7 +99,7 @@ Respond with a JSON array:
     def _validate_output(self, output: list[EndpointGroup]) -> None:
         if not output:
             raise StepValidationError("No endpoint groups returned")
-        seen = set()
+        seen: set[tuple[str, str]] = set()
         for group in output:
             key = (group.method, group.pattern)
             if key in seen:

@@ -282,7 +282,7 @@ def _sign_apk(unsigned_apk: Path, output_path: Path, keystore: Path) -> None:
         shutil.copy2(signed_files[0], output_path)
 
 
-def _run_cmd(cmd: list[str], description: str, timeout: int = 300) -> subprocess.CompletedProcess:
+def _run_cmd(cmd: list[str], description: str, timeout: int = 300) -> subprocess.CompletedProcess[str]:
     """Run a subprocess command, raising PatchError on failure."""
     result = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
     if result.returncode != 0:

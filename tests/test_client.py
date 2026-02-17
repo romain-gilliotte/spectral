@@ -1,7 +1,5 @@
 """Tests for the generic runtime API client."""
 
-import json
-from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -168,7 +166,7 @@ class TestApiClientCall:
 
         spec = _make_spec()
         client = ApiClient(spec, token="tok")
-        result = client.call("get_users", limit="10")
+        client.call("get_users", limit="10")
 
         mock_session.request.assert_called_once()
         call_args = mock_session.request.call_args
@@ -189,7 +187,7 @@ class TestApiClientCall:
 
         spec = _make_spec()
         client = ApiClient(spec, token="tok")
-        result = client.call("get_user", user_id="42")
+        client.call("get_user", user_id="42")
 
         call_args = mock_session.request.call_args
         assert call_args[0] == ("GET", "https://api.example.com/api/users/42")
@@ -208,7 +206,7 @@ class TestApiClientCall:
 
         spec = _make_spec()
         client = ApiClient(spec, token="tok")
-        result = client.call("create_user", name="Alice", email="alice@example.com")
+        client.call("create_user", name="Alice", email="alice@example.com")
 
         call_args = mock_session.request.call_args
         assert call_args[0] == ("POST", "https://api.example.com/api/users")
@@ -344,7 +342,7 @@ class TestLoginFlow:
             ),
         )
         spec = _make_spec(auth=auth)
-        client = ApiClient(spec, username="user", password="pass")
+        ApiClient(spec, username="user", password="pass")
 
         call_args = mock_session.request.call_args
         assert call_args[0] == ("POST", "https://auth0.example.com/oauth/token")
@@ -378,7 +376,7 @@ class TestLoginFlow:
             ),
         )
         spec = _make_spec(auth=auth)
-        client = ApiClient(spec, username="user@x.com", password="secret")
+        ApiClient(spec, username="user@x.com", password="secret")
 
         call_args = mock_session.request.call_args
         # Should use data= instead of json=
@@ -407,5 +405,5 @@ class TestLoginFlow:
             ),
         )
         spec = _make_spec(auth=auth)
-        client = ApiClient(spec, username="user", password="pass")
+        ApiClient(spec, username="user", password="pass")
         assert mock_session.headers["Authorization"] == "Bearer nested-tok"

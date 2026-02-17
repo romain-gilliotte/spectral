@@ -62,4 +62,4 @@ Not yet implemented — currently best-effort (no validation, no retry).
 
 ## Fallback
 
-On parse error: returns empty `AuthInfo()`. Pipeline falls back to `_detect_auth_mechanical()` which does simple pattern matching on headers (Bearer → bearer_token, Basic → basic, auth cookies → cookie).
+On parse error: returns empty `AuthInfo()`. Pipeline falls back to `detect_auth_mechanical()` which does simple pattern matching on headers (Bearer → bearer_token, Basic → basic, auth cookies → cookie).

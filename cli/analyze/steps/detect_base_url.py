@@ -2,14 +2,16 @@
 
 from __future__ import annotations
 
+from typing import Any
+
 from cli.analyze.steps.base import LLMStep, StepValidationError
 from cli.analyze.tools import (
     INVESTIGATION_TOOLS,
-    _TOOL_EXECUTORS,
-    _call_with_tools,
-    _extract_json,
+    TOOL_EXECUTORS,
+    call_with_tools,
+    extract_json,
 )
-from cli.analyze.utils import _compact_url
+from cli.analyze.utils import compact_url
 
 
 class DetectBaseUrlStep(LLMStep[list[tuple[str, str]], str]):
@@ -24,7 +26,7 @@ class DetectBaseUrlStep(LLMStep[list[tuple[str, str]], str]):
     async def _execute(self, input: list[tuple[str, str]]) -> str:
         unique_pairs = sorted(set(input))
         compacted_pairs = sorted(set(
-            (method, _compact_url(url)) for method, url in unique_pairs
+            (method, compact_url(url)) for method, url in unique_pairs
         ))
         lines = [f"  {method} {url}" for method, url in compacted_pairs]
 
@@ -47,19 +49,20 @@ Observed requests:
 Respond with a JSON object:
 {{"base_url": "https://..."}}"""
 
-        text = await _call_with_tools(
+        text = await call_with_tools(
             self.client,
             self.model,
             [{"role": "user", "content": prompt}],
             INVESTIGATION_TOOLS,
-            _TOOL_EXECUTORS,
+            TOOL_EXECUTORS,
             debug_dir=self.debug_dir,
             call_name="detect_api_base_url",
         )
 
-        result = _extract_json(text)
+        result = extract_json(text)
         if isinstance(result, dict) and "base_url" in result:
-            return result["base_url"].rstrip("/")
+            base_url: Any = result["base_url"]
+            return str(base_url).rstrip("/")
         raise ValueError(f"Expected {{\"base_url\": \"...\"}} from detect_api_base_url, got: {text[:200]}")
 
     def _validate_output(self, output: str) -> None:

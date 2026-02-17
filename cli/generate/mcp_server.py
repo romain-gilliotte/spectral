@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import json
 import re
 from pathlib import Path
 
@@ -92,7 +91,7 @@ def _build_tool(endpoint: EndpointSpec, spec: ApiSpec) -> list[str]:
     body_params = [p for p in endpoint.request.parameters if p.location == "body"]
 
     all_params = path_params + body_params + query_params
-    param_strs = []
+    param_strs: list[str] = []
     for p in all_params:
         type_hint = _python_type(p.type)
         if p.required:
