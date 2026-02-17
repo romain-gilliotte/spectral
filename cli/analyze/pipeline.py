@@ -35,6 +35,7 @@ async def build_spec(
     source_filename: str = "",
     on_progress=None,
     enable_debug: bool = False,
+    skip_enrich: bool = False,
 ) -> ApiSpec:
     """Build an enriched API spec from a capture bundle.
 
@@ -113,9 +114,14 @@ async def build_spec(
     )
 
     # Steps 7, 8, 9 run in parallel
-    progress("Enriching endpoints + analyzing auth + building WS specs...")
+    if skip_enrich:
+        progress("Analyzing auth + building WS specs (enrichment skipped)...")
+    else:
+        progress("Enriching endpoints + analyzing auth + building WS specs...")
 
     async def _enrich():
+        if skip_enrich:
+            return None
         enrich_step = EnrichAndContextStep(client, model, debug_dir)
         try:
             return await enrich_step.run(

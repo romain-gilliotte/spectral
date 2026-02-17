@@ -20,9 +20,4 @@ docs/
 tools/*.jar
 
 # Generated test artifacts
-*.generated.json
-indy-api.json
-indy-openapi.yaml
-indy_client.py
-monitool-api.json
-test.json
+workdir
