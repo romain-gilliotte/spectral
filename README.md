@@ -1,4 +1,6 @@
-# Spectral
+<p align="center">
+  <img src="assets/banner.png" alt="Spectral" width="600">
+</p>
 
 Reverse-engineer any app's private API. Browse normally, get a full API spec — then use it to build AI agents and automations instead of brittle browser scripts.
 
