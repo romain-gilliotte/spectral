@@ -337,7 +337,7 @@ class TestCallCommand:
         assert result.exit_code == 0
         assert "get_users" in result.output
 
-    @patch("cli.client.requests.Session")
+    @patch("cli.client.client.requests.Session")
     def test_call_endpoint(self, mock_session_cls: MagicMock, tmp_path: Path) -> None:
         mock_session = MagicMock()
         mock_session.headers = {}
