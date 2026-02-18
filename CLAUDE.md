@@ -44,8 +44,9 @@ api-discover/
 │   ├── __init__.py
 │   ├── main.py             # Entry point: commands (analyze, generate, capture, call, android)
 │   ├── capture/            # Capture: bundle parsing, inspect, MITM proxy
-│   │   ├── cmd.py          # CLI group: capture inspect, capture proxy
-│   │   ├── proxy.py        # Generic MITM proxy engine (mitmproxy addons, run_proxy)
+│   │   ├── cmd.py          # CLI group: capture inspect, capture proxy, capture discover
+│   │   ├── inspect.py      # Inspect implementation: summary + per-trace detail views
+│   │   ├── proxy.py        # Generic MITM proxy engine (mitmproxy addons, run_proxy, run_discover)
 │   │   ├── loader.py       # Unzips and loads a capture bundle (+ write_bundle)
 │   │   └── types.py        # Data classes for traces, contexts, timeline (wraps Pydantic + binary)
 │   ├── analyze/            # Analysis engine
