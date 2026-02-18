@@ -8,6 +8,7 @@ from unittest.mock import MagicMock
 import pytest
 
 from cli.analyze.steps.detect_base_url import DetectBaseUrlStep
+from cli.analyze.steps.types import MethodUrlPair
 from cli.analyze.tools import (
     INVESTIGATION_TOOLS,
     TOOL_EXECUTORS,
@@ -275,8 +276,8 @@ class TestDetectBaseUrlStep:
         step = DetectBaseUrlStep(client, "model")
         result = await step.run(
             [
-                ("GET", "https://www.example.com/api/users"),
-                ("GET", "https://cdn.example.com/style.css"),
+                MethodUrlPair("GET", "https://www.example.com/api/users"),
+                MethodUrlPair("GET", "https://cdn.example.com/style.css"),
             ],
         )
         assert result == "https://www.example.com/api"
@@ -292,7 +293,7 @@ class TestDetectBaseUrlStep:
         client.messages.create = mock_create
 
         step = DetectBaseUrlStep(client, "model")
-        result = await step.run([("GET", "https://api.example.com/v1")])
+        result = await step.run([MethodUrlPair("GET", "https://api.example.com/v1")])
         assert result == "https://api.example.com"
 
     @pytest.mark.asyncio
@@ -306,7 +307,7 @@ class TestDetectBaseUrlStep:
         client.messages.create = mock_create
 
         step = DetectBaseUrlStep(client, "model")
-        result = await step.run([("GET", "https://api.example.com/users")])
+        result = await step.run([MethodUrlPair("GET", "https://api.example.com/users")])
         assert result == "https://api.example.com"
 
     @pytest.mark.asyncio
@@ -321,4 +322,4 @@ class TestDetectBaseUrlStep:
 
         step = DetectBaseUrlStep(client, "model")
         with pytest.raises(ValueError, match="Expected"):
-            await step.run([("GET", "https://example.com/api")])
+            await step.run([MethodUrlPair("GET", "https://example.com/api")])

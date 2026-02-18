@@ -4,8 +4,8 @@ from __future__ import annotations
 
 from typing import Any, cast
 
-from cli.analyze.steps import EndpointGroup
 from cli.analyze.steps.base import LLMStep, StepValidationError
+from cli.analyze.steps.types import EndpointGroup, MethodUrlPair
 from cli.analyze.tools import (
     INVESTIGATION_TOOLS,
     TOOL_EXECUTORS,
@@ -15,27 +15,27 @@ from cli.analyze.tools import (
 from cli.analyze.utils import compact_url
 
 
-class GroupEndpointsStep(LLMStep[list[tuple[str, str]], list[EndpointGroup]]):
+class GroupEndpointsStep(LLMStep[list[MethodUrlPair], list[EndpointGroup]]):
     """Ask the LLM to group URLs into endpoint patterns with {param} syntax.
 
-    Input: list of (method, url) pairs (filtered to the base URL).
+    Input: list of MethodUrlPair (filtered to the base URL).
     Output: list of EndpointGroup with path patterns and assigned URLs.
     """
 
     name = "group_endpoints"
 
-    async def _execute(self, input: list[tuple[str, str]]) -> list[EndpointGroup]:
+    async def _execute(self, input: list[MethodUrlPair]) -> list[EndpointGroup]:
         unique_pairs = sorted(set(input))
         compacted_pairs = sorted(
-            set((method, compact_url(url)) for method, url in unique_pairs)
+            set(MethodUrlPair(p.method, compact_url(p.url)) for p in unique_pairs)
         )
-        lines = [f"  {method} {url}" for method, url in compacted_pairs]
+        lines = [f"  {p.method} {p.url}" for p in compacted_pairs]
 
         # Build mapping from compacted URL back to original URLs
-        compact_to_originals: dict[tuple[str, str], list[str]] = {}
-        for method, url in unique_pairs:
-            key = (method, compact_url(url))
-            compact_to_originals.setdefault(key, []).append(url)
+        compact_to_originals: dict[MethodUrlPair, list[str]] = {}
+        for p in unique_pairs:
+            key = MethodUrlPair(p.method, compact_url(p.url))
+            compact_to_originals.setdefault(key, []).append(p.url)
 
         prompt = f"""You are analyzing HTTP traffic captured from a web application.
 Group these observed URLs into API endpoints. For each group, identify the path pattern
@@ -84,7 +84,7 @@ Respond with a JSON array:
             compacted_urls: list[Any] = item_dict.get("urls", [])
             original_urls: list[str] = []
             for curl in compacted_urls:
-                key = (item_dict["method"], curl)
+                key = MethodUrlPair(item_dict["method"], curl)
                 if key in compact_to_originals:
                     original_urls.extend(compact_to_originals[key])
                 else:

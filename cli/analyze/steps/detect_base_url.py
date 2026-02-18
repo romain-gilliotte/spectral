@@ -5,6 +5,7 @@ from __future__ import annotations
 from typing import Any
 
 from cli.analyze.steps.base import LLMStep, StepValidationError
+from cli.analyze.steps.types import MethodUrlPair
 from cli.analyze.tools import (
     INVESTIGATION_TOOLS,
     TOOL_EXECUTORS,
@@ -14,21 +15,21 @@ from cli.analyze.tools import (
 from cli.analyze.utils import compact_url
 
 
-class DetectBaseUrlStep(LLMStep[list[tuple[str, str]], str]):
+class DetectBaseUrlStep(LLMStep[list[MethodUrlPair], str]):
     """Ask the LLM to identify the business API base URL from captured traffic.
 
-    Input: list of (method, url) pairs.
+    Input: list of MethodUrlPair.
     Output: base URL string like "https://api.example.com" or "https://www.example.com/api".
     """
 
     name = "detect_base_url"
 
-    async def _execute(self, input: list[tuple[str, str]]) -> str:
+    async def _execute(self, input: list[MethodUrlPair]) -> str:
         unique_pairs = sorted(set(input))
         compacted_pairs = sorted(
-            set((method, compact_url(url)) for method, url in unique_pairs)
+            set(MethodUrlPair(p.method, compact_url(p.url)) for p in unique_pairs)
         )
-        lines = [f"  {method} {url}" for method, url in compacted_pairs]
+        lines = [f"  {p.method} {p.url}" for p in compacted_pairs]
 
         prompt = f"""You are analyzing HTTP traffic captured from a web application.
 Identify the base URL of the **business API** (the main application API, not CDN, analytics, tracking, fonts, or third-party services).

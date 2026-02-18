@@ -14,18 +14,23 @@ from typing import Any
 
 from cli.analyze.correlator import correlate
 from cli.analyze.steps.analyze_auth import AnalyzeAuthStep, detect_auth_mechanical
-from cli.analyze.steps.assemble import AssembleInput, AssembleStep
+from cli.analyze.steps.assemble import AssembleStep
 from cli.analyze.steps.build_ws_specs import BuildWsSpecsStep
 from cli.analyze.steps.detect_base_url import DetectBaseUrlStep
-from cli.analyze.steps.enrich_and_context import EnrichAndContextStep, EnrichInput
+from cli.analyze.steps.enrich_and_context import EnrichAndContextStep
 from cli.analyze.steps.extract_pairs import ExtractPairsStep
-from cli.analyze.steps.filter_traces import FilterInput, FilterTracesStep
+from cli.analyze.steps.filter_traces import FilterTracesStep
 from cli.analyze.steps.group_endpoints import GroupEndpointsStep
-from cli.analyze.steps.mechanical_extraction import (
-    MechanicalExtractionInput,
-    MechanicalExtractionStep,
+from cli.analyze.steps.mechanical_extraction import MechanicalExtractionStep
+from cli.analyze.steps.strip_prefix import StripPrefixStep
+from cli.analyze.steps.types import (
+    EnrichmentContext,
+    GroupedTraceData,
+    GroupsWithBaseUrl,
+    MethodUrlPair,
+    SpecComponents,
+    TracesWithBaseUrl,
 )
-from cli.analyze.steps.strip_prefix import StripPrefixInput, StripPrefixStep
 from cli.capture.models import CaptureBundle
 from cli.formats.api_spec import ApiSpec, BusinessContext
 
@@ -89,14 +94,15 @@ async def build_spec(
     filter_step = FilterTracesStep()
     total_before = len(all_traces)
     filtered_traces = await filter_step.run(
-        FilterInput(traces=all_traces, base_url=base_url)
+        TracesWithBaseUrl(traces=all_traces, base_url=base_url)
     )
     progress(f"  Kept {len(filtered_traces)}/{total_before} traces under {base_url}")
 
     # Step 4: Group endpoints (LLM)
     progress("Grouping URLs into endpoints (LLM)...")
     filtered_pairs = [
-        (t.meta.request.method.upper(), t.meta.request.url) for t in filtered_traces
+        MethodUrlPair(t.meta.request.method.upper(), t.meta.request.url)
+        for t in filtered_traces
     ]
     group_step = GroupEndpointsStep(client, model, debug_dir)
     endpoint_groups = await group_step.run(filtered_pairs)
@@ -104,7 +110,7 @@ async def build_spec(
     # Step 5: Strip prefix
     strip_step = StripPrefixStep()
     endpoint_groups = await strip_step.run(
-        StripPrefixInput(groups=endpoint_groups, base_url=base_url)
+        GroupsWithBaseUrl(groups=endpoint_groups, base_url=base_url)
     )
 
     # Debug mode: limit endpoints
@@ -116,7 +122,7 @@ async def build_spec(
     progress(f"Extracting {len(endpoint_groups)} endpoints...")
     mech_step = MechanicalExtractionStep()
     endpoints = await mech_step.run(
-        MechanicalExtractionInput(
+        GroupedTraceData(
             groups=endpoint_groups,
             traces=filtered_traces,
             correlations=correlations,
@@ -135,7 +141,7 @@ async def build_spec(
         enrich_step = EnrichAndContextStep(client, model, debug_dir)
         try:
             return await enrich_step.run(
-                EnrichInput(
+                EnrichmentContext(
                     endpoints=endpoints,
                     traces=filtered_traces,
                     app_name=app_name,
@@ -180,7 +186,7 @@ async def build_spec(
     # Step 10: Assemble
     assemble_step = AssembleStep()
     spec = await assemble_step.run(
-        AssembleInput(
+        SpecComponents(
             app_name=app_name,
             source_filename=source_filename,
             base_url=base_url,

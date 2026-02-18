@@ -2,20 +2,13 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
 from urllib.parse import urlparse
 
-from cli.analyze.steps import EndpointGroup
 from cli.analyze.steps.base import MechanicalStep
+from cli.analyze.steps.types import EndpointGroup, GroupsWithBaseUrl
 
 
-@dataclass
-class StripPrefixInput:
-    groups: list[EndpointGroup]
-    base_url: str
-
-
-class StripPrefixStep(MechanicalStep[StripPrefixInput, list[EndpointGroup]]):
+class StripPrefixStep(MechanicalStep[GroupsWithBaseUrl, list[EndpointGroup]]):
     """Remove the base URL path prefix from endpoint patterns.
 
     e.g. base_url="https://app.example.com/api" + pattern="/api/foo" -> pattern="/foo"
@@ -23,7 +16,7 @@ class StripPrefixStep(MechanicalStep[StripPrefixInput, list[EndpointGroup]]):
 
     name = "strip_prefix"
 
-    async def _execute(self, input: StripPrefixInput) -> list[EndpointGroup]:
+    async def _execute(self, input: GroupsWithBaseUrl) -> list[EndpointGroup]:
         base_path = urlparse(input.base_url).path.rstrip("/")
         if not base_path or base_path == "/":
             return input.groups

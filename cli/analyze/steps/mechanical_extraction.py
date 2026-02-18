@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 from collections import defaultdict
-from dataclasses import dataclass
 import json
 import re
 from typing import Any, cast
@@ -11,8 +10,8 @@ from urllib.parse import urlparse
 
 from cli.analyze.correlator import Correlation
 from cli.analyze.schemas import extract_query_params, infer_schema
-from cli.analyze.steps import EndpointGroup
 from cli.analyze.steps.base import MechanicalStep
+from cli.analyze.steps.types import EndpointGroup, GroupedTraceData
 from cli.analyze.utils import get_header, pattern_to_regex
 from cli.capture.models import Trace
 from cli.formats.api_spec import (
@@ -24,21 +23,12 @@ from cli.formats.api_spec import (
 )
 
 
-@dataclass
-class MechanicalExtractionInput:
-    groups: list[EndpointGroup]
-    traces: list[Trace]
-    correlations: list[Correlation]
-
-
-class MechanicalExtractionStep(
-    MechanicalStep[MechanicalExtractionInput, list[EndpointSpec]]
-):
+class MechanicalExtractionStep(MechanicalStep[GroupedTraceData, list[EndpointSpec]]):
     """Build EndpointSpec for each group using only mechanical extraction."""
 
     name = "mechanical_extraction"
 
-    async def _execute(self, input: MechanicalExtractionInput) -> list[EndpointSpec]:
+    async def _execute(self, input: GroupedTraceData) -> list[EndpointSpec]:
         endpoints: list[EndpointSpec] = []
         for group in input.groups:
             group_traces = _find_traces_for_group(group, input.traces)

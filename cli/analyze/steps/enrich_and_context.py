@@ -2,36 +2,17 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
 import json
 from typing import Any, cast
 
 from cli.analyze.steps.base import LLMStep
+from cli.analyze.steps.types import EnrichmentContext, EnrichmentResult
 from cli.analyze.tools import extract_json, save_debug
 from cli.analyze.utils import truncate_json
-from cli.capture.models import Trace, WsConnection
 from cli.formats.api_spec import BusinessContext, EndpointSpec, WorkflowStep
 
 
-@dataclass
-class EnrichInput:
-    endpoints: list[EndpointSpec]
-    traces: list[Trace]
-    app_name: str
-    base_url: str
-    ws_connections: list[WsConnection] | None = None
-
-
-@dataclass
-class EnrichOutput:
-    endpoints: list[EndpointSpec]
-    business_context: BusinessContext
-    glossary: dict[str, str]
-    api_name: str | None = None
-    ws_enrichments: dict[str, str] | None = None  # ws_id -> business_purpose
-
-
-class EnrichAndContextStep(LLMStep[EnrichInput, EnrichOutput]):
+class EnrichAndContextStep(LLMStep[EnrichmentContext, EnrichmentResult]):
     """Single LLM call to enrich ALL endpoints with business semantics
     and infer overall business context + glossary.
 
@@ -41,7 +22,7 @@ class EnrichAndContextStep(LLMStep[EnrichInput, EnrichOutput]):
 
     name = "enrich_and_context"
 
-    async def _execute(self, input: EnrichInput) -> EnrichOutput:
+    async def _execute(self, input: EnrichmentContext) -> EnrichmentResult:
         trace_map = {t.meta.id: t for t in input.traces}
 
         # Build compact summaries of all endpoints
@@ -187,7 +168,7 @@ Respond in JSON."""
         data = extract_json(response.content[0].text)
 
         if not isinstance(data, dict):
-            return EnrichOutput(
+            return EnrichmentResult(
                 endpoints=input.endpoints,
                 business_context=BusinessContext(),
                 glossary={},
@@ -251,7 +232,7 @@ Respond in JSON."""
             if not ws_enrichments:
                 ws_enrichments = None
 
-        return EnrichOutput(
+        return EnrichmentResult(
             endpoints=input.endpoints,
             business_context=business_context,
             glossary=glossary,

@@ -8,7 +8,7 @@ import pytest
 
 from cli.analyze.pipeline import build_spec
 from cli.analyze.schemas import extract_query_params, infer_schema
-from cli.analyze.steps import EndpointGroup
+from cli.analyze.steps.types import EndpointGroup
 from cli.analyze.steps.enrich_and_context import (
     _apply_enrichment,  # pyright: ignore[reportPrivateUsage]
 )
