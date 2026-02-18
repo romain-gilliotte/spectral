@@ -365,23 +365,3 @@ class TestCallCommand:
         assert result.exit_code != 0
 
 
-class TestPipelineCommand:
-    def test_pipeline(self, sample_bundle: CaptureBundle, tmp_path: Path) -> None:
-        bundle_path = tmp_path / "capture.zip"
-        write_bundle(sample_bundle, bundle_path)
-
-        output_dir = tmp_path / "output"
-        runner = CliRunner()
-
-        mock_anthropic = _make_mock_anthropic_module()
-        with patch.dict("sys.modules", {"anthropic": mock_anthropic}):
-            result = runner.invoke(cli, [
-                "pipeline", str(bundle_path),
-                "--types", "openapi,python-client",
-                "-o", str(output_dir),
-            ])
-
-        assert result.exit_code == 0, result.output
-        assert (output_dir / "api_spec.json").exists()
-        assert (output_dir / "openapi.yaml").exists()
-        assert (output_dir / "client.py").exists()

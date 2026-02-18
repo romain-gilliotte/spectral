@@ -76,14 +76,6 @@ spectral generate <spec> --type <type> -o <path>
 
 Types: `openapi`, `mcp-server`, `python-client`, `markdown-docs`, `curl-scripts`
 
-### Pipeline
-
-```
-spectral pipeline <bundle> --types openapi,mcp-server -o output/
-```
-
-Analyze + generate in one shot. Same options as `analyze`.
-
 ### Utilities
 
 | Command | Description |

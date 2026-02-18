@@ -42,7 +42,7 @@ api-discover/
 │       └── icon128.png
 ├── cli/                    # Python CLI tool
 │   ├── __init__.py
-│   ├── main.py             # Entry point: 4 commands (analyze, generate, pipeline, inspect)
+│   ├── main.py             # Entry point: commands (analyze, generate, inspect, call)
 │   ├── capture/            # Capture bundle parsing
 │   │   ├── loader.py       # Unzips and loads a capture bundle (+ write_bundle)
 │   │   └── models.py       # Data classes for traces, contexts, timeline (wraps Pydantic + binary)
@@ -490,15 +490,12 @@ api-discover generate edf-api.json --type python-client -o edf_client.py
 api-discover generate edf-api.json --type markdown-docs -o docs/
 api-discover generate edf-api.json --type curl-scripts  -o scripts/
 
-# Full pipeline (analyze + generate all requested types)
-api-discover pipeline capture_20260213.zip --types openapi,mcp-server,python-client -o output/
-
 # Utility: inspect a capture bundle
 api-discover inspect capture_20260213.zip                    # summary stats
 api-discover inspect capture_20260213.zip --trace t_0001     # details of one trace
 ```
 
-Note: `analyze` and `pipeline` always use LLM analysis (requires `ANTHROPIC_API_KEY`). Default model is `claude-sonnet-4-5-20250929`.
+Note: `analyze` requires LLM analysis (requires `ANTHROPIC_API_KEY`). Default model is `claude-sonnet-4-5-20250929`.
 
 ---
 
@@ -650,7 +647,7 @@ All LLM steps use `_extract_json()` to robustly parse LLM JSON responses (handle
 
 ### Phase 5: Polish
 - [x] `api-discover inspect` command — summary + per-trace detail view
-- [x] Full CLI (`cli/main.py`) — 4 commands: `analyze`, `generate`, `pipeline`, `inspect`
+- [x] Full CLI (`cli/main.py`) — commands: `analyze`, `generate`, `inspect`, `call`
 - [ ] Bundle merging (combine multiple capture sessions for the same app)
 - [ ] Privacy controls: exclude domains, redact headers/cookies
 
@@ -732,5 +729,5 @@ pytest-asyncio # Async test support (asyncio_mode = "auto")
 ## Environment variables
 
 ```
-ANTHROPIC_API_KEY=sk-ant-...    # Required for analyze and pipeline commands
+ANTHROPIC_API_KEY=sk-ant-...    # Required for analyze command
 ```
