@@ -3,9 +3,13 @@
 from cli.analyze.correlator import correlate, find_uncorrelated_traces
 from cli.capture.models import CaptureBundle, Context, Trace, WsConnection
 from cli.formats.capture_bundle import (
-    AppInfo, BrowserInfo, CaptureManifest, CaptureStats, Timeline,
+    AppInfo,
+    BrowserInfo,
+    CaptureManifest,
+    CaptureStats,
+    Timeline,
 )
-from tests.conftest import make_context, make_trace, make_ws_message, make_ws_connection
+from tests.conftest import make_context, make_trace, make_ws_connection, make_ws_message
 
 
 def _make_bundle(
@@ -47,8 +51,12 @@ class TestCorrelate:
     def test_window_cutoff(self):
         """Traces beyond 2s window should not be correlated."""
         ctx = make_context("c_0001", timestamp=1000)
-        trace_in = make_trace("t_0001", "GET", "http://localhost/a", 200, timestamp=2500)
-        trace_out = make_trace("t_0002", "GET", "http://localhost/b", 200, timestamp=3500)
+        trace_in = make_trace(
+            "t_0001", "GET", "http://localhost/a", 200, timestamp=2500
+        )
+        trace_out = make_trace(
+            "t_0002", "GET", "http://localhost/b", 200, timestamp=3500
+        )
 
         bundle = _make_bundle(traces=[trace_in, trace_out], contexts=[ctx])
         correlations = correlate(bundle)
@@ -78,7 +86,9 @@ class TestCorrelate:
         ctx1 = make_context("c_0001", timestamp=1000)
         ctx2 = make_context("c_0002", timestamp=1500)
         trace = make_trace("t_0001", "GET", "http://localhost/a", 200, timestamp=1200)
-        trace_after = make_trace("t_0002", "GET", "http://localhost/b", 200, timestamp=1600)
+        trace_after = make_trace(
+            "t_0002", "GET", "http://localhost/b", 200, timestamp=1600
+        )
 
         bundle = _make_bundle(traces=[trace, trace_after], contexts=[ctx1, ctx2])
         correlations = correlate(bundle)
@@ -109,7 +119,9 @@ class TestCorrelate:
         """WebSocket messages should also be correlated."""
         ctx = make_context("c_0001", timestamp=1000)
         msg = make_ws_message("ws_0001_m001", "ws_0001", 1500, "send", b'{"test":1}')
-        ws_conn = make_ws_connection("ws_0001", "wss://example.com/ws", 900, messages=[msg])
+        ws_conn = make_ws_connection(
+            "ws_0001", "wss://example.com/ws", 900, messages=[msg]
+        )
 
         bundle = _make_bundle(contexts=[ctx], ws_connections=[ws_conn])
         correlations = correlate(bundle)
@@ -120,8 +132,12 @@ class TestCorrelate:
     def test_custom_window(self):
         """Custom window size should be respected."""
         ctx = make_context("c_0001", timestamp=1000)
-        trace_close = make_trace("t_0001", "GET", "http://localhost/a", 200, timestamp=1200)
-        trace_far = make_trace("t_0002", "GET", "http://localhost/b", 200, timestamp=1600)
+        trace_close = make_trace(
+            "t_0001", "GET", "http://localhost/a", 200, timestamp=1200
+        )
+        trace_far = make_trace(
+            "t_0002", "GET", "http://localhost/b", 200, timestamp=1600
+        )
 
         bundle = _make_bundle(traces=[trace_close, trace_far], contexts=[ctx])
         correlations = correlate(bundle, window_ms=500)

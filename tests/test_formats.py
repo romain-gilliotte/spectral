@@ -1,6 +1,5 @@
 """Tests for Pydantic models in cli/formats/."""
 
-
 from cli.formats.api_spec import (
     ApiSpec,
     AuthInfo,
@@ -126,10 +125,12 @@ class TestCaptureBundle:
         assert loaded.payload_file == "ws_0001_m001.bin"
 
     def test_timeline_roundtrip(self):
-        tl = Timeline(events=[
-            TimelineEvent(timestamp=1000, type="context", ref="c_0001"),
-            TimelineEvent(timestamp=2000, type="trace", ref="t_0001"),
-        ])
+        tl = Timeline(
+            events=[
+                TimelineEvent(timestamp=1000, type="context", ref="c_0001"),
+                TimelineEvent(timestamp=2000, type="trace", ref="t_0001"),
+            ]
+        )
         json_str = tl.model_dump_json()
         loaded = Timeline.model_validate_json(json_str)
         assert len(loaded.events) == 2
@@ -154,8 +155,12 @@ class TestApiSpec:
             name="Test API",
             discovery_date="2026-02-13T15:30:00Z",
             source_captures=["test.zip"],
-            business_context=BusinessContext(domain="Testing", description="A test API"),
-            auth=AuthInfo(type="bearer_token", token_header="Authorization", token_prefix="Bearer"),
+            business_context=BusinessContext(
+                domain="Testing", description="A test API"
+            ),
+            auth=AuthInfo(
+                type="bearer_token", token_header="Authorization", token_prefix="Bearer"
+            ),
             protocols=Protocols(
                 rest=RestProtocol(
                     base_url="https://api.example.com",
@@ -169,7 +174,9 @@ class TestApiSpec:
                             observed_count=5,
                             request=RequestSpec(content_type="application/json"),
                             responses=[
-                                ResponseSpec(status=200, content_type="application/json"),
+                                ResponseSpec(
+                                    status=200, content_type="application/json"
+                                ),
                             ],
                         )
                     ],

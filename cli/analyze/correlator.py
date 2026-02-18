@@ -4,7 +4,6 @@ from dataclasses import dataclass, field
 
 from cli.capture.models import CaptureBundle, Context, Trace, WsMessage
 
-
 DEFAULT_WINDOW_MS = 2000
 
 

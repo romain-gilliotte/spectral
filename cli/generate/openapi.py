@@ -16,7 +16,9 @@ def generate_openapi(spec: ApiSpec, output_path: str | Path) -> None:
     output_path = Path(output_path)
     output_path.parent.mkdir(parents=True, exist_ok=True)
     with open(output_path, "w") as f:
-        yaml.dump(openapi, f, default_flow_style=False, sort_keys=False, allow_unicode=True)
+        yaml.dump(
+            openapi, f, default_flow_style=False, sort_keys=False, allow_unicode=True
+        )
 
 
 def build_openapi_dict(spec: ApiSpec) -> dict[str, Any]:
@@ -25,7 +27,8 @@ def build_openapi_dict(spec: ApiSpec) -> dict[str, Any]:
         "openapi": "3.1.0",
         "info": {
             "title": spec.name,
-            "description": spec.business_context.description or f"API specification for {spec.name}",
+            "description": spec.business_context.description
+            or f"API specification for {spec.name}",
             "version": "1.0.0",
         },
         "servers": [],

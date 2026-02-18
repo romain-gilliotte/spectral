@@ -123,7 +123,10 @@ def build_endpoint_markdown(endpoint: EndpointSpec, spec: ApiSpec) -> str:
         lines.append("## UI Triggers")
         lines.append("")
         for trigger in endpoint.ui_triggers:
-            text = trigger.user_explanation or f"{trigger.action} on `{trigger.element_selector}`"
+            text = (
+                trigger.user_explanation
+                or f"{trigger.action} on `{trigger.element_selector}`"
+            )
             lines.append(f"- {text}")
             if trigger.page_url:
                 lines.append(f"  Page: `{trigger.page_url}`")
@@ -225,10 +228,16 @@ def build_auth_markdown(spec: ApiSpec) -> str:
         lines.append(f"**URL:** `{spec.auth.login_config.url}`")
         lines.append(f"**Method:** `{spec.auth.login_config.method}`")
         if spec.auth.login_config.credential_fields:
-            lines.append(f"**Credential fields:** {', '.join(f'`{k}` ({v})' for k, v in spec.auth.login_config.credential_fields.items())}")
+            lines.append(
+                f"**Credential fields:** {', '.join(f'`{k}` ({v})' for k, v in spec.auth.login_config.credential_fields.items())}"
+            )
         if spec.auth.login_config.extra_fields:
-            lines.append(f"**Extra fields:** {', '.join(f'`{k}`=`{v}`' for k, v in spec.auth.login_config.extra_fields.items())}")
-        lines.append(f"**Token response path:** `{spec.auth.login_config.token_response_path}`")
+            lines.append(
+                f"**Extra fields:** {', '.join(f'`{k}`=`{v}`' for k, v in spec.auth.login_config.extra_fields.items())}"
+            )
+        lines.append(
+            f"**Token response path:** `{spec.auth.login_config.token_response_path}`"
+        )
         lines.append("")
 
     if spec.auth.refresh_config:
@@ -238,7 +247,9 @@ def build_auth_markdown(spec: ApiSpec) -> str:
         lines.append(f"**Method:** `{spec.auth.refresh_config.method}`")
         lines.append(f"**Token field:** `{spec.auth.refresh_config.token_field}`")
         if spec.auth.refresh_config.extra_fields:
-            lines.append(f"**Extra fields:** {', '.join(f'`{k}`=`{v}`' for k, v in spec.auth.refresh_config.extra_fields.items())}")
+            lines.append(
+                f"**Extra fields:** {', '.join(f'`{k}`=`{v}`' for k, v in spec.auth.refresh_config.extra_fields.items())}"
+            )
         lines.append("")
 
     if spec.auth.discovery_notes:

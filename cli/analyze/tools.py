@@ -3,16 +3,18 @@
 from __future__ import annotations
 
 import base64
-import json
-import re
 from collections.abc import Callable
 from datetime import datetime, timezone
+import json
 from pathlib import Path
+import re
 from typing import Any
 from urllib.parse import unquote
 
 
-def save_debug(debug_dir: Path | None, call_name: str, prompt: str, response_text: str) -> None:
+def save_debug(
+    debug_dir: Path | None, call_name: str, prompt: str, response_text: str
+) -> None:
     """Save an LLM call's prompt and response to the debug directory."""
     if debug_dir is None:
         return
@@ -40,7 +42,7 @@ def extract_json(text: str) -> dict[str, Any] | list[Any]:
             pass
 
     # Try finding first { ... } or [ ... ] block
-    for start_char, end_char in [('{', '}'), ('[', ']')]:
+    for start_char, end_char in [("{", "}"), ("[", "]")]:
         start = text.find(start_char)
         if start == -1:
             continue
@@ -192,27 +194,33 @@ async def call_with_tools(
                 continue
             executor = executors.get(block.name)
             if executor is None:
-                tool_results.append({
-                    "type": "tool_result",
-                    "tool_use_id": block.id,
-                    "content": f"Unknown tool: {block.name}",
-                    "is_error": True,
-                })
+                tool_results.append(
+                    {
+                        "type": "tool_result",
+                        "tool_use_id": block.id,
+                        "content": f"Unknown tool: {block.name}",
+                        "is_error": True,
+                    }
+                )
                 continue
             try:
                 result = executor(block.input)
-                tool_results.append({
-                    "type": "tool_result",
-                    "tool_use_id": block.id,
-                    "content": result,
-                })
+                tool_results.append(
+                    {
+                        "type": "tool_result",
+                        "tool_use_id": block.id,
+                        "content": result,
+                    }
+                )
             except Exception as exc:
-                tool_results.append({
-                    "type": "tool_result",
-                    "tool_use_id": block.id,
-                    "content": f"Error: {exc}",
-                    "is_error": True,
-                })
+                tool_results.append(
+                    {
+                        "type": "tool_result",
+                        "tool_use_id": block.id,
+                        "content": f"Error: {exc}",
+                        "is_error": True,
+                    }
+                )
         messages.append({"role": "user", "content": tool_results})
 
     raise ValueError(f"call_with_tools exceeded {max_iterations} iterations")

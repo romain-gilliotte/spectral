@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-import re
 from pathlib import Path
+import re
 
 from cli.formats.api_spec import ApiSpec, EndpointSpec
 
@@ -36,7 +36,7 @@ def build_python_client(spec: ApiSpec) -> str:
         f'    """Client for {spec.name}."""',
         "",
         f'    def __init__(self, base_url: str = "{base_url}", token: str | None = None):',
-        "        self.base_url = base_url.rstrip(\"/\")",
+        '        self.base_url = base_url.rstrip("/")',
         "        self.session = requests.Session()",
         "        if token:",
     ]
@@ -45,7 +45,9 @@ def build_python_client(spec: ApiSpec) -> str:
     header = spec.auth.token_header or "Authorization"
     prefix = spec.auth.token_prefix
     if prefix:
-        lines.append(f'            self.session.headers["{header}"] = f"{prefix} {{token}}"')
+        lines.append(
+            f'            self.session.headers["{header}"] = f"{prefix} {{token}}"'
+        )
     else:
         lines.append(f'            self.session.headers["{header}"] = token')
 
@@ -122,10 +124,12 @@ def _build_method(endpoint: EndpointSpec) -> list[str]:
                 lines.append(f"        if {name} is not None:")
                 lines.append(f'            json_body["{p.name}"] = {name}')
         lines.append(
-            f'        response = self.session.{http_method}(url, json=json_body, params=params)'
+            f"        response = self.session.{http_method}(url, json=json_body, params=params)"
         )
     else:
-        lines.append(f'        response = self.session.{http_method}(url, params=params)')
+        lines.append(
+            f"        response = self.session.{http_method}(url, params=params)"
+        )
 
     lines.append("        response.raise_for_status()")
     lines.append("        if response.content:")
@@ -163,7 +167,18 @@ def _safe_name(name: str) -> str:
     if name and name[0].isdigit():
         name = "_" + name
     # Avoid Python keywords
-    if name in ("class", "type", "import", "from", "return", "def", "if", "for", "in", "is"):
+    if name in (
+        "class",
+        "type",
+        "import",
+        "from",
+        "return",
+        "def",
+        "if",
+        "for",
+        "in",
+        "is",
+    ):
         name = name + "_"
     return name
 

@@ -5,5 +5,9 @@
     "*.egg-info": true,
     ".mypy_cache": true,
     ".ruff_cache": true
+  },
+  "[python]": {
+    "editor.defaultFormatter": "charliermarsh.ruff",
+    "editor.formatOnSave": true
   }
 }

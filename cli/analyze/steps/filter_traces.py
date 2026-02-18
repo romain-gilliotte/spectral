@@ -21,6 +21,5 @@ class FilterTracesStep(MechanicalStep[FilterInput, list[Trace]]):
 
     async def _execute(self, input: FilterInput) -> list[Trace]:
         return [
-            t for t in input.traces
-            if t.meta.request.url.startswith(input.base_url)
+            t for t in input.traces if t.meta.request.url.startswith(input.base_url)
         ]

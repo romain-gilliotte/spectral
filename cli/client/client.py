@@ -93,7 +93,11 @@ class ApiClient:
         response = self._do_call(endpoint, kwargs)
 
         # Auto-refresh on 401
-        if response.status_code == 401 and self.refresh_token_value and self._spec.auth.refresh_config:
+        if (
+            response.status_code == 401
+            and self.refresh_token_value
+            and self._spec.auth.refresh_config
+        ):
             if self._refresh_token():
                 response = self._do_call(endpoint, kwargs)
 
@@ -106,7 +110,9 @@ class ApiClient:
                 return response.text
         return None
 
-    def _do_call(self, endpoint: EndpointSpec, kwargs: dict[str, Any]) -> requests.Response:
+    def _do_call(
+        self, endpoint: EndpointSpec, kwargs: dict[str, Any]
+    ) -> requests.Response:
         """Execute the HTTP request for an endpoint."""
         # Classify params
         param_locations: dict[str, str] = {}

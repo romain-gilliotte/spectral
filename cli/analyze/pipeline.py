@@ -70,7 +70,9 @@ async def build_spec(
     correlations = correlate(bundle)
 
     app_name = (
-        bundle.manifest.app.name + " API" if bundle.manifest.app.name else "Discovered API"
+        bundle.manifest.app.name + " API"
+        if bundle.manifest.app.name
+        else "Discovered API"
     )
 
     # Step 1: Extract pairs
@@ -86,18 +88,24 @@ async def build_spec(
     # Step 3: Filter traces
     filter_step = FilterTracesStep()
     total_before = len(all_traces)
-    filtered_traces = await filter_step.run(FilterInput(traces=all_traces, base_url=base_url))
+    filtered_traces = await filter_step.run(
+        FilterInput(traces=all_traces, base_url=base_url)
+    )
     progress(f"  Kept {len(filtered_traces)}/{total_before} traces under {base_url}")
 
     # Step 4: Group endpoints (LLM)
     progress("Grouping URLs into endpoints (LLM)...")
-    filtered_pairs = [(t.meta.request.method.upper(), t.meta.request.url) for t in filtered_traces]
+    filtered_pairs = [
+        (t.meta.request.method.upper(), t.meta.request.url) for t in filtered_traces
+    ]
     group_step = GroupEndpointsStep(client, model, debug_dir)
     endpoint_groups = await group_step.run(filtered_pairs)
 
     # Step 5: Strip prefix
     strip_step = StripPrefixStep()
-    endpoint_groups = await strip_step.run(StripPrefixInput(groups=endpoint_groups, base_url=base_url))
+    endpoint_groups = await strip_step.run(
+        StripPrefixInput(groups=endpoint_groups, base_url=base_url)
+    )
 
     # Debug mode: limit endpoints
     if debug_dir is not None and len(endpoint_groups) > 10:

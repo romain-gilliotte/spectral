@@ -2,22 +2,15 @@
 
 from __future__ import annotations
 
-import json
 from dataclasses import dataclass
+import json
 from typing import Any, cast
 
 from cli.analyze.steps.base import LLMStep
-from cli.analyze.tools import (
-    extract_json,
-    save_debug,
-)
+from cli.analyze.tools import extract_json, save_debug
 from cli.analyze.utils import truncate_json
 from cli.capture.models import Trace, WsConnection
-from cli.formats.api_spec import (
-    BusinessContext,
-    EndpointSpec,
-    WorkflowStep,
-)
+from cli.formats.api_spec import BusinessContext, EndpointSpec, WorkflowStep
 
 
 @dataclass
@@ -64,35 +57,50 @@ class EnrichAndContextStep(LLMStep[EnrichInput, EnrichOutput]):
             # Add UI triggers
             if ep.ui_triggers:
                 summary["ui_triggers"] = [
-                    {"action": t.action, "element_text": t.element_text, "page_url": t.page_url}
+                    {
+                        "action": t.action,
+                        "element_text": t.element_text,
+                        "page_url": t.page_url,
+                    }
                     for t in ep.ui_triggers[:2]
                 ]
 
             # Add sample request/response from first trace
-            ep_traces = [trace_map[ref] for ref in ep.source_trace_refs[:2] if ref in trace_map]
+            ep_traces = [
+                trace_map[ref] for ref in ep.source_trace_refs[:2] if ref in trace_map
+            ]
             if ep_traces:
                 t = ep_traces[0]
                 if t.request_body:
                     try:
-                        summary["sample_request_body"] = truncate_json(json.loads(t.request_body), max_keys=8)
+                        summary["sample_request_body"] = truncate_json(
+                            json.loads(t.request_body), max_keys=8
+                        )
                     except (json.JSONDecodeError, UnicodeDecodeError):
                         pass
                 if t.response_body:
                     try:
-                        summary["sample_response_body"] = truncate_json(json.loads(t.response_body), max_keys=8)
+                        summary["sample_response_body"] = truncate_json(
+                            json.loads(t.response_body), max_keys=8
+                        )
                     except (json.JSONDecodeError, UnicodeDecodeError):
                         pass
-                summary["response_statuses"] = list(set(
-                    trace_map[ref].meta.response.status
-                    for ref in ep.source_trace_refs if ref in trace_map
-                ))
+                summary["response_statuses"] = list(
+                    set(
+                        trace_map[ref].meta.response.status
+                        for ref in ep.source_trace_refs
+                        if ref in trace_map
+                    )
+                )
 
             # Add parameter names with observed values for constraint inference
             if ep.request.parameters:
                 params_list: list[dict[str, Any]] = []
                 for p in ep.request.parameters:
                     param_info: dict[str, Any] = dict(
-                        name=p.name, location=p.location, type=p.type,
+                        name=p.name,
+                        location=p.location,
+                        type=p.type,
                     )
                     if p.observed_values:
                         param_info["observed_values"] = p.observed_values[:3]
@@ -121,7 +129,12 @@ class EnrichAndContextStep(LLMStep[EnrichInput, EnrichOutput]):
                     if msg.payload:
                         try:
                             payload = json.loads(msg.payload)
-                            msg_samples.append({"direction": msg.meta.direction, "payload": truncate_json(payload, max_keys=5)})
+                            msg_samples.append(
+                                {
+                                    "direction": msg.meta.direction,
+                                    "payload": truncate_json(payload, max_keys=5),
+                                }
+                            )
                         except (json.JSONDecodeError, UnicodeDecodeError):
                             pass
                 if msg_samples:
@@ -159,7 +172,7 @@ Provide a SINGLE JSON response with {("three" if ws_ids else "two")} top-level k
    - "user_personas": array of user types
    - "key_workflows": array of {{"name": "...", "description": "...", "steps": [...]}}
    - "business_glossary": {{term: "definition"}} for domain-specific terms
-{('3. "websocket_purposes": an object keyed by WebSocket connection ID (' + ", ".join(f'"{wid}"' for wid in ws_ids) + '), where each value is a concise business_purpose string describing what this WebSocket connection is used for.' if ws_ids else "")}
+{('3. "websocket_purposes": an object keyed by WebSocket connection ID (' + ", ".join(f'"{wid}"' for wid in ws_ids) + "), where each value is a concise business_purpose string describing what this WebSocket connection is used for." if ws_ids else "")}
 Respond in JSON."""
 
         response: Any = await self.client.messages.create(
@@ -168,7 +181,9 @@ Respond in JSON."""
             messages=[{"role": "user", "content": prompt}],
         )
 
-        save_debug(self.debug_dir, "enrich_and_context", prompt, response.content[0].text)
+        save_debug(
+            self.debug_dir, "enrich_and_context", prompt, response.content[0].text
+        )
         data = extract_json(response.content[0].text)
 
         if not isinstance(data, dict):
@@ -230,7 +245,9 @@ Respond in JSON."""
         if isinstance(ws_raw, dict):
             ws_dict = cast(dict[str, Any], ws_raw)
             # Filter to only string values
-            ws_enrichments = {str(k): v for k, v in ws_dict.items() if isinstance(v, str)}
+            ws_enrichments = {
+                str(k): v for k, v in ws_dict.items() if isinstance(v, str)
+            }
             if not ws_enrichments:
                 ws_enrichments = None
 

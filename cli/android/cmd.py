@@ -37,7 +37,12 @@ def list_cmd(filter: str | None) -> None:
 
 @android.command()
 @click.argument("package")
-@click.option("-o", "--output", default=None, help="Output path (file for single APK, directory for splits)")
+@click.option(
+    "-o",
+    "--output",
+    default=None,
+    help="Output path (file for single APK, directory for splits)",
+)
 def pull(package: str, output: str | None) -> None:
     """Pull all APKs for a package from a connected Android device.
 
@@ -77,7 +82,12 @@ def pull(package: str, output: str | None) -> None:
 
 @android.command()
 @click.argument("apk_path", type=click.Path(exists=True))
-@click.option("-o", "--output", default=None, help="Output path (file for single APK, directory for splits)")
+@click.option(
+    "-o",
+    "--output",
+    default=None,
+    help="Output path (file for single APK, directory for splits)",
+)
 def patch(apk_path: str, output: str | None) -> None:
     """Patch an APK or directory of split APKs to trust user CA certificates for MITM."""
     from cli.android.patch import patch_apk, patch_apk_dir
@@ -129,7 +139,13 @@ def install(apk_path: str) -> None:
 @android.command()
 @click.option("-p", "--port", default=8080, help="Proxy listen port")
 @click.option("-o", "--output", default=None, help="Output bundle path (.zip)")
-@click.option("-d", "--domain", "domains", multiple=True, help="Only intercept these domains (regex). Can be repeated.")
+@click.option(
+    "-d",
+    "--domain",
+    "domains",
+    multiple=True,
+    help="Only intercept these domains (regex). Can be repeated.",
+)
 def capture(port: int, output: str | None, domains: tuple[str, ...]) -> None:
     """Capture traffic from an Android app via MITM proxy.
 
@@ -157,4 +173,6 @@ def capture(port: int, output: str | None, domains: tuple[str, ...]) -> None:
     if stats:
         console.print()
         console.print(f"[green]Capture bundle written to {output_path}[/green]")
-        console.print(f"  {stats.trace_count} HTTP traces, {stats.ws_connection_count} WS connections, {stats.ws_message_count} WS messages")
+        console.print(
+            f"  {stats.trace_count} HTTP traces, {stats.ws_connection_count} WS connections, {stats.ws_message_count} WS messages"
+        )

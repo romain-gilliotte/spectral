@@ -25,9 +25,9 @@ class DetectBaseUrlStep(LLMStep[list[tuple[str, str]], str]):
 
     async def _execute(self, input: list[tuple[str, str]]) -> str:
         unique_pairs = sorted(set(input))
-        compacted_pairs = sorted(set(
-            (method, compact_url(url)) for method, url in unique_pairs
-        ))
+        compacted_pairs = sorted(
+            set((method, compact_url(url)) for method, url in unique_pairs)
+        )
         lines = [f"  {method} {url}" for method, url in compacted_pairs]
 
         prompt = f"""You are analyzing HTTP traffic captured from a web application.
@@ -63,7 +63,9 @@ Respond with a JSON object:
         if isinstance(result, dict) and "base_url" in result:
             base_url: Any = result["base_url"]
             return str(base_url).rstrip("/")
-        raise ValueError(f"Expected {{\"base_url\": \"...\"}} from detect_api_base_url, got: {text[:200]}")
+        raise ValueError(
+            f'Expected {{"base_url": "..."}} from detect_api_base_url, got: {text[:200]}'
+        )
 
     def _validate_output(self, output: str) -> None:
         if not output.startswith("http"):

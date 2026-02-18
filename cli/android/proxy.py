@@ -2,17 +2,17 @@
 
 from __future__ import annotations
 
-import signal
-import subprocess
-import uuid
 from datetime import datetime, timezone
 from pathlib import Path
+import signal
+import subprocess
 from typing import TYPE_CHECKING
+import uuid
 
 import click
 
 if TYPE_CHECKING:
-    from mitmproxy.http import HTTPFlow, Headers as mitmproxy_Headers
+    from mitmproxy.http import Headers as mitmproxy_Headers, HTTPFlow
     from mitmproxy.tls import ClientHelloData
 
 from cli.capture.loader import write_bundle
@@ -36,6 +36,7 @@ def _ensure_mitmproxy() -> None:
     """Lazy-import mitmproxy, raising a clear error if not installed."""
     try:
         import mitmproxy as _mitmproxy  # noqa: F401
+
         del _mitmproxy
     except ImportError:
         raise ImportError(
@@ -101,7 +102,9 @@ def flow_to_trace(flow: HTTPFlow, trace_id: str) -> Trace:
 
 
 def ws_flow_to_connection(
-    flow: HTTPFlow, ws_id: str, messages: list[WsMessage],
+    flow: HTTPFlow,
+    ws_id: str,
+    messages: list[WsMessage],
 ) -> WsConnection:
     """Convert mitmproxy WebSocket data to a WsConnection."""
     meta = WsConnectionMeta(
@@ -170,7 +173,9 @@ class CaptureAddon:
         self.domains_seen.add(flow.request.host)
 
         status = flow.response.status_code if flow.response else "?"
-        click.echo(f"  {trace_id}  {flow.request.method:<6} {status}  {flow.request.pretty_url}")
+        click.echo(
+            f"  {trace_id}  {flow.request.method:<6} {status}  {flow.request.pretty_url}"
+        )
 
     def websocket_start(self, flow: HTTPFlow) -> None:
         """Called when a WebSocket connection is established."""
@@ -201,7 +206,11 @@ class CaptureAddon:
         direction = "send" if msg.from_client else "receive"
         payload = msg.content or b""
         opcode = "text" if msg.is_text else "binary"
-        timestamp_ms = int(msg.timestamp * 1000) if hasattr(msg, "timestamp") and msg.timestamp else int(flow.request.timestamp_start * 1000)
+        timestamp_ms = (
+            int(msg.timestamp * 1000)
+            if hasattr(msg, "timestamp") and msg.timestamp
+            else int(flow.request.timestamp_start * 1000)
+        )
 
         ws_msg = WsMessage(
             meta=WsMessageMeta(
@@ -232,7 +241,9 @@ class CaptureAddon:
 
         click.echo(f"  {ws_id}  WS CLOSE ({len(messages)} messages)")
 
-    def build_bundle(self, app_name: str, start_time: float, end_time: float) -> CaptureBundle:
+    def build_bundle(
+        self, app_name: str, start_time: float, end_time: float
+    ) -> CaptureBundle:
         """Assemble all captured data into a CaptureBundle."""
         # Finalize any WS connections that didn't close cleanly
         finalized_ws_ids = {ws.meta.id for ws in self.ws_connections}
@@ -267,11 +278,21 @@ class CaptureAddon:
 
         events: list[TimelineEvent] = []
         for t in self.traces:
-            events.append(TimelineEvent(timestamp=t.meta.timestamp, type="trace", ref=t.meta.id))
+            events.append(
+                TimelineEvent(timestamp=t.meta.timestamp, type="trace", ref=t.meta.id)
+            )
         for ws in self.ws_connections:
-            events.append(TimelineEvent(timestamp=ws.meta.timestamp, type="ws_open", ref=ws.meta.id))
+            events.append(
+                TimelineEvent(
+                    timestamp=ws.meta.timestamp, type="ws_open", ref=ws.meta.id
+                )
+            )
             for msg in ws.messages:
-                events.append(TimelineEvent(timestamp=msg.meta.timestamp, type="ws_message", ref=msg.meta.id))
+                events.append(
+                    TimelineEvent(
+                        timestamp=msg.meta.timestamp, type="ws_message", ref=msg.meta.id
+                    )
+                )
         events.sort(key=lambda e: e.timestamp)
 
         return CaptureBundle(
@@ -307,9 +328,9 @@ def run_proxy(
     _ensure_mitmproxy()
 
     import asyncio
+    from pathlib import Path as P
     import threading
     import time
-    from pathlib import Path as P
 
     from mitmproxy.options import Options
     from mitmproxy.tools.dump import DumpMaster
@@ -319,7 +340,10 @@ def run_proxy(
     # Tunnel: device localhost:port → computer localhost:port via USB
     subprocess.run(
         ["adb", "reverse", f"tcp:{port}", f"tcp:{port}"],
-        capture_output=True, text=True, timeout=10, check=True,
+        capture_output=True,
+        text=True,
+        timeout=10,
+        check=True,
     )
 
     # Push mitmproxy CA cert (.pem as .crt — Android recognizes this)
@@ -333,28 +357,45 @@ def run_proxy(
 
     subprocess.run(
         ["adb", "push", str(cert_path), "/sdcard/mitmproxy-ca-cert.crt"],
-        capture_output=True, timeout=10,
+        capture_output=True,
+        timeout=10,
     )
 
     # Try to set proxy programmatically (works on some devices)
-    proxy_set = subprocess.run(
-        ["adb", "shell", "settings", "put", "global", "http_proxy", f"127.0.0.1:{port}"],
-        capture_output=True, text=True, timeout=10,
-    ).returncode == 0
+    proxy_set = (
+        subprocess.run(
+            [
+                "adb",
+                "shell",
+                "settings",
+                "put",
+                "global",
+                "http_proxy",
+                f"127.0.0.1:{port}",
+            ],
+            capture_output=True,
+            text=True,
+            timeout=10,
+        ).returncode
+        == 0
+    )
 
     def _cleanup_device():
         if proxy_set:
             subprocess.run(
                 ["adb", "shell", "settings", "put", "global", "http_proxy", ":0"],
-                capture_output=True, timeout=10,
+                capture_output=True,
+                timeout=10,
             )
             subprocess.run(
                 ["adb", "shell", "settings", "delete", "global", "http_proxy"],
-                capture_output=True, timeout=10,
+                capture_output=True,
+                timeout=10,
             )
         subprocess.run(
             ["adb", "reverse", "--remove-all"],
-            capture_output=True, timeout=10,
+            capture_output=True,
+            timeout=10,
         )
 
     # --- Start proxy first (so it's reachable during user setup) ---
@@ -376,7 +417,9 @@ def run_proxy(
     master.addons.add(discovery_addon if discovery_mode else addon)  # pyright: ignore[reportUnknownMemberType]
 
     proxy_thread = threading.Thread(
-        target=loop.run_until_complete, args=(master.run(),), daemon=True,
+        target=loop.run_until_complete,
+        args=(master.run(),),
+        daemon=True,
     )
     proxy_thread.start()
 
@@ -396,9 +439,7 @@ def run_proxy(
         click.echo("     → select mitmproxy-ca-cert.crt\n")
 
     if not proxy_set:
-        click.echo(
-            f"  Ensure Wi-Fi proxy is set on device: 127.0.0.1:{port}\n"
-        )
+        click.echo(f"  Ensure Wi-Fi proxy is set on device: 127.0.0.1:{port}\n")
 
     if discovery_mode:
         click.echo("  Listening... press Ctrl+C to stop.\n")

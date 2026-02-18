@@ -40,7 +40,9 @@ def sample_manifest() -> CaptureManifest:
         ),
         browser=BrowserInfo(name="Chrome", version="133.0"),
         duration_ms=5000,
-        stats=CaptureStats(trace_count=3, ws_connection_count=1, ws_message_count=2, context_count=2),
+        stats=CaptureStats(
+            trace_count=3, ws_connection_count=1, ws_message_count=2, context_count=2
+        ),
     )
 
 
@@ -74,7 +76,8 @@ def make_trace(
             response=ResponseMeta(
                 status=status,
                 status_text="OK" if status == 200 else "Error",
-                headers=response_headers or [
+                headers=response_headers
+                or [
                     Header(name="Content-Type", value="application/json"),
                 ],
                 body_file=resp_body_file,
@@ -156,25 +159,43 @@ def sample_traces() -> list[Trace]:
     """Create sample traces for testing."""
     return [
         make_trace(
-            "t_0001", "GET", "https://api.example.com/api/users", 200,
+            "t_0001",
+            "GET",
+            "https://api.example.com/api/users",
+            200,
             timestamp=1000000,
-            response_body=json.dumps([{"id": 1, "name": "Alice"}, {"id": 2, "name": "Bob"}]).encode(),
+            response_body=json.dumps(
+                [{"id": 1, "name": "Alice"}, {"id": 2, "name": "Bob"}]
+            ).encode(),
             request_headers=[Header(name="Authorization", value="Bearer token123")],
         ),
         make_trace(
-            "t_0002", "GET", "https://api.example.com/api/users/123/orders", 200,
+            "t_0002",
+            "GET",
+            "https://api.example.com/api/users/123/orders",
+            200,
             timestamp=1001000,
-            response_body=json.dumps({"orders": [{"id": "o1", "total": 42.5}]}).encode(),
+            response_body=json.dumps(
+                {"orders": [{"id": "o1", "total": 42.5}]}
+            ).encode(),
             request_headers=[Header(name="Authorization", value="Bearer token123")],
         ),
         make_trace(
-            "t_0003", "GET", "https://api.example.com/api/users/456/orders", 200,
+            "t_0003",
+            "GET",
+            "https://api.example.com/api/users/456/orders",
+            200,
             timestamp=1002000,
-            response_body=json.dumps({"orders": [{"id": "o2", "total": 99.0}]}).encode(),
+            response_body=json.dumps(
+                {"orders": [{"id": "o2", "total": 99.0}]}
+            ).encode(),
             request_headers=[Header(name="Authorization", value="Bearer token123")],
         ),
         make_trace(
-            "t_0004", "POST", "https://api.example.com/api/orders", 201,
+            "t_0004",
+            "POST",
+            "https://api.example.com/api/orders",
+            201,
             timestamp=1003000,
             request_body=json.dumps({"product_id": "p1", "quantity": 2}).encode(),
             response_body=json.dumps({"id": "o3", "status": "created"}).encode(),
@@ -190,34 +211,64 @@ def sample_traces() -> list[Trace]:
 def sample_contexts() -> list[Context]:
     """Create sample contexts for testing."""
     return [
-        make_context("c_0001", timestamp=999000, action="click", selector="nav#users", text="Users", page_url="https://example.com/home"),
-        make_context("c_0002", timestamp=1002500, action="click", selector="button#create-order", text="Create Order", page_url="https://example.com/orders"),
+        make_context(
+            "c_0001",
+            timestamp=999000,
+            action="click",
+            selector="nav#users",
+            text="Users",
+            page_url="https://example.com/home",
+        ),
+        make_context(
+            "c_0002",
+            timestamp=1002500,
+            action="click",
+            selector="button#create-order",
+            text="Create Order",
+            page_url="https://example.com/orders",
+        ),
     ]
 
 
 @pytest.fixture
-def sample_bundle(sample_manifest: CaptureManifest, sample_traces: list[Trace], sample_contexts: list[Context]) -> CaptureBundle:
+def sample_bundle(
+    sample_manifest: CaptureManifest,
+    sample_traces: list[Trace],
+    sample_contexts: list[Context],
+) -> CaptureBundle:
     """Create a complete sample capture bundle."""
-    ws_msg1 = make_ws_message("ws_0001_m001", "ws_0001", 1001500, "send", b'{"type":"subscribe","id":"1"}')
-    ws_msg2 = make_ws_message("ws_0001_m002", "ws_0001", 1001600, "receive", b'{"type":"next","id":"1","payload":{"data":123}}')
+    ws_msg1 = make_ws_message(
+        "ws_0001_m001", "ws_0001", 1001500, "send", b'{"type":"subscribe","id":"1"}'
+    )
+    ws_msg2 = make_ws_message(
+        "ws_0001_m002",
+        "ws_0001",
+        1001600,
+        "receive",
+        b'{"type":"next","id":"1","payload":{"data":123}}',
+    )
 
     ws_conn = make_ws_connection(
-        "ws_0001", "wss://realtime.example.com/ws", 1001000,
+        "ws_0001",
+        "wss://realtime.example.com/ws",
+        1001000,
         protocols=["graphql-ws"],
         messages=[ws_msg1, ws_msg2],
     )
 
-    timeline = Timeline(events=[
-        TimelineEvent(timestamp=999000, type="context", ref="c_0001"),
-        TimelineEvent(timestamp=1000000, type="trace", ref="t_0001"),
-        TimelineEvent(timestamp=1001000, type="trace", ref="t_0002"),
-        TimelineEvent(timestamp=1001000, type="ws_open", ref="ws_0001"),
-        TimelineEvent(timestamp=1001500, type="ws_message", ref="ws_0001_m001"),
-        TimelineEvent(timestamp=1001600, type="ws_message", ref="ws_0001_m002"),
-        TimelineEvent(timestamp=1002000, type="trace", ref="t_0003"),
-        TimelineEvent(timestamp=1002500, type="context", ref="c_0002"),
-        TimelineEvent(timestamp=1003000, type="trace", ref="t_0004"),
-    ])
+    timeline = Timeline(
+        events=[
+            TimelineEvent(timestamp=999000, type="context", ref="c_0001"),
+            TimelineEvent(timestamp=1000000, type="trace", ref="t_0001"),
+            TimelineEvent(timestamp=1001000, type="trace", ref="t_0002"),
+            TimelineEvent(timestamp=1001000, type="ws_open", ref="ws_0001"),
+            TimelineEvent(timestamp=1001500, type="ws_message", ref="ws_0001_m001"),
+            TimelineEvent(timestamp=1001600, type="ws_message", ref="ws_0001_m002"),
+            TimelineEvent(timestamp=1002000, type="trace", ref="t_0003"),
+            TimelineEvent(timestamp=1002500, type="context", ref="c_0002"),
+            TimelineEvent(timestamp=1003000, type="trace", ref="t_0004"),
+        ]
+    )
 
     return CaptureBundle(
         manifest=sample_manifest,

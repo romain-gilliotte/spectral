@@ -2,12 +2,12 @@
 
 from __future__ import annotations
 
+from pathlib import Path
 import re
 import shutil
 import subprocess
 import tempfile
 import urllib.request
-from pathlib import Path
 from xml.etree import ElementTree as ET
 
 NETWORK_SECURITY_CONFIG = """\
@@ -240,16 +240,25 @@ def _ensure_debug_keystore(keystore_path: Path) -> None:
 
     _run_cmd(
         [
-            "keytool", "-genkey",
+            "keytool",
+            "-genkey",
             "-v",
-            "-keystore", str(keystore_path),
-            "-alias", "debug",
-            "-keyalg", "RSA",
-            "-keysize", "2048",
-            "-validity", "10000",
-            "-storepass", "android",
-            "-keypass", "android",
-            "-dname", "CN=Debug,O=Debug,C=US",
+            "-keystore",
+            str(keystore_path),
+            "-alias",
+            "debug",
+            "-keyalg",
+            "RSA",
+            "-keysize",
+            "2048",
+            "-validity",
+            "10000",
+            "-storepass",
+            "android",
+            "-keypass",
+            "android",
+            "-dname",
+            "CN=Debug,O=Debug,C=US",
         ],
         "Generating debug keystore",
     )
@@ -265,12 +274,18 @@ def _sign_apk(unsigned_apk: Path, output_path: Path, keystore: Path) -> None:
         _run_cmd(
             [
                 *_uber_signer(),
-                "--apks", str(staging.parent),
-                "--ks", str(keystore),
-                "--ksPass", "android",
-                "--ksAlias", "debug",
-                "--ksKeyPass", "android",
-                "--out", str(Path(sign_dir) / "out"),
+                "--apks",
+                str(staging.parent),
+                "--ks",
+                str(keystore),
+                "--ksPass",
+                "android",
+                "--ksAlias",
+                "debug",
+                "--ksKeyPass",
+                "android",
+                "--out",
+                str(Path(sign_dir) / "out"),
                 "--allowResign",
             ],
             "Signing APK",
@@ -282,7 +297,9 @@ def _sign_apk(unsigned_apk: Path, output_path: Path, keystore: Path) -> None:
         shutil.copy2(signed_files[0], output_path)
 
 
-def _run_cmd(cmd: list[str], description: str, timeout: int = 300) -> subprocess.CompletedProcess[str]:
+def _run_cmd(
+    cmd: list[str], description: str, timeout: int = 300
+) -> subprocess.CompletedProcess[str]:
     """Run a subprocess command, raising PatchError on failure."""
     result = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
     if result.returncode != 0:

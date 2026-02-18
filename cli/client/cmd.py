@@ -14,12 +14,26 @@ from cli.console import console
 @click.command("call")
 @click.argument("spec_path", type=click.Path(exists=True))
 @click.argument("args", nargs=-1)
-@click.option("--list", "list_endpoints", is_flag=True, default=False, help="List available endpoints")
+@click.option(
+    "--list",
+    "list_endpoints",
+    is_flag=True,
+    default=False,
+    help="List available endpoints",
+)
 @click.option("--token", default=None, help="Auth token")
 @click.option("--username", default=None, help="Username for login")
 @click.option("--password", default=None, help="Password for login")
 @click.option("--base-url", default=None, help="Override base URL")
-def call_command(spec_path: str, args: tuple[str, ...], list_endpoints: bool, token: str | None, username: str | None, password: str | None, base_url: str | None) -> None:
+def call_command(
+    spec_path: str,
+    args: tuple[str, ...],
+    list_endpoints: bool,
+    token: str | None,
+    username: str | None,
+    password: str | None,
+    base_url: str | None,
+) -> None:
     """Call an API endpoint from an enriched spec.
 
     \b
@@ -64,7 +78,9 @@ def call_command(spec_path: str, args: tuple[str, ...], list_endpoints: bool, to
             key, value = arg.split("=", 1)
             kwargs[key] = value
         else:
-            console.print(f"[red]Invalid parameter format: {arg} (expected key=value)[/red]")
+            console.print(
+                f"[red]Invalid parameter format: {arg} (expected key=value)[/red]"
+            )
             sys.exit(1)
 
     try:

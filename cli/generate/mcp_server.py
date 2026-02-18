@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-import re
 from pathlib import Path
+import re
 
 from cli.formats.api_spec import ApiSpec, EndpointSpec
 
@@ -58,11 +58,13 @@ def build_mcp_server(spec: ApiSpec) -> str:
     else:
         lines.append(f'        headers["{header}"] = AUTH_TOKEN')
 
-    lines.extend([
-        "    return headers",
-        "",
-        "",
-    ])
+    lines.extend(
+        [
+            "    return headers",
+            "",
+            "",
+        ]
+    )
 
     # Generate a tool for each endpoint
     for endpoint in spec.protocols.rest.endpoints:
@@ -70,12 +72,14 @@ def build_mcp_server(spec: ApiSpec) -> str:
         lines.extend(tool_lines)
         lines.append("")
 
-    lines.extend([
-        "",
-        'if __name__ == "__main__":',
-        "    mcp.run()",
-        "",
-    ])
+    lines.extend(
+        [
+            "",
+            'if __name__ == "__main__":',
+            "    mcp.run()",
+            "",
+        ]
+    )
 
     return "\n".join(lines)
 
@@ -201,7 +205,18 @@ def _safe_name(name: str) -> str:
     name = re.sub(r"[^a-zA-Z0-9_]", "_", name)
     if name and name[0].isdigit():
         name = "_" + name
-    if name in ("class", "type", "import", "from", "return", "def", "if", "for", "in", "is"):
+    if name in (
+        "class",
+        "type",
+        "import",
+        "from",
+        "return",
+        "def",
+        "if",
+        "for",
+        "in",
+        "is",
+    ):
         name = name + "_"
     return name
 

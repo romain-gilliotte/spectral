@@ -26,25 +26,36 @@ def _make_spec(
 ) -> ApiSpec:
     """Create a minimal ApiSpec for testing."""
     if auth is None:
-        auth = AuthInfo(type="bearer_token", token_header="Authorization", token_prefix="Bearer")
+        auth = AuthInfo(
+            type="bearer_token", token_header="Authorization", token_prefix="Bearer"
+        )
     if endpoints is None:
         endpoints = [
             EndpointSpec(
                 id="get_users",
                 path="/api/users",
                 method="GET",
-                request=RequestSpec(parameters=[
-                    ParameterSpec(name="limit", location="query", type="integer"),
-                ]),
+                request=RequestSpec(
+                    parameters=[
+                        ParameterSpec(name="limit", location="query", type="integer"),
+                    ]
+                ),
                 responses=[ResponseSpec(status=200)],
             ),
             EndpointSpec(
                 id="get_user",
                 path="/api/users/{user_id}",
                 method="GET",
-                request=RequestSpec(parameters=[
-                    ParameterSpec(name="user_id", location="path", type="string", required=True),
-                ]),
+                request=RequestSpec(
+                    parameters=[
+                        ParameterSpec(
+                            name="user_id",
+                            location="path",
+                            type="string",
+                            required=True,
+                        ),
+                    ]
+                ),
                 responses=[ResponseSpec(status=200)],
             ),
             EndpointSpec(
@@ -54,8 +65,12 @@ def _make_spec(
                 request=RequestSpec(
                     content_type="application/json",
                     parameters=[
-                        ParameterSpec(name="name", location="body", type="string", required=True),
-                        ParameterSpec(name="email", location="body", type="string", required=True),
+                        ParameterSpec(
+                            name="name", location="body", type="string", required=True
+                        ),
+                        ParameterSpec(
+                            name="email", location="body", type="string", required=True
+                        ),
                     ],
                 ),
                 responses=[ResponseSpec(status=201)],
@@ -111,7 +126,10 @@ class TestApiClientInit:
         mock_session.headers = {}
         mock_resp = MagicMock()
         mock_resp.status_code = 200
-        mock_resp.json.return_value = {"access_token": "new-tok", "refresh_token": "ref-tok"}
+        mock_resp.json.return_value = {
+            "access_token": "new-tok",
+            "refresh_token": "ref-tok",
+        }
         mock_resp.raise_for_status = MagicMock()
         mock_session.request.return_value = mock_resp
         mock_session_cls.return_value = mock_session
@@ -291,7 +309,9 @@ class TestApiClientCustomAuth:
         assert client.session.headers.get("X-API-Key") == "mykey"
 
     def test_custom_prefix(self):
-        auth = AuthInfo(type="bearer_token", token_header="Authorization", token_prefix="Token")
+        auth = AuthInfo(
+            type="bearer_token", token_header="Authorization", token_prefix="Token"
+        )
         spec = _make_spec(auth=auth)
         client = ApiClient(spec, token="abc")
         assert client.session.headers.get("Authorization") == "Token abc"
@@ -338,7 +358,11 @@ class TestLoginFlow:
             login_config=LoginEndpointConfig(
                 url="https://auth0.example.com/oauth/token",
                 credential_fields={"username": "username", "password": "password"},
-                extra_fields={"grant_type": "password", "client_id": "abc123", "audience": "https://api.example.com"},
+                extra_fields={
+                    "grant_type": "password",
+                    "client_id": "abc123",
+                    "audience": "https://api.example.com",
+                },
                 token_response_path="access_token",
             ),
         )

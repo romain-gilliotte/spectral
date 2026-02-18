@@ -26,9 +26,9 @@ class GroupEndpointsStep(LLMStep[list[tuple[str, str]], list[EndpointGroup]]):
 
     async def _execute(self, input: list[tuple[str, str]]) -> list[EndpointGroup]:
         unique_pairs = sorted(set(input))
-        compacted_pairs = sorted(set(
-            (method, compact_url(url)) for method, url in unique_pairs
-        ))
+        compacted_pairs = sorted(
+            set((method, compact_url(url)) for method, url in unique_pairs)
+        )
         lines = [f"  {method} {url}" for method, url in compacted_pairs]
 
         # Build mapping from compacted URL back to original URLs
@@ -78,7 +78,9 @@ Respond with a JSON array:
         # Expand compacted URLs back to originals
         groups: list[EndpointGroup] = []
         for item in result:
-            item_dict: dict[str, Any] = cast(dict[str, Any], item) if isinstance(item, dict) else {}
+            item_dict: dict[str, Any] = (
+                cast(dict[str, Any], item) if isinstance(item, dict) else {}
+            )
             compacted_urls: list[Any] = item_dict.get("urls", [])
             original_urls: list[str] = []
             for curl in compacted_urls:

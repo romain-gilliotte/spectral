@@ -6,16 +6,18 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
+from cli.analyze.pipeline import build_spec
 from cli.analyze.schemas import extract_query_params, infer_schema
 from cli.analyze.steps import EndpointGroup
-from cli.analyze.steps.enrich_and_context import _apply_enrichment  # pyright: ignore[reportPrivateUsage]
+from cli.analyze.steps.enrich_and_context import (
+    _apply_enrichment,  # pyright: ignore[reportPrivateUsage]
+)
 from cli.analyze.steps.mechanical_extraction import (
     _build_endpoint_mechanical as _build_endpoint_mechanical,  # pyright: ignore[reportPrivateUsage]
     _extract_rate_limit as _extract_rate_limit,  # pyright: ignore[reportPrivateUsage]
     _find_traces_for_group as _find_traces_for_group,  # pyright: ignore[reportPrivateUsage]
     _make_endpoint_id as _make_endpoint_id,  # pyright: ignore[reportPrivateUsage]
 )
-from cli.analyze.pipeline import build_spec
 from cli.capture.models import CaptureBundle
 from cli.formats.api_spec import EndpointSpec, ParameterSpec, RequestSpec, ResponseSpec
 from cli.formats.capture_bundle import Header
@@ -49,8 +51,20 @@ class TestSchemaInference:
 class TestQueryParamExtraction:
     def test_extracts_query_params(self):
         traces = [
-            make_trace("t_0001", "GET", "https://api.example.com/search?q=hello&page=1", 200, 1000),
-            make_trace("t_0002", "GET", "https://api.example.com/search?q=world&page=2", 200, 2000),
+            make_trace(
+                "t_0001",
+                "GET",
+                "https://api.example.com/search?q=hello&page=1",
+                200,
+                1000,
+            ),
+            make_trace(
+                "t_0002",
+                "GET",
+                "https://api.example.com/search?q=world&page=2",
+                200,
+                2000,
+            ),
         ]
         params = extract_query_params(traces)
         assert "q" in params
@@ -80,7 +94,10 @@ class TestFindTracesForGroup:
         group = EndpointGroup(
             method="GET",
             pattern="/users/{user_id}",
-            urls=["https://api.example.com/users/123", "https://api.example.com/users/456"],
+            urls=[
+                "https://api.example.com/users/123",
+                "https://api.example.com/users/456",
+            ],
         )
         matched = _find_traces_for_group(group, traces)
         assert len(matched) == 2
@@ -105,7 +122,10 @@ class TestBuildEndpointMechanical:
     def test_basic_endpoint(self):
         traces = [
             make_trace(
-                "t_0001", "GET", "https://api.example.com/api/users", 200,
+                "t_0001",
+                "GET",
+                "https://api.example.com/api/users",
+                200,
                 timestamp=1000000,
                 response_body=json.dumps({"name": "Alice"}).encode(),
                 request_headers=[Header(name="Authorization", value="Bearer tok")],
@@ -134,51 +154,74 @@ class TestFormatDetectionInExtraction:
     def test_body_param_date_format(self):
         traces = [
             make_trace(
-                "t_0001", "POST", "https://api.example.com/api/events", 201,
+                "t_0001",
+                "POST",
+                "https://api.example.com/api/events",
+                201,
                 timestamp=1000,
-                request_body=json.dumps({"date": "2024-01-15", "name": "Meeting"}).encode(),
+                request_body=json.dumps(
+                    {"date": "2024-01-15", "name": "Meeting"}
+                ).encode(),
                 request_headers=[Header(name="Content-Type", value="application/json")],
             ),
             make_trace(
-                "t_0002", "POST", "https://api.example.com/api/events", 201,
+                "t_0002",
+                "POST",
+                "https://api.example.com/api/events",
+                201,
                 timestamp=2000,
-                request_body=json.dumps({"date": "2024-02-20", "name": "Conference"}).encode(),
+                request_body=json.dumps(
+                    {"date": "2024-02-20", "name": "Conference"}
+                ).encode(),
                 request_headers=[Header(name="Content-Type", value="application/json")],
             ),
         ]
         endpoint = _build_endpoint_mechanical("POST", "/api/events", traces, [])
-        body_params = {p.name: p for p in endpoint.request.parameters if p.location == "body"}
+        body_params = {
+            p.name: p for p in endpoint.request.parameters if p.location == "body"
+        }
         assert body_params["date"].format == "date"
         assert body_params["name"].format is None  # not a recognizable format
 
     def test_query_param_uuid_format(self):
         traces = [
             make_trace(
-                "t_0001", "GET",
+                "t_0001",
+                "GET",
                 "https://api.example.com/items?id=a1b2c3d4-e5f6-7890-abcd-ef1234567890",
-                200, timestamp=1000,
+                200,
+                timestamp=1000,
             ),
             make_trace(
-                "t_0002", "GET",
+                "t_0002",
+                "GET",
                 "https://api.example.com/items?id=11111111-2222-3333-4444-555555555555",
-                200, timestamp=2000,
+                200,
+                timestamp=2000,
             ),
         ]
         endpoint = _build_endpoint_mechanical("GET", "/items", traces, [])
-        query_params = {p.name: p for p in endpoint.request.parameters if p.location == "query"}
+        query_params = {
+            p.name: p for p in endpoint.request.parameters if p.location == "query"
+        }
         assert query_params["id"].format == "uuid"
 
     def test_non_string_body_param_no_format(self):
         traces = [
             make_trace(
-                "t_0001", "POST", "https://api.example.com/api/count", 200,
+                "t_0001",
+                "POST",
+                "https://api.example.com/api/count",
+                200,
                 timestamp=1000,
                 request_body=json.dumps({"count": 42}).encode(),
                 request_headers=[Header(name="Content-Type", value="application/json")],
             ),
         ]
         endpoint = _build_endpoint_mechanical("POST", "/api/count", traces, [])
-        body_params = {p.name: p for p in endpoint.request.parameters if p.location == "body"}
+        body_params = {
+            p.name: p for p in endpoint.request.parameters if p.location == "body"
+        }
         assert body_params["count"].format is None
 
 
@@ -186,7 +229,10 @@ class TestRateLimitExtraction:
     def test_extracts_rate_limit_headers(self):
         traces = [
             make_trace(
-                "t_0001", "GET", "https://api.example.com/data", 200,
+                "t_0001",
+                "GET",
+                "https://api.example.com/data",
+                200,
                 timestamp=1000,
                 response_headers=[
                     Header(name="Content-Type", value="application/json"),
@@ -205,7 +251,10 @@ class TestRateLimitExtraction:
     def test_no_rate_limit_headers(self):
         traces = [
             make_trace(
-                "t_0001", "GET", "https://api.example.com/data", 200,
+                "t_0001",
+                "GET",
+                "https://api.example.com/data",
+                200,
                 timestamp=1000,
                 response_headers=[
                     Header(name="Content-Type", value="application/json"),
@@ -218,7 +267,10 @@ class TestRateLimitExtraction:
     def test_retry_after_only(self):
         traces = [
             make_trace(
-                "t_0001", "GET", "https://api.example.com/data", 429,
+                "t_0001",
+                "GET",
+                "https://api.example.com/data",
+                429,
                 timestamp=1000,
                 response_headers=[
                     Header(name="Content-Type", value="application/json"),
@@ -233,7 +285,10 @@ class TestRateLimitExtraction:
     def test_rate_limit_wired_to_endpoint(self):
         traces = [
             make_trace(
-                "t_0001", "GET", "https://api.example.com/data", 200,
+                "t_0001",
+                "GET",
+                "https://api.example.com/data",
+                200,
                 timestamp=1000,
                 response_headers=[
                     Header(name="Content-Type", value="application/json"),
@@ -254,37 +309,54 @@ class TestApplyEnrichment:
 
     def test_parameter_constraints(self):
         endpoint = EndpointSpec(
-            id="test", path="/test", method="POST",
-            request=RequestSpec(parameters=[
-                ParameterSpec(name="period", location="body", type="string"),
-            ]),
+            id="test",
+            path="/test",
+            method="POST",
+            request=RequestSpec(
+                parameters=[
+                    ParameterSpec(name="period", location="body", type="string"),
+                ]
+            ),
         )
-        _apply_enrichment(endpoint, {
-            "parameter_constraints": {"period": "YYYY-MM format, max 24 months history"},
-        })
-        assert endpoint.request.parameters[0].constraints == "YYYY-MM format, max 24 months history"
+        _apply_enrichment(
+            endpoint,
+            {
+                "parameter_constraints": {
+                    "period": "YYYY-MM format, max 24 months history"
+                },
+            },
+        )
+        assert (
+            endpoint.request.parameters[0].constraints
+            == "YYYY-MM format, max 24 months history"
+        )
 
     def test_rich_response_details(self):
         endpoint = EndpointSpec(
-            id="test", path="/test", method="GET",
+            id="test",
+            path="/test",
+            method="GET",
             responses=[
                 ResponseSpec(status=200),
                 ResponseSpec(status=403),
             ],
         )
-        _apply_enrichment(endpoint, {
-            "response_details": {
-                "200": {
-                    "business_meaning": "Success",
-                    "example_scenario": "User views their dashboard",
-                },
-                "403": {
-                    "business_meaning": "Forbidden",
-                    "user_impact": "Cannot access the resource",
-                    "resolution": "Contact admin to request access",
+        _apply_enrichment(
+            endpoint,
+            {
+                "response_details": {
+                    "200": {
+                        "business_meaning": "Success",
+                        "example_scenario": "User views their dashboard",
+                    },
+                    "403": {
+                        "business_meaning": "Forbidden",
+                        "user_impact": "Cannot access the resource",
+                        "resolution": "Contact admin to request access",
+                    },
                 },
             },
-        })
+        )
         assert endpoint.responses[0].business_meaning == "Success"
         assert endpoint.responses[0].example_scenario == "User views their dashboard"
         assert endpoint.responses[0].user_impact is None
@@ -294,23 +366,33 @@ class TestApplyEnrichment:
 
     def test_flat_response_meanings_fallback(self):
         endpoint = EndpointSpec(
-            id="test", path="/test", method="GET",
+            id="test",
+            path="/test",
+            method="GET",
             responses=[ResponseSpec(status=200)],
         )
-        _apply_enrichment(endpoint, {
-            "response_meanings": {"200": "Successfully retrieved data"},
-        })
+        _apply_enrichment(
+            endpoint,
+            {
+                "response_meanings": {"200": "Successfully retrieved data"},
+            },
+        )
         assert endpoint.responses[0].business_meaning == "Successfully retrieved data"
 
     def test_response_details_takes_precedence_over_meanings(self):
         endpoint = EndpointSpec(
-            id="test", path="/test", method="GET",
+            id="test",
+            path="/test",
+            method="GET",
             responses=[ResponseSpec(status=200)],
         )
-        _apply_enrichment(endpoint, {
-            "response_details": {"200": {"business_meaning": "From details"}},
-            "response_meanings": {"200": "From meanings"},
-        })
+        _apply_enrichment(
+            endpoint,
+            {
+                "response_details": {"200": {"business_meaning": "From details"}},
+                "response_meanings": {"200": "From meanings"},
+            },
+        )
         assert endpoint.responses[0].business_meaning == "From details"
 
 
@@ -327,30 +409,58 @@ def _make_mock_create(
     if base_url_response is None:
         base_url_response = json.dumps({"base_url": "https://api.example.com"})
     if groups_response is None:
-        groups_response = json.dumps([
-            {"method": "GET", "pattern": "/api/users", "urls": ["https://api.example.com/api/users"]},
-            {"method": "GET", "pattern": "/api/users/{user_id}/orders",
-             "urls": ["https://api.example.com/api/users/123/orders", "https://api.example.com/api/users/456/orders"]},
-            {"method": "POST", "pattern": "/api/orders", "urls": ["https://api.example.com/api/orders"]},
-        ])
+        groups_response = json.dumps(
+            [
+                {
+                    "method": "GET",
+                    "pattern": "/api/users",
+                    "urls": ["https://api.example.com/api/users"],
+                },
+                {
+                    "method": "GET",
+                    "pattern": "/api/users/{user_id}/orders",
+                    "urls": [
+                        "https://api.example.com/api/users/123/orders",
+                        "https://api.example.com/api/users/456/orders",
+                    ],
+                },
+                {
+                    "method": "POST",
+                    "pattern": "/api/orders",
+                    "urls": ["https://api.example.com/api/orders"],
+                },
+            ]
+        )
     if auth_response is None:
-        auth_response = json.dumps({
-            "type": "bearer_token", "obtain_flow": "login_form",
-            "token_header": "Authorization", "token_prefix": "Bearer",
-            "business_process": "Token-based auth",
-            "user_journey": ["Login with credentials", "Receive bearer token"],
-        })
+        auth_response = json.dumps(
+            {
+                "type": "bearer_token",
+                "obtain_flow": "login_form",
+                "token_header": "Authorization",
+                "token_prefix": "Bearer",
+                "business_process": "Token-based auth",
+                "user_journey": ["Login with credentials", "Receive bearer token"],
+            }
+        )
     if enrich_response is None:
-        enrich_response = json.dumps({
-            "endpoints": {},
-            "business_context": {
-                "domain": "User Management",
-                "description": "API for managing users and orders",
-                "user_personas": ["admin", "user"],
-                "key_workflows": [{"name": "browse_users", "description": "Browse user list", "steps": ["login", "view_users"]}],
-                "business_glossary": {"user": "A registered account"},
-            },
-        })
+        enrich_response = json.dumps(
+            {
+                "endpoints": {},
+                "business_context": {
+                    "domain": "User Management",
+                    "description": "API for managing users and orders",
+                    "user_personas": ["admin", "user"],
+                    "key_workflows": [
+                        {
+                            "name": "browse_users",
+                            "description": "Browse user list",
+                            "steps": ["login", "view_users"],
+                        }
+                    ],
+                    "business_glossary": {"user": "A registered account"},
+                },
+            }
+        )
     # detail_response and context_response kept for backward compat but not used in new pipeline
 
     async def mock_create(**kwargs: Any) -> MagicMock:
@@ -370,17 +480,27 @@ def _make_mock_create(
             mock_content.text = enrich_response
         elif "business domain" in msg or "Based on these API endpoints" in msg:
             # Fallback for old-style context call (shouldn't happen in new pipeline)
-            mock_content.text = context_response or json.dumps({
-                "domain": "", "description": "", "user_personas": [],
-                "key_workflows": [], "business_glossary": {},
-            })
+            mock_content.text = context_response or json.dumps(
+                {
+                    "domain": "",
+                    "description": "",
+                    "user_personas": [],
+                    "key_workflows": [],
+                    "business_glossary": {},
+                }
+            )
         else:
             # Fallback for old-style detail call
-            mock_content.text = detail_response or json.dumps({
-                "business_purpose": "test", "user_story": "test",
-                "correlation_confidence": 0.5, "parameter_meanings": {},
-                "response_meanings": {}, "trigger_explanations": [],
-            })
+            mock_content.text = detail_response or json.dumps(
+                {
+                    "business_purpose": "test",
+                    "user_story": "test",
+                    "correlation_confidence": 0.5,
+                    "parameter_meanings": {},
+                    "response_meanings": {},
+                    "trigger_explanations": [],
+                }
+            )
 
         mock_response.content = [mock_content]
         return mock_response
@@ -425,17 +545,26 @@ class TestBuildSpec:
         assert len(ws.messages) == 2
 
     @pytest.mark.asyncio
-    async def test_traces_filtered_by_base_url(self, sample_bundle: CaptureBundle) -> None:
+    async def test_traces_filtered_by_base_url(
+        self, sample_bundle: CaptureBundle
+    ) -> None:
         """Traces not matching the detected base URL should be excluded."""
         from tests.conftest import make_trace as mt
+
         cdn_trace = mt("t_cdn", "GET", "https://cdn.example.com/style.css", 200, 999500)
         sample_bundle.traces.append(cdn_trace)
 
         mock_client = AsyncMock()
         mock_client.messages.create = _make_mock_create(
-            groups_response=json.dumps([
-                {"method": "GET", "pattern": "/api/users", "urls": ["https://api.example.com/api/users"]},
-            ]),
+            groups_response=json.dumps(
+                [
+                    {
+                        "method": "GET",
+                        "pattern": "/api/users",
+                        "urls": ["https://api.example.com/api/users"],
+                    },
+                ]
+            ),
             auth_response=json.dumps({"type": "none"}),
         )
 
@@ -452,36 +581,42 @@ class TestBuildSpec:
         """When the LLM returns an api_name, it should be used as spec.name."""
         mock_client = AsyncMock()
         mock_client.messages.create = _make_mock_create(
-            enrich_response=json.dumps({
-                "endpoints": {},
-                "business_context": {
-                    "api_name": "Acme User Management API",
-                    "domain": "User Management",
-                    "description": "API for managing users",
-                    "user_personas": [],
-                    "key_workflows": [],
-                    "business_glossary": {},
-                },
-            }),
+            enrich_response=json.dumps(
+                {
+                    "endpoints": {},
+                    "business_context": {
+                        "api_name": "Acme User Management API",
+                        "domain": "User Management",
+                        "description": "API for managing users",
+                        "user_personas": [],
+                        "key_workflows": [],
+                        "business_glossary": {},
+                    },
+                }
+            ),
         )
         spec = await build_spec(sample_bundle, client=mock_client, model="test-model")
         assert spec.name == "Acme User Management API"
 
     @pytest.mark.asyncio
-    async def test_api_name_fallback_to_app_name(self, sample_bundle: CaptureBundle) -> None:
+    async def test_api_name_fallback_to_app_name(
+        self, sample_bundle: CaptureBundle
+    ) -> None:
         """When no api_name is returned, fall back to bundle app name."""
         mock_client = AsyncMock()
         mock_client.messages.create = _make_mock_create(
-            enrich_response=json.dumps({
-                "endpoints": {},
-                "business_context": {
-                    "domain": "User Management",
-                    "description": "API for managing users",
-                    "user_personas": [],
-                    "key_workflows": [],
-                    "business_glossary": {},
-                },
-            }),
+            enrich_response=json.dumps(
+                {
+                    "endpoints": {},
+                    "business_context": {
+                        "domain": "User Management",
+                        "description": "API for managing users",
+                        "user_personas": [],
+                        "key_workflows": [],
+                        "business_glossary": {},
+                    },
+                }
+            ),
         )
         spec = await build_spec(sample_bundle, client=mock_client, model="test-model")
         assert spec.name == "Test App API"
@@ -491,19 +626,21 @@ class TestBuildSpec:
         """When the LLM returns websocket_purposes, they should be applied."""
         mock_client = AsyncMock()
         mock_client.messages.create = _make_mock_create(
-            enrich_response=json.dumps({
-                "endpoints": {},
-                "business_context": {
-                    "domain": "Test",
-                    "description": "Test API",
-                    "user_personas": [],
-                    "key_workflows": [],
-                    "business_glossary": {},
-                },
-                "websocket_purposes": {
-                    "ws_0001": "Real-time data streaming for live updates",
-                },
-            }),
+            enrich_response=json.dumps(
+                {
+                    "endpoints": {},
+                    "business_context": {
+                        "domain": "Test",
+                        "description": "Test API",
+                        "user_personas": [],
+                        "key_workflows": [],
+                        "business_glossary": {},
+                    },
+                    "websocket_purposes": {
+                        "ws_0001": "Real-time data streaming for live updates",
+                    },
+                }
+            ),
         )
         spec = await build_spec(sample_bundle, client=mock_client, model="test-model")
         ws = spec.protocols.websocket.connections[0]

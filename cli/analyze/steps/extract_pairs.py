@@ -13,6 +13,5 @@ class ExtractPairsStep(MechanicalStep[CaptureBundle, list[tuple[str, str]]]):
 
     async def _execute(self, input: CaptureBundle) -> list[tuple[str, str]]:
         return [
-            (t.meta.request.method.upper(), t.meta.request.url)
-            for t in input.traces
+            (t.meta.request.method.upper(), t.meta.request.url) for t in input.traces
         ]

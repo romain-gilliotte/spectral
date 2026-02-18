@@ -110,7 +110,10 @@ class TestInferTypeFromValues:
 
 class TestDetectFormat:
     def test_date_time(self):
-        assert _detect_format(["2024-01-15T10:30:00Z", "2024-02-20T14:00:00Z"]) == "date-time"
+        assert (
+            _detect_format(["2024-01-15T10:30:00Z", "2024-02-20T14:00:00Z"])
+            == "date-time"
+        )
 
     def test_date_only(self):
         assert _detect_format(["2024-01-15", "2024-02-20"]) == "date"
@@ -119,13 +122,21 @@ class TestDetectFormat:
         assert _detect_format(["alice@example.com", "bob@test.org"]) == "email"
 
     def test_uuid(self):
-        assert _detect_format([
-            "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
-            "11111111-2222-3333-4444-555555555555",
-        ]) == "uuid"
+        assert (
+            _detect_format(
+                [
+                    "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+                    "11111111-2222-3333-4444-555555555555",
+                ]
+            )
+            == "uuid"
+        )
 
     def test_uri(self):
-        assert _detect_format(["https://example.com/page1", "https://example.com/page2"]) == "uri"
+        assert (
+            _detect_format(["https://example.com/page1", "https://example.com/page2"])
+            == "uri"
+        )
 
     def test_no_format(self):
         assert _detect_format(["hello", "world"]) is None
@@ -138,14 +149,18 @@ class TestExtractQueryParams:
     def test_extracts_with_type_and_format(self):
         traces = [
             make_trace(
-                "t_0001", "GET",
+                "t_0001",
+                "GET",
                 "https://api.example.com/items?id=a1b2c3d4-e5f6-7890-abcd-ef1234567890",
-                200, timestamp=1000,
+                200,
+                timestamp=1000,
             ),
             make_trace(
-                "t_0002", "GET",
+                "t_0002",
+                "GET",
                 "https://api.example.com/items?id=11111111-2222-3333-4444-555555555555",
-                200, timestamp=2000,
+                200,
+                timestamp=2000,
             ),
         ]
         params = extract_query_params(traces)
@@ -157,8 +172,12 @@ class TestExtractQueryParams:
 
     def test_integer_type(self):
         traces = [
-            make_trace("t_0001", "GET", "https://api.example.com/search?page=1", 200, 1000),
-            make_trace("t_0002", "GET", "https://api.example.com/search?page=2", 200, 2000),
+            make_trace(
+                "t_0001", "GET", "https://api.example.com/search?page=1", 200, 1000
+            ),
+            make_trace(
+                "t_0002", "GET", "https://api.example.com/search?page=2", 200, 2000
+            ),
         ]
         params = extract_query_params(traces)
         assert params["page"]["type"] == "integer"
@@ -166,8 +185,16 @@ class TestExtractQueryParams:
 
     def test_optional_param(self):
         traces = [
-            make_trace("t_0001", "GET", "https://api.example.com/search?q=hello&page=1", 200, 1000),
-            make_trace("t_0002", "GET", "https://api.example.com/search?q=world", 200, 2000),
+            make_trace(
+                "t_0001",
+                "GET",
+                "https://api.example.com/search?q=hello&page=1",
+                200,
+                1000,
+            ),
+            make_trace(
+                "t_0002", "GET", "https://api.example.com/search?q=world", 200, 2000
+            ),
         ]
         params = extract_query_params(traces)
         assert params["q"]["required"] is True

@@ -17,7 +17,9 @@ from cli.formats.api_spec import ApiSpec
     "--type",
     "output_type",
     required=True,
-    type=click.Choice(["openapi", "mcp-server", "python-client", "markdown-docs", "curl-scripts"]),
+    type=click.Choice(
+        ["openapi", "mcp-server", "python-client", "markdown-docs", "curl-scripts"]
+    ),
     help="Output type to generate",
 )
 @click.option("-o", "--output", required=True, help="Output path (file or directory)")
@@ -41,24 +43,29 @@ def generate(spec_path: str, output_type: str, output: str) -> None:
 
 def _generate_openapi(spec: ApiSpec, output: str) -> None:
     from cli.generate.openapi import generate_openapi
+
     generate_openapi(spec, output)
 
 
 def _generate_mcp_server(spec: ApiSpec, output: str) -> None:
     from cli.generate.mcp_server import generate_mcp_server
+
     generate_mcp_server(spec, output)
 
 
 def _generate_python_client(spec: ApiSpec, output: str) -> None:
     from cli.generate.python_client import generate_python_client
+
     generate_python_client(spec, output)
 
 
 def _generate_markdown_docs(spec: ApiSpec, output: str) -> None:
     from cli.generate.markdown_docs import generate_markdown_docs
+
     generate_markdown_docs(spec, output)
 
 
 def _generate_curl_scripts(spec: ApiSpec, output: str) -> None:
     from cli.generate.curl_scripts import generate_curl_scripts
+
     generate_curl_scripts(spec, output)

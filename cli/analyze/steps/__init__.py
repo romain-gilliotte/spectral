@@ -4,10 +4,12 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
-from cli.analyze.steps.base import LLMStep as LLMStep
-from cli.analyze.steps.base import MechanicalStep as MechanicalStep
-from cli.analyze.steps.base import Step as Step
-from cli.analyze.steps.base import StepValidationError as StepValidationError
+from cli.analyze.steps.base import (
+    LLMStep as LLMStep,
+    MechanicalStep as MechanicalStep,
+    Step as Step,
+    StepValidationError as StepValidationError,
+)
 
 
 @dataclass

@@ -17,27 +17,52 @@ def _make_mock_anthropic_module() -> MagicMock:
     """Create a mock anthropic module with AsyncAnthropic client."""
 
     # Standard LLM responses for the pipeline
-    groups_response = json.dumps([
-        {"method": "GET", "pattern": "/api/users", "urls": ["https://api.example.com/api/users"]},
-        {"method": "GET", "pattern": "/api/users/{user_id}/orders",
-         "urls": ["https://api.example.com/api/users/123/orders", "https://api.example.com/api/users/456/orders"]},
-        {"method": "POST", "pattern": "/api/orders", "urls": ["https://api.example.com/api/orders"]},
-    ])
+    groups_response = json.dumps(
+        [
+            {
+                "method": "GET",
+                "pattern": "/api/users",
+                "urls": ["https://api.example.com/api/users"],
+            },
+            {
+                "method": "GET",
+                "pattern": "/api/users/{user_id}/orders",
+                "urls": [
+                    "https://api.example.com/api/users/123/orders",
+                    "https://api.example.com/api/users/456/orders",
+                ],
+            },
+            {
+                "method": "POST",
+                "pattern": "/api/orders",
+                "urls": ["https://api.example.com/api/orders"],
+            },
+        ]
+    )
 
-    auth_response = json.dumps({
-        "type": "bearer_token", "token_header": "Authorization",
-        "token_prefix": "Bearer", "business_process": "Token auth",
-        "user_journey": ["Login"], "obtain_flow": "login_form",
-    })
+    auth_response = json.dumps(
+        {
+            "type": "bearer_token",
+            "token_header": "Authorization",
+            "token_prefix": "Bearer",
+            "business_process": "Token auth",
+            "user_journey": ["Login"],
+            "obtain_flow": "login_form",
+        }
+    )
 
-    enrich_response = json.dumps({
-        "endpoints": {},
-        "business_context": {
-            "domain": "Testing", "description": "Test API",
-            "user_personas": ["tester"], "key_workflows": [],
-            "business_glossary": {},
-        },
-    })
+    enrich_response = json.dumps(
+        {
+            "endpoints": {},
+            "business_context": {
+                "domain": "Testing",
+                "description": "Test API",
+                "user_personas": ["tester"],
+                "key_workflows": [],
+                "business_glossary": {},
+            },
+        }
+    )
 
     base_url_response = json.dumps({"base_url": "https://api.example.com"})
 
@@ -47,7 +72,9 @@ def _make_mock_anthropic_module() -> MagicMock:
         mock_content.type = "text"
         mock_response.stop_reason = "end_turn"
         messages_raw = kwargs.get("messages")
-        messages: list[dict[str, str]] = messages_raw if isinstance(messages_raw, list) else []  # pyright: ignore[reportUnknownVariableType]
+        messages: list[dict[str, str]] = (
+            messages_raw if isinstance(messages_raw, list) else []
+        )  # pyright: ignore[reportUnknownVariableType]
         first_msg: dict[str, str] = messages[0] if len(messages) > 0 else {}  # pyright: ignore[reportUnknownArgumentType, reportUnknownMemberType]
         msg: str = str(first_msg.get("content", ""))
         if "base URL" in msg and "business API" in msg:
@@ -83,10 +110,15 @@ class TestAnalyzeCommand:
 
         mock_anthropic = _make_mock_anthropic_module()
         with patch.dict("sys.modules", {"anthropic": mock_anthropic}):
-            result = runner.invoke(cli, [
-                "analyze", str(bundle_path),
-                "-o", str(output_path),
-            ])
+            result = runner.invoke(
+                cli,
+                [
+                    "analyze",
+                    str(bundle_path),
+                    "-o",
+                    str(output_path),
+                ],
+            )
 
         assert result.exit_code == 0, result.output
         assert output_path.exists()
@@ -95,7 +127,9 @@ class TestAnalyzeCommand:
         assert "api_spec_version" in spec
         assert spec["name"] == "Test App API"
 
-    def test_analyze_produces_endpoints(self, sample_bundle: CaptureBundle, tmp_path: Path) -> None:
+    def test_analyze_produces_endpoints(
+        self, sample_bundle: CaptureBundle, tmp_path: Path
+    ) -> None:
         bundle_path = tmp_path / "capture.zip"
         write_bundle(sample_bundle, bundle_path)
 
@@ -104,10 +138,15 @@ class TestAnalyzeCommand:
 
         mock_anthropic = _make_mock_anthropic_module()
         with patch.dict("sys.modules", {"anthropic": mock_anthropic}):
-            result = runner.invoke(cli, [
-                "analyze", str(bundle_path),
-                "-o", str(output_path),
-            ])
+            result = runner.invoke(
+                cli,
+                [
+                    "analyze",
+                    str(bundle_path),
+                    "-o",
+                    str(output_path),
+                ],
+            )
 
         assert result.exit_code == 0
         spec = json.loads(output_path.read_text())
@@ -119,24 +158,46 @@ class TestGenerateCommand:
     def _create_spec_file(self, sample_bundle: CaptureBundle, tmp_path: Path) -> Path:
         """Helper to create a spec file from a sample bundle using mocked LLM."""
         import asyncio
+
         from cli.analyze.pipeline import build_spec
 
         mock_client = AsyncMock()
 
-        groups_response = json.dumps([
-            {"method": "GET", "pattern": "/api/users", "urls": ["https://api.example.com/api/users"]},
-            {"method": "GET", "pattern": "/api/users/{user_id}/orders",
-             "urls": ["https://api.example.com/api/users/123/orders", "https://api.example.com/api/users/456/orders"]},
-            {"method": "POST", "pattern": "/api/orders", "urls": ["https://api.example.com/api/orders"]},
-        ])
+        groups_response = json.dumps(
+            [
+                {
+                    "method": "GET",
+                    "pattern": "/api/users",
+                    "urls": ["https://api.example.com/api/users"],
+                },
+                {
+                    "method": "GET",
+                    "pattern": "/api/users/{user_id}/orders",
+                    "urls": [
+                        "https://api.example.com/api/users/123/orders",
+                        "https://api.example.com/api/users/456/orders",
+                    ],
+                },
+                {
+                    "method": "POST",
+                    "pattern": "/api/orders",
+                    "urls": ["https://api.example.com/api/orders"],
+                },
+            ]
+        )
 
-        enrich_response = json.dumps({
-            "endpoints": {},
-            "business_context": {
-                "domain": "", "description": "", "user_personas": [],
-                "key_workflows": [], "business_glossary": {},
-            },
-        })
+        enrich_response = json.dumps(
+            {
+                "endpoints": {},
+                "business_context": {
+                    "domain": "",
+                    "description": "",
+                    "user_personas": [],
+                    "key_workflows": [],
+                    "business_glossary": {},
+                },
+            }
+        )
 
         async def mock_create(**kwargs: object) -> MagicMock:
             mock_response = MagicMock()
@@ -144,7 +205,9 @@ class TestGenerateCommand:
             mock_content.type = "text"
             mock_response.stop_reason = "end_turn"
             messages_raw = kwargs.get("messages")
-            messages: list[dict[str, str]] = messages_raw if isinstance(messages_raw, list) else []  # pyright: ignore[reportUnknownVariableType]
+            messages: list[dict[str, str]] = (
+                messages_raw if isinstance(messages_raw, list) else []
+            )  # pyright: ignore[reportUnknownVariableType]
             first_msg: dict[str, str] = messages[0] if len(messages) > 0 else {}  # pyright: ignore[reportUnknownArgumentType, reportUnknownMemberType]
             msg: str = str(first_msg.get("content", ""))
             if "base URL" in msg and "business API" in msg:
@@ -152,7 +215,13 @@ class TestGenerateCommand:
             elif "Group these observed URLs" in msg:
                 mock_content.text = groups_response
             elif "authentication" in msg:
-                mock_content.text = json.dumps({"type": "bearer_token", "token_header": "Authorization", "token_prefix": "Bearer"})
+                mock_content.text = json.dumps(
+                    {
+                        "type": "bearer_token",
+                        "token_header": "Authorization",
+                        "token_prefix": "Bearer",
+                    }
+                )
             elif "SINGLE JSON response" in msg:
                 mock_content.text = enrich_response
             else:
@@ -162,84 +231,128 @@ class TestGenerateCommand:
 
         mock_client.messages.create = mock_create
 
-        spec = asyncio.run(build_spec(sample_bundle, client=mock_client, model="test-model"))
+        spec = asyncio.run(
+            build_spec(sample_bundle, client=mock_client, model="test-model")
+        )
         spec_path = tmp_path / "spec.json"
         spec_path.write_text(spec.model_dump_json(indent=2, by_alias=True))
         return spec_path
 
-    def test_generate_openapi(self, sample_bundle: CaptureBundle, tmp_path: Path) -> None:
+    def test_generate_openapi(
+        self, sample_bundle: CaptureBundle, tmp_path: Path
+    ) -> None:
         spec_path = self._create_spec_file(sample_bundle, tmp_path)
         output_path = tmp_path / "openapi.yaml"
 
         runner = CliRunner()
-        result = runner.invoke(cli, [
-            "generate", str(spec_path),
-            "--type", "openapi",
-            "-o", str(output_path),
-        ])
+        result = runner.invoke(
+            cli,
+            [
+                "generate",
+                str(spec_path),
+                "--type",
+                "openapi",
+                "-o",
+                str(output_path),
+            ],
+        )
 
         assert result.exit_code == 0, result.output
         assert output_path.exists()
 
-    def test_generate_python_client(self, sample_bundle: CaptureBundle, tmp_path: Path) -> None:
+    def test_generate_python_client(
+        self, sample_bundle: CaptureBundle, tmp_path: Path
+    ) -> None:
         spec_path = self._create_spec_file(sample_bundle, tmp_path)
         output_path = tmp_path / "client.py"
 
         runner = CliRunner()
-        result = runner.invoke(cli, [
-            "generate", str(spec_path),
-            "--type", "python-client",
-            "-o", str(output_path),
-        ])
+        result = runner.invoke(
+            cli,
+            [
+                "generate",
+                str(spec_path),
+                "--type",
+                "python-client",
+                "-o",
+                str(output_path),
+            ],
+        )
 
         assert result.exit_code == 0, result.output
         assert output_path.exists()
 
-    def test_generate_markdown_docs(self, sample_bundle: CaptureBundle, tmp_path: Path) -> None:
+    def test_generate_markdown_docs(
+        self, sample_bundle: CaptureBundle, tmp_path: Path
+    ) -> None:
         spec_path = self._create_spec_file(sample_bundle, tmp_path)
         output_path = tmp_path / "docs"
 
         runner = CliRunner()
-        result = runner.invoke(cli, [
-            "generate", str(spec_path),
-            "--type", "markdown-docs",
-            "-o", str(output_path),
-        ])
+        result = runner.invoke(
+            cli,
+            [
+                "generate",
+                str(spec_path),
+                "--type",
+                "markdown-docs",
+                "-o",
+                str(output_path),
+            ],
+        )
 
         assert result.exit_code == 0, result.output
         assert (output_path / "index.md").exists()
 
-    def test_generate_curl_scripts(self, sample_bundle: CaptureBundle, tmp_path: Path) -> None:
+    def test_generate_curl_scripts(
+        self, sample_bundle: CaptureBundle, tmp_path: Path
+    ) -> None:
         spec_path = self._create_spec_file(sample_bundle, tmp_path)
         output_path = tmp_path / "scripts"
 
         runner = CliRunner()
-        result = runner.invoke(cli, [
-            "generate", str(spec_path),
-            "--type", "curl-scripts",
-            "-o", str(output_path),
-        ])
+        result = runner.invoke(
+            cli,
+            [
+                "generate",
+                str(spec_path),
+                "--type",
+                "curl-scripts",
+                "-o",
+                str(output_path),
+            ],
+        )
 
         assert result.exit_code == 0, result.output
         assert (output_path / "all_requests.sh").exists()
 
-    def test_generate_mcp_server(self, sample_bundle: CaptureBundle, tmp_path: Path) -> None:
+    def test_generate_mcp_server(
+        self, sample_bundle: CaptureBundle, tmp_path: Path
+    ) -> None:
         spec_path = self._create_spec_file(sample_bundle, tmp_path)
         output_path = tmp_path / "mcp-server"
 
         runner = CliRunner()
-        result = runner.invoke(cli, [
-            "generate", str(spec_path),
-            "--type", "mcp-server",
-            "-o", str(output_path),
-        ])
+        result = runner.invoke(
+            cli,
+            [
+                "generate",
+                str(spec_path),
+                "--type",
+                "mcp-server",
+                "-o",
+                str(output_path),
+            ],
+        )
 
         assert result.exit_code == 0, result.output
         assert (output_path / "server.py").exists()
 
 
 class TestInspectCommand:
-    def test_inspect_summary(self, sample_bundle: CaptureBundle, tmp_path: Path) -> None:
+    def test_inspect_summary(
+        self, sample_bundle: CaptureBundle, tmp_path: Path
+    ) -> None:
         bundle_path = tmp_path / "capture.zip"
         write_bundle(sample_bundle, bundle_path)
 
@@ -261,7 +374,9 @@ class TestInspectCommand:
         assert "t_0001" in result.output
         assert "GET" in result.output
 
-    def test_inspect_trace_not_found(self, sample_bundle: CaptureBundle, tmp_path: Path) -> None:
+    def test_inspect_trace_not_found(
+        self, sample_bundle: CaptureBundle, tmp_path: Path
+    ) -> None:
         bundle_path = tmp_path / "capture.zip"
         write_bundle(sample_bundle, bundle_path)
 
@@ -288,7 +403,9 @@ class TestCallCommand:
 
         spec = ApiSpec(
             name="Test API",
-            auth=AuthInfo(type="bearer_token", token_header="Authorization", token_prefix="Bearer"),
+            auth=AuthInfo(
+                type="bearer_token", token_header="Authorization", token_prefix="Bearer"
+            ),
             protocols=Protocols(
                 rest=RestProtocol(
                     base_url="https://api.example.com",
@@ -298,9 +415,13 @@ class TestCallCommand:
                             path="/api/users",
                             method="GET",
                             business_purpose="List users",
-                            request=RequestSpec(parameters=[
-                                ParameterSpec(name="limit", location="query", type="integer"),
-                            ]),
+                            request=RequestSpec(
+                                parameters=[
+                                    ParameterSpec(
+                                        name="limit", location="query", type="integer"
+                                    ),
+                                ]
+                            ),
                             responses=[ResponseSpec(status=200)],
                         ),
                         EndpointSpec(
@@ -308,9 +429,16 @@ class TestCallCommand:
                             path="/api/users/{user_id}",
                             method="GET",
                             business_purpose="Get a user",
-                            request=RequestSpec(parameters=[
-                                ParameterSpec(name="user_id", location="path", type="string", required=True),
-                            ]),
+                            request=RequestSpec(
+                                parameters=[
+                                    ParameterSpec(
+                                        name="user_id",
+                                        location="path",
+                                        type="string",
+                                        required=True,
+                                    ),
+                                ]
+                            ),
                             responses=[ResponseSpec(status=200)],
                         ),
                     ],
@@ -324,7 +452,9 @@ class TestCallCommand:
     def test_call_list(self, tmp_path: Path) -> None:
         spec_path = self._create_spec_file(tmp_path)
         runner = CliRunner()
-        result = runner.invoke(cli, ["call", str(spec_path), "--list", "--token", "tok"])
+        result = runner.invoke(
+            cli, ["call", str(spec_path), "--list", "--token", "tok"]
+        )
         assert result.exit_code == 0
         assert "get_users" in result.output
         assert "get_user" in result.output
@@ -351,17 +481,31 @@ class TestCallCommand:
 
         spec_path = self._create_spec_file(tmp_path)
         runner = CliRunner()
-        result = runner.invoke(cli, [
-            "call", str(spec_path), "get_users", "limit=10", "--token", "tok",
-        ])
+        result = runner.invoke(
+            cli,
+            [
+                "call",
+                str(spec_path),
+                "get_users",
+                "limit=10",
+                "--token",
+                "tok",
+            ],
+        )
         assert result.exit_code == 0
 
     def test_call_invalid_param_format(self, tmp_path: Path) -> None:
         spec_path = self._create_spec_file(tmp_path)
         runner = CliRunner()
-        result = runner.invoke(cli, [
-            "call", str(spec_path), "get_users", "badparam", "--token", "tok",
-        ])
+        result = runner.invoke(
+            cli,
+            [
+                "call",
+                str(spec_path),
+                "get_users",
+                "badparam",
+                "--token",
+                "tok",
+            ],
+        )
         assert result.exit_code != 0
-
-

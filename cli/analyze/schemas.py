@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-import re
 from collections import defaultdict
+import re
 from typing import Any
 from urllib.parse import parse_qs, urlparse
 
@@ -59,7 +59,9 @@ def _detect_format(values: list[Any]) -> str | None:
         return "email"
 
     if all(
-        re.match(r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$", v, re.I)
+        re.match(
+            r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$", v, re.I
+        )
         for v in str_values
     ):
         return "uuid"

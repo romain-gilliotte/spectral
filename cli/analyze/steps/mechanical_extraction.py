@@ -2,10 +2,10 @@
 
 from __future__ import annotations
 
-import json
-import re
 from collections import defaultdict
 from dataclasses import dataclass
+import json
+import re
 from typing import Any, cast
 from urllib.parse import urlparse
 
@@ -13,10 +13,7 @@ from cli.analyze.correlator import Correlation
 from cli.analyze.schemas import extract_query_params, infer_schema
 from cli.analyze.steps import EndpointGroup
 from cli.analyze.steps.base import MechanicalStep
-from cli.analyze.utils import (
-    get_header,
-    pattern_to_regex,
-)
+from cli.analyze.utils import get_header, pattern_to_regex
 from cli.capture.models import Trace
 from cli.formats.api_spec import (
     EndpointSpec,
@@ -34,7 +31,9 @@ class MechanicalExtractionInput:
     correlations: list[Correlation]
 
 
-class MechanicalExtractionStep(MechanicalStep[MechanicalExtractionInput, list[EndpointSpec]]):
+class MechanicalExtractionStep(
+    MechanicalStep[MechanicalExtractionInput, list[EndpointSpec]]
+):
     """Build EndpointSpec for each group using only mechanical extraction."""
 
     name = "mechanical_extraction"
@@ -44,7 +43,10 @@ class MechanicalExtractionStep(MechanicalStep[MechanicalExtractionInput, list[En
         for group in input.groups:
             group_traces = _find_traces_for_group(group, input.traces)
             endpoint = _build_endpoint_mechanical(
-                group.method, group.pattern, group_traces, input.correlations,
+                group.method,
+                group.pattern,
+                group_traces,
+                input.correlations,
             )
             endpoints.append(endpoint)
         return endpoints
@@ -54,7 +56,8 @@ def _find_traces_for_group(group: EndpointGroup, traces: list[Trace]) -> list[Tr
     """Find traces whose URLs are listed in the endpoint group."""
     url_set = set(group.urls)
     matched = [
-        t for t in traces
+        t
+        for t in traces
         if t.meta.request.url in url_set
         and t.meta.request.method.upper() == group.method
     ]
@@ -64,9 +67,8 @@ def _find_traces_for_group(group: EndpointGroup, traces: list[Trace]) -> list[Tr
     for t in traces:
         if t not in matched:
             parsed = urlparse(t.meta.request.url)
-            if (
-                t.meta.request.method.upper() == group.method
-                and pattern_re.match(parsed.path)
+            if t.meta.request.method.upper() == group.method and pattern_re.match(
+                parsed.path
             ):
                 matched.append(t)
 

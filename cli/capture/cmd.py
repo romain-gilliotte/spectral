@@ -18,10 +18,11 @@ def _truncate(s: str, max_len: int) -> str:
     return s[: max_len - 3] + "..."
 
 
-
 @click.command()
 @click.argument("capture_path", type=click.Path(exists=True))
-@click.option("--trace", "trace_id", default=None, help="Show details for a specific trace")
+@click.option(
+    "--trace", "trace_id", default=None, help="Show details for a specific trace"
+)
 def inspect(capture_path: str, trace_id: str | None) -> None:
     """Inspect a capture bundle."""
     from cli.capture.loader import load_bundle
@@ -113,7 +114,9 @@ def _inspect_trace(bundle: CaptureBundle, trace_id: str) -> None:
     console.print("[bold]Timing[/bold]")
     t = m.timing
     console.print(f"  DNS: {t.dns_ms}ms, Connect: {t.connect_ms}ms, TLS: {t.tls_ms}ms")
-    console.print(f"  Send: {t.send_ms}ms, Wait: {t.wait_ms}ms, Receive: {t.receive_ms}ms")
+    console.print(
+        f"  Send: {t.send_ms}ms, Wait: {t.wait_ms}ms, Receive: {t.receive_ms}ms"
+    )
     console.print(f"  Total: {t.total_ms}ms")
 
     if m.context_refs:

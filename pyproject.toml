@@ -46,3 +46,10 @@ dev = [
     "pyright>=1.1.408",
     "ruff>=0.15.1",
 ]
+
+[tool.ruff.lint]
+select = ["I"]
+
+[tool.ruff.lint.isort]
+combine-as-imports = true
+force-sort-within-sections = true

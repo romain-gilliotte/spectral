@@ -2,13 +2,13 @@
 
 from __future__ import annotations
 
+from pathlib import Path
 import subprocess
 import textwrap
-from pathlib import Path
 from unittest.mock import MagicMock, patch
 
-import pytest
 from click.testing import CliRunner
+import pytest
 
 from cli.android.adb import (
     AdbError,
@@ -33,7 +33,6 @@ from cli.android.patch import (
 from cli.android.proxy import CaptureAddon, flow_to_trace, ws_flow_to_connection
 from cli.capture.loader import load_bundle_bytes, write_bundle_bytes
 from cli.main import cli
-
 
 # ── ADB tests ──────────────────────────────────────────────────────
 
@@ -204,6 +203,7 @@ class TestLaunchApp:
 class TestGetHostLanIp:
     def test_returns_lan_ip(self) -> None:
         import socket as socket_mod
+
         mock_socket = MagicMock()
         mock_socket.getsockname.return_value = ("192.168.1.42", 12345)
         with patch.object(socket_mod, "socket", return_value=mock_socket):
@@ -212,6 +212,7 @@ class TestGetHostLanIp:
 
     def test_raises_on_failure(self) -> None:
         import socket as socket_mod
+
         mock_socket = MagicMock()
         mock_socket.connect.side_effect = OSError("Network unreachable")
         with patch.object(socket_mod, "socket", return_value=mock_socket):
@@ -309,7 +310,9 @@ def _make_mock_flow(
     flow.response.timestamp_end = 1700000000.15
     flow.response.headers = MagicMock()
     flow.response.headers.items = MagicMock(
-        return_value=list((resp_headers or {"Content-Type": "application/json"}).items())
+        return_value=list(
+            (resp_headers or {"Content-Type": "application/json"}).items()
+        )
     )
 
     flow.websocket = None
@@ -351,7 +354,10 @@ class TestFlowToTrace:
 
     def test_headers_mapped(self) -> None:
         flow = _make_mock_flow(
-            req_headers={"Authorization": "Bearer tok123", "Accept": "application/json"},
+            req_headers={
+                "Authorization": "Bearer tok123",
+                "Accept": "application/json",
+            },
             resp_headers={"Content-Type": "application/json", "X-Request-Id": "abc"},
         )
         trace = flow_to_trace(flow, "t_0004")
@@ -474,12 +480,16 @@ class TestPullApks:
     def test_single_apk_pulls_as_file(self, tmp_path: Path) -> None:
         output = tmp_path / "app.apk"
 
-        def fake_run(cmd: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
+        def fake_run(
+            cmd: list[str], **kwargs: object
+        ) -> subprocess.CompletedProcess[str]:
             # get_apk_paths call
             if "pm" in cmd and "path" in cmd:
                 return subprocess.CompletedProcess(
-                    args=cmd, returncode=0,
-                    stdout="package:/data/app/com.example-1/base.apk\n", stderr=""
+                    args=cmd,
+                    returncode=0,
+                    stdout="package:/data/app/com.example-1/base.apk\n",
+                    stderr="",
                 )
             # pull call
             if "pull" in cmd:
@@ -488,7 +498,9 @@ class TestPullApks:
                 return subprocess.CompletedProcess(
                     args=cmd, returncode=0, stdout="1 file pulled\n", stderr=""
                 )
-            return subprocess.CompletedProcess(args=cmd, returncode=0, stdout="", stderr="")
+            return subprocess.CompletedProcess(
+                args=cmd, returncode=0, stdout="", stderr=""
+            )
 
         with patch("subprocess.run", side_effect=fake_run):
             result_path, is_split = pull_apks("com.example", output)
@@ -506,18 +518,24 @@ class TestPullApks:
             "package:/data/app/com.example-1/split_config.fr.apk",
         ]
 
-        def fake_run(cmd: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
+        def fake_run(
+            cmd: list[str], **kwargs: object
+        ) -> subprocess.CompletedProcess[str]:
             if "pm" in cmd and "path" in cmd:
                 return subprocess.CompletedProcess(
-                    args=cmd, returncode=0,
-                    stdout="\n".join(remote_paths) + "\n", stderr=""
+                    args=cmd,
+                    returncode=0,
+                    stdout="\n".join(remote_paths) + "\n",
+                    stderr="",
                 )
             if "pull" in cmd:
                 Path(cmd[-1]).write_bytes(b"fake-apk-data")
                 return subprocess.CompletedProcess(
                     args=cmd, returncode=0, stdout="1 file pulled\n", stderr=""
                 )
-            return subprocess.CompletedProcess(args=cmd, returncode=0, stdout="", stderr="")
+            return subprocess.CompletedProcess(
+                args=cmd, returncode=0, stdout="", stderr=""
+            )
 
         with patch("subprocess.run", side_effect=fake_run):
             result_path, is_split = pull_apks("com.example", output)
@@ -532,22 +550,27 @@ class TestPullApks:
     def test_split_apks_preserves_device_filenames(self, tmp_path: Path) -> None:
         output = tmp_path / "com.example"
 
-        def fake_run(cmd: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
+        def fake_run(
+            cmd: list[str], **kwargs: object
+        ) -> subprocess.CompletedProcess[str]:
             if "pm" in cmd and "path" in cmd:
                 return subprocess.CompletedProcess(
-                    args=cmd, returncode=0,
+                    args=cmd,
+                    returncode=0,
                     stdout=(
                         "package:/data/app/com.example-1/base.apk\n"
                         "package:/data/app/com.example-1/split_config.xxhdpi.apk\n"
                     ),
-                    stderr=""
+                    stderr="",
                 )
             if "pull" in cmd:
                 Path(cmd[-1]).write_bytes(b"data")
                 return subprocess.CompletedProcess(
                     args=cmd, returncode=0, stdout="", stderr=""
                 )
-            return subprocess.CompletedProcess(args=cmd, returncode=0, stdout="", stderr="")
+            return subprocess.CompletedProcess(
+                args=cmd, returncode=0, stdout="", stderr=""
+            )
 
         with patch("subprocess.run", side_effect=fake_run):
             result_path, _ = pull_apks("com.example", output)
@@ -559,16 +582,19 @@ class TestPullApks:
         output = tmp_path / "com.example"
         call_count = 0
 
-        def fake_run(cmd: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
+        def fake_run(
+            cmd: list[str], **kwargs: object
+        ) -> subprocess.CompletedProcess[str]:
             nonlocal call_count
             if "pm" in cmd and "path" in cmd:
                 return subprocess.CompletedProcess(
-                    args=cmd, returncode=0,
+                    args=cmd,
+                    returncode=0,
                     stdout=(
                         "package:/data/app/com.example-1/base.apk\n"
                         "package:/data/app/com.example-1/split_config.arm64_v8a.apk\n"
                     ),
-                    stderr=""
+                    stderr="",
                 )
             if "pull" in cmd:
                 call_count += 1
@@ -583,7 +609,9 @@ class TestPullApks:
                     return subprocess.CompletedProcess(
                         args=cmd, returncode=1, stdout="", stderr="device offline"
                     )
-            return subprocess.CompletedProcess(args=cmd, returncode=0, stdout="", stderr="")
+            return subprocess.CompletedProcess(
+                args=cmd, returncode=0, stdout="", stderr=""
+            )
 
         with patch("subprocess.run", side_effect=fake_run):
             with pytest.raises(AdbError, match="Failed to pull APK"):
@@ -683,6 +711,7 @@ class TestPatchApkDir:
             with patch("cli.android.patch._ensure_debug_keystore"):
                 with patch("cli.android.patch.patch_apk") as mock_patch:
                     with patch("cli.android.patch.sign_apk") as mock_sign:
+
                         def fake_patch(apk: Path, out: Path, keystore: Path) -> Path:
                             out.parent.mkdir(parents=True, exist_ok=True)
                             out.write_bytes(b"patched")
@@ -722,6 +751,7 @@ class TestPatchApkDir:
             with patch("cli.android.patch._ensure_debug_keystore"):
                 with patch("cli.android.patch.patch_apk") as mock_patch:
                     with patch("cli.android.patch.sign_apk") as mock_sign:
+
                         def fake_patch_fn(apk: Path, out: Path, keystore: Path) -> Path:
                             out.parent.mkdir(parents=True, exist_ok=True)
                             out.write_bytes(b"patched")
@@ -765,6 +795,7 @@ class TestPatchApkDir:
             with patch("cli.android.patch._ensure_debug_keystore"):
                 with patch("cli.android.patch.patch_apk") as mock_patch:
                     with patch("cli.android.patch.sign_apk") as mock_sign:
+
                         def capture_patch(apk: Path, out: Path, keystore: Path) -> Path:
                             keystores_used.append(keystore)
                             out.parent.mkdir(parents=True, exist_ok=True)
@@ -861,7 +892,9 @@ class TestManifestCompat:
         manifest = CaptureManifest(
             capture_id="test",
             created_at="2026-01-01T00:00:00Z",
-            app=AppInfo(name="Android App", base_url="https://api.app.com", title="App"),
+            app=AppInfo(
+                name="Android App", base_url="https://api.app.com", title="App"
+            ),
             browser=None,
             extension_version=None,
             duration_ms=5000,

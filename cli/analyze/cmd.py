@@ -12,11 +12,22 @@ from cli.console import console
 
 @click.command()
 @click.argument("capture_path", type=click.Path(exists=True))
-@click.option("-o", "--output", required=True, help="Output file path for the API spec (.json)")
+@click.option(
+    "-o", "--output", required=True, help="Output file path for the API spec (.json)"
+)
 @click.option("--model", default="claude-sonnet-4-5-20250929", help="LLM model to use")
-@click.option("--debug", is_flag=True, default=False, help="Save LLM prompts/responses to debug/")
-@click.option("--skip-enrich", is_flag=True, default=False, help="Skip LLM enrichment step (business context, glossary, etc.)")
-def analyze(capture_path: str, output: str, model: str, debug: bool, skip_enrich: bool) -> None:
+@click.option(
+    "--debug", is_flag=True, default=False, help="Save LLM prompts/responses to debug/"
+)
+@click.option(
+    "--skip-enrich",
+    is_flag=True,
+    default=False,
+    help="Skip LLM enrichment step (business context, glossary, etc.)",
+)
+def analyze(
+    capture_path: str, output: str, model: str, debug: bool, skip_enrich: bool
+) -> None:
     """Analyze a capture bundle and produce an enriched API spec."""
     import anthropic
 
@@ -48,9 +59,7 @@ def analyze(capture_path: str, output: str, model: str, debug: bool, skip_enrich
             skip_enrich=skip_enrich,
         )
     )
-    console.print(
-        f"  Found {len(spec.protocols.rest.endpoints)} endpoints"
-    )
+    console.print(f"  Found {len(spec.protocols.rest.endpoints)} endpoints")
 
     output_path = Path(output)
     output_path.parent.mkdir(parents=True, exist_ok=True)

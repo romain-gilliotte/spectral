@@ -54,7 +54,9 @@ class CaptureBundle:
 
     manifest: CaptureManifest
     traces: list[Trace] = field(default_factory=lambda: list[Trace]())
-    ws_connections: list[WsConnection] = field(default_factory=lambda: list[WsConnection]())
+    ws_connections: list[WsConnection] = field(
+        default_factory=lambda: list[WsConnection]()
+    )
     contexts: list[Context] = field(default_factory=lambda: list[Context]())
     timeline: Timeline = field(default_factory=Timeline)
 

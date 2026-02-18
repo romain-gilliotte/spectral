@@ -2,9 +2,9 @@
 
 from __future__ import annotations
 
-import zipfile
 from io import BytesIO
 from pathlib import Path
+import zipfile
 
 from cli.capture.models import CaptureBundle, Context, Trace, WsConnection, WsMessage
 from cli.formats.capture_bundle import (
@@ -51,7 +51,9 @@ def _load_from_zipfile(zf: zipfile.ZipFile) -> CaptureBundle:
             resp_path = f"traces/{trace_meta.response.body_file}"
             if resp_path in zf.namelist():
                 resp_body = zf.read(resp_path)
-        traces.append(Trace(meta=trace_meta, request_body=req_body, response_body=resp_body))
+        traces.append(
+            Trace(meta=trace_meta, request_body=req_body, response_body=resp_body)
+        )
 
     # Load WebSocket connections and messages
     ws_connections: list[WsConnection] = []

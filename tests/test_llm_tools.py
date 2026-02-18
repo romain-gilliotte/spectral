@@ -7,16 +7,15 @@ from unittest.mock import MagicMock
 
 import pytest
 
+from cli.analyze.steps.detect_base_url import DetectBaseUrlStep
 from cli.analyze.tools import (
+    INVESTIGATION_TOOLS,
+    TOOL_EXECUTORS,
     call_with_tools,
     execute_decode_base64,
     execute_decode_jwt,
     execute_decode_url,
-    TOOL_EXECUTORS,
-    INVESTIGATION_TOOLS,
 )
-from cli.analyze.steps.detect_base_url import DetectBaseUrlStep
-
 
 # --- Executor unit tests (sync, no mocks) ---
 
@@ -69,8 +68,20 @@ class TestDecodeUrl:
 
 class TestDecodeJwt:
     def test_valid_jwt(self):
-        header = base64.urlsafe_b64encode(json.dumps({"alg": "HS256", "typ": "JWT"}).encode()).decode().rstrip("=")
-        payload = base64.urlsafe_b64encode(json.dumps({"sub": "1234", "name": "Test"}).encode()).decode().rstrip("=")
+        header = (
+            base64.urlsafe_b64encode(
+                json.dumps({"alg": "HS256", "typ": "JWT"}).encode()
+            )
+            .decode()
+            .rstrip("=")
+        )
+        payload = (
+            base64.urlsafe_b64encode(
+                json.dumps({"sub": "1234", "name": "Test"}).encode()
+            )
+            .decode()
+            .rstrip("=")
+        )
         token = f"{header}.{payload}.fakesignature"
 
         result = execute_decode_jwt(token)
@@ -97,7 +108,9 @@ def _make_text_response(text: str) -> MagicMock:
     return resp
 
 
-def _make_tool_use_response(tool_name: str, tool_input: dict[str, Any], tool_use_id: str = "tool_01") -> MagicMock:
+def _make_tool_use_response(
+    tool_name: str, tool_input: dict[str, Any], tool_use_id: str = "tool_01"
+) -> MagicMock:
     """Create a mock response with a tool_use block."""
     block = MagicMock()
     block.type = "tool_use"
@@ -124,8 +137,11 @@ class TestCallWithTools:
         client.messages.create = mock_create
 
         result = await call_with_tools(
-            client, "model", [{"role": "user", "content": "hi"}],
-            INVESTIGATION_TOOLS, TOOL_EXECUTORS,
+            client,
+            "model",
+            [{"role": "user", "content": "hi"}],
+            INVESTIGATION_TOOLS,
+            TOOL_EXECUTORS,
         )
         assert result == '{"endpoints": []}'
         assert call_count[0] == 1
@@ -135,7 +151,9 @@ class TestCallWithTools:
         """LLM calls decode_base64, gets result, then responds with text."""
         encoded = base64.b64encode(b'{"page":1}').decode()
         tool_resp = _make_tool_use_response("decode_base64", {"value": encoded})
-        final_resp = _make_text_response('[{"method":"GET","pattern":"/api/data/{param}","urls":[]}]')
+        final_resp = _make_text_response(
+            '[{"method":"GET","pattern":"/api/data/{param}","urls":[]}]'
+        )
 
         call_count = [0]
 
@@ -149,8 +167,11 @@ class TestCallWithTools:
         client.messages.create = mock_create
 
         result = await call_with_tools(
-            client, "model", [{"role": "user", "content": "analyze"}],
-            INVESTIGATION_TOOLS, TOOL_EXECUTORS,
+            client,
+            "model",
+            [{"role": "user", "content": "analyze"}],
+            INVESTIGATION_TOOLS,
+            TOOL_EXECUTORS,
         )
         assert "/api/data/{param}" in result
         assert call_count[0] == 2
@@ -158,7 +179,9 @@ class TestCallWithTools:
     @pytest.mark.asyncio
     async def test_executor_error_returned_as_is_error(self):
         """When an executor raises, the error is sent back with is_error=True."""
-        tool_resp = _make_tool_use_response("decode_base64", {"value": "!!!not~base64$$$"})
+        tool_resp = _make_tool_use_response(
+            "decode_base64", {"value": "!!!not~base64$$$"}
+        )
         final_resp = _make_text_response("[]")
 
         call_count = [0]
@@ -178,8 +201,11 @@ class TestCallWithTools:
         client.messages.create = mock_create
 
         result = await call_with_tools(
-            client, "model", [{"role": "user", "content": "go"}],
-            INVESTIGATION_TOOLS, TOOL_EXECUTORS,
+            client,
+            "model",
+            [{"role": "user", "content": "go"}],
+            INVESTIGATION_TOOLS,
+            TOOL_EXECUTORS,
         )
         assert result == "[]"
 
@@ -196,8 +222,11 @@ class TestCallWithTools:
 
         with pytest.raises(ValueError, match="exceeded 3 iterations"):
             await call_with_tools(
-                client, "model", [{"role": "user", "content": "go"}],
-                INVESTIGATION_TOOLS, TOOL_EXECUTORS,
+                client,
+                "model",
+                [{"role": "user", "content": "go"}],
+                INVESTIGATION_TOOLS,
+                TOOL_EXECUTORS,
                 max_iterations=3,
             )
 
@@ -223,8 +252,11 @@ class TestCallWithTools:
         client.messages.create = mock_create
 
         result = await call_with_tools(
-            client, "model", [{"role": "user", "content": "go"}],
-            INVESTIGATION_TOOLS, TOOL_EXECUTORS,
+            client,
+            "model",
+            [{"role": "user", "content": "go"}],
+            INVESTIGATION_TOOLS,
+            TOOL_EXECUTORS,
         )
         assert result == "done"
 
@@ -233,6 +265,7 @@ class TestDetectBaseUrlStep:
     @pytest.mark.asyncio
     async def test_returns_base_url(self):
         """DetectBaseUrlStep should parse the LLM response and return the base_url string."""
+
         async def mock_create(**kwargs: Any) -> MagicMock:
             return _make_text_response('{"base_url": "https://www.example.com/api"}')
 
@@ -241,13 +274,17 @@ class TestDetectBaseUrlStep:
 
         step = DetectBaseUrlStep(client, "model")
         result = await step.run(
-            [("GET", "https://www.example.com/api/users"), ("GET", "https://cdn.example.com/style.css")],
+            [
+                ("GET", "https://www.example.com/api/users"),
+                ("GET", "https://cdn.example.com/style.css"),
+            ],
         )
         assert result == "https://www.example.com/api"
 
     @pytest.mark.asyncio
     async def test_strips_trailing_slash(self):
         """Trailing slash should be stripped from the returned base URL."""
+
         async def mock_create(**kwargs: Any) -> MagicMock:
             return _make_text_response('{"base_url": "https://api.example.com/"}')
 
@@ -261,6 +298,7 @@ class TestDetectBaseUrlStep:
     @pytest.mark.asyncio
     async def test_origin_only(self):
         """LLM may return just the origin without a path prefix."""
+
         async def mock_create(**kwargs: Any) -> MagicMock:
             return _make_text_response('{"base_url": "https://api.example.com"}')
 
@@ -274,6 +312,7 @@ class TestDetectBaseUrlStep:
     @pytest.mark.asyncio
     async def test_invalid_response_raises(self):
         """If the LLM doesn't return {base_url: ...}, raise ValueError."""
+
         async def mock_create(**kwargs: Any) -> MagicMock:
             return _make_text_response('{"something_else": "value"}')
 

@@ -24,7 +24,9 @@ class TestBundleRoundtrip:
         assert len(loaded.contexts) == len(sample_bundle.contexts)
         assert len(loaded.timeline.events) == len(sample_bundle.timeline.events)
 
-    def test_write_and_load_file(self, sample_bundle: CaptureBundle, tmp_path: Path) -> None:
+    def test_write_and_load_file(
+        self, sample_bundle: CaptureBundle, tmp_path: Path
+    ) -> None:
         """Test writing a bundle to disk and loading it back."""
         path = tmp_path / "test_capture.zip"
         write_bundle(sample_bundle, path)
@@ -77,7 +79,10 @@ class TestBundleRoundtrip:
     def test_empty_bundle(self):
         """Test roundtrip of an empty bundle."""
         from cli.formats.capture_bundle import (
-            AppInfo, BrowserInfo, CaptureManifest, CaptureStats,
+            AppInfo,
+            BrowserInfo,
+            CaptureManifest,
+            CaptureStats,
         )
 
         bundle = CaptureBundle(
@@ -99,14 +104,20 @@ class TestBundleRoundtrip:
 
     def test_binary_body_roundtrip(self):
         """Test that binary (non-UTF-8) bodies survive roundtrip."""
-        from tests.conftest import make_trace
         from cli.formats.capture_bundle import (
-            AppInfo, BrowserInfo, CaptureManifest, CaptureStats,
+            AppInfo,
+            BrowserInfo,
+            CaptureManifest,
+            CaptureStats,
         )
+        from tests.conftest import make_trace
 
         binary_body = bytes(range(256))  # All byte values
         trace = make_trace(
-            "t_0001", "POST", "http://localhost/binary", 200,
+            "t_0001",
+            "POST",
+            "http://localhost/binary",
+            200,
             timestamp=1000,
             request_body=binary_body,
             response_body=binary_body,

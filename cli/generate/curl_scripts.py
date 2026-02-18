@@ -27,7 +27,9 @@ def generate_curl_scripts(spec: ApiSpec, output_path: str | Path) -> None:
 def build_curl_script(endpoint: EndpointSpec, spec: ApiSpec) -> str:
     """Build a single cURL script for an endpoint."""
     lines = ["#!/usr/bin/env bash", ""]
-    lines.append(f"# {endpoint.business_purpose or endpoint.method + ' ' + endpoint.path}")
+    lines.append(
+        f"# {endpoint.business_purpose or endpoint.method + ' ' + endpoint.path}"
+    )
     if endpoint.user_story:
         lines.append(f"# {endpoint.user_story}")
     lines.append("")
@@ -50,7 +52,7 @@ def build_all_curl_script(spec: ApiSpec) -> str:
     ]
 
     if spec.auth.type and spec.auth.type != "none":
-        lines.append('# Set your auth token')
+        lines.append("# Set your auth token")
         lines.append('TOKEN="${API_TOKEN:-your-token-here}"')
         lines.append("")
 

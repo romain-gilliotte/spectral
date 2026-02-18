@@ -78,7 +78,9 @@ Respond in JSON."""
 
         login_config = None
         login_data_raw: Any = data.get("login_endpoint")
-        if isinstance(login_data_raw, dict) and cast(dict[str, Any], login_data_raw).get("url"):
+        if isinstance(login_data_raw, dict) and cast(
+            dict[str, Any], login_data_raw
+        ).get("url"):
             ld = cast(dict[str, Any], login_data_raw)
             login_config = LoginEndpointConfig(
                 url=str(ld["url"]),
@@ -86,12 +88,16 @@ Respond in JSON."""
                 credential_fields=ld.get("credential_fields", {}),
                 extra_fields=ld.get("extra_fields", {}),
                 token_response_path=str(ld.get("token_response_path", "access_token")),
-                refresh_token_response_path=str(ld.get("refresh_token_response_path", "")),
+                refresh_token_response_path=str(
+                    ld.get("refresh_token_response_path", "")
+                ),
             )
 
         refresh_config = None
         refresh_data_raw: Any = data.get("refresh_endpoint_config")
-        if isinstance(refresh_data_raw, dict) and cast(dict[str, Any], refresh_data_raw).get("url"):
+        if isinstance(refresh_data_raw, dict) and cast(
+            dict[str, Any], refresh_data_raw
+        ).get("url"):
             rd = cast(dict[str, Any], refresh_data_raw)
             refresh_config = RefreshEndpointConfig(
                 url=str(rd["url"]),
@@ -117,8 +123,17 @@ Respond in JSON."""
 def _prepare_auth_summary(traces: list[Trace]) -> list[dict[str, Any]]:
     """Prepare trace summaries relevant to authentication."""
     _AUTH_URL_KEYWORDS = [
-        "auth", "login", "token", "oauth", "callback", "session", "signin",
-        "auth0", "okta", "cognito", "accounts.google",
+        "auth",
+        "login",
+        "token",
+        "oauth",
+        "callback",
+        "session",
+        "signin",
+        "auth0",
+        "okta",
+        "cognito",
+        "accounts.google",
     ]
     _LOGIN_URL_KEYWORDS = ["auth", "login", "signin", "token"]
 
@@ -132,7 +147,10 @@ def _prepare_auth_summary(traces: list[Trace]) -> list[dict[str, Any]]:
 
         is_auth_related = (
             "authorization" in req_header_names_lower
-            or any(h in req_header_names_lower for h in ["x-api-key", "x-auth-token", "x-access-token"])
+            or any(
+                h in req_header_names_lower
+                for h in ["x-api-key", "x-auth-token", "x-access-token"]
+            )
             or "set-cookie" in {h.name.lower() for h in t.meta.response.headers}
             or any(kw in t.meta.request.url.lower() for kw in _AUTH_URL_KEYWORDS)
             or t.meta.response.status in (401, 403)
@@ -142,9 +160,8 @@ def _prepare_auth_summary(traces: list[Trace]) -> list[dict[str, Any]]:
             continue
 
         url_lower = t.meta.request.url.lower()
-        is_login_post = (
-            t.meta.request.method.upper() == "POST"
-            and any(kw in url_lower for kw in _LOGIN_URL_KEYWORDS)
+        is_login_post = t.meta.request.method.upper() == "POST" and any(
+            kw in url_lower for kw in _LOGIN_URL_KEYWORDS
         )
 
         summary: dict[str, Any] = {
@@ -160,14 +177,18 @@ def _prepare_auth_summary(traces: list[Trace]) -> list[dict[str, Any]]:
         if t.request_body:
             try:
                 body = json.loads(t.request_body)
-                summary["request_body_snippet"] = truncate_json(body, max_keys=body_max_keys)
+                summary["request_body_snippet"] = truncate_json(
+                    body, max_keys=body_max_keys
+                )
             except (json.JSONDecodeError, UnicodeDecodeError):
                 pass
 
         if t.response_body:
             try:
                 body = json.loads(t.response_body)
-                summary["response_body_snippet"] = truncate_json(body, max_keys=body_max_keys)
+                summary["response_body_snippet"] = truncate_json(
+                    body, max_keys=body_max_keys
+                )
             except (json.JSONDecodeError, UnicodeDecodeError):
                 pass
 
@@ -181,12 +202,14 @@ def _prepare_auth_summary(traces: list[Trace]) -> list[dict[str, Any]]:
     if not summaries and traces:
         for t in traces[:5]:
             headers_dict = {h.name: h.value for h in t.meta.request.headers}
-            summaries.append({
-                "method": t.meta.request.method,
-                "url": t.meta.request.url,
-                "response_status": t.meta.response.status,
-                "request_headers": sanitize_headers(headers_dict),
-            })
+            summaries.append(
+                {
+                    "method": t.meta.request.method,
+                    "url": t.meta.request.url,
+                    "response_status": t.meta.response.status,
+                    "request_headers": sanitize_headers(headers_dict),
+                }
+            )
 
     return summaries
 
@@ -231,4 +254,6 @@ def detect_auth_mechanical(traces: list[Trace]) -> AuthInfo:
                 auth_type = "cookie"
                 break
 
-    return AuthInfo(type=auth_type, token_header=token_header, token_prefix=token_prefix)
+    return AuthInfo(
+        type=auth_type, token_header=token_header, token_prefix=token_prefix
+    )

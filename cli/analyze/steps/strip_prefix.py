@@ -30,6 +30,6 @@ class StripPrefixStep(MechanicalStep[StripPrefixInput, list[EndpointGroup]]):
 
         for group in input.groups:
             if group.pattern.startswith(base_path):
-                group.pattern = group.pattern[len(base_path):] or "/"
+                group.pattern = group.pattern[len(base_path) :] or "/"
 
         return input.groups

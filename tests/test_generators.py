@@ -21,7 +21,11 @@ from cli.formats.api_spec import (
     WsConnectionSpec,
     WsMessageSpec,
 )
-from cli.generate.curl_scripts import build_all_curl_script, build_curl_script, generate_curl_scripts
+from cli.generate.curl_scripts import (
+    build_all_curl_script,
+    build_curl_script,
+    generate_curl_scripts,
+)
 from cli.generate.markdown_docs import (
     build_auth_markdown,
     build_endpoint_markdown,
@@ -38,8 +42,12 @@ def _make_sample_spec() -> ApiSpec:
     return ApiSpec(
         name="Pet Store API",
         discovery_date="2026-02-13T15:30:00Z",
-        business_context=BusinessContext(domain="E-commerce", description="Pet store management API"),
-        auth=AuthInfo(type="bearer_token", token_header="Authorization", token_prefix="Bearer"),
+        business_context=BusinessContext(
+            domain="E-commerce", description="Pet store management API"
+        ),
+        auth=AuthInfo(
+            type="bearer_token", token_header="Authorization", token_prefix="Bearer"
+        ),
         protocols=Protocols(
             rest=RestProtocol(
                 base_url="https://api.petstore.com",
@@ -55,8 +63,18 @@ def _make_sample_spec() -> ApiSpec:
                         request=RequestSpec(
                             content_type="application/json",
                             parameters=[
-                                ParameterSpec(name="category", location="query", type="string", example="dogs"),
-                                ParameterSpec(name="limit", location="query", type="integer", example="10"),
+                                ParameterSpec(
+                                    name="category",
+                                    location="query",
+                                    type="string",
+                                    example="dogs",
+                                ),
+                                ParameterSpec(
+                                    name="limit",
+                                    location="query",
+                                    type="integer",
+                                    example="10",
+                                ),
                             ],
                         ),
                         responses=[
@@ -69,7 +87,12 @@ def _make_sample_spec() -> ApiSpec:
                             ),
                         ],
                         ui_triggers=[
-                            UiTrigger(action="click", element_selector="nav#pets", element_text="Pets", page_url="/home"),
+                            UiTrigger(
+                                action="click",
+                                element_selector="nav#pets",
+                                element_text="Pets",
+                                page_url="/home",
+                            ),
                         ],
                     ),
                     EndpointSpec(
@@ -81,7 +104,12 @@ def _make_sample_spec() -> ApiSpec:
                         observed_count=3,
                         request=RequestSpec(
                             parameters=[
-                                ParameterSpec(name="pet_id", location="path", type="string", required=True),
+                                ParameterSpec(
+                                    name="pet_id",
+                                    location="path",
+                                    type="string",
+                                    required=True,
+                                ),
                             ],
                         ),
                         responses=[
@@ -99,9 +127,25 @@ def _make_sample_spec() -> ApiSpec:
                         request=RequestSpec(
                             content_type="application/json",
                             parameters=[
-                                ParameterSpec(name="name", location="body", type="string", required=True, business_meaning="Pet's name"),
-                                ParameterSpec(name="type", location="body", type="string", required=True),
-                                ParameterSpec(name="age", location="body", type="integer", required=False),
+                                ParameterSpec(
+                                    name="name",
+                                    location="body",
+                                    type="string",
+                                    required=True,
+                                    business_meaning="Pet's name",
+                                ),
+                                ParameterSpec(
+                                    name="type",
+                                    location="body",
+                                    type="string",
+                                    required=True,
+                                ),
+                                ParameterSpec(
+                                    name="age",
+                                    location="body",
+                                    type="integer",
+                                    required=False,
+                                ),
                             ],
                         ),
                         responses=[
@@ -453,12 +497,12 @@ class TestApiKeyAuthGenerators:
     def test_python_client_custom_header(self):
         spec = _make_api_key_spec()
         code = build_python_client(spec)
-        assert 'X-API-Key' in code
+        assert "X-API-Key" in code
 
     def test_mcp_server_custom_header(self):
         spec = _make_api_key_spec()
         code = build_mcp_server(spec)
-        assert 'X-API-Key' in code
+        assert "X-API-Key" in code
 
     def test_curl_custom_header(self):
         spec = _make_api_key_spec()

@@ -2,10 +2,10 @@
 
 from __future__ import annotations
 
-import socket
-import shutil
-import subprocess
 from pathlib import Path
+import shutil
+import socket
+import subprocess
 
 
 class AdbError(Exception):
@@ -53,7 +53,7 @@ def list_packages(filter_str: str | None = None) -> list[str]:
     for line in result.stdout.strip().splitlines():
         # Lines are "package:com.example.app"
         if line.startswith("package:"):
-            packages.append(line[len("package:"):])
+            packages.append(line[len("package:") :])
     return sorted(packages)
 
 
@@ -70,7 +70,9 @@ def get_apk_paths(package: str) -> list[str]:
     """
     result = subprocess.run(
         ["adb", "shell", "pm", "path", package],
-        capture_output=True, text=True, timeout=15,
+        capture_output=True,
+        text=True,
+        timeout=15,
     )
     if result.returncode != 0:
         raise AdbError(f"Package not found: {package}\n{result.stderr.strip()}")
@@ -79,7 +81,7 @@ def get_apk_paths(package: str) -> list[str]:
     for line in result.stdout.strip().splitlines():
         # Lines are "package:/data/app/.../base.apk"
         if line.startswith("package:"):
-            paths.append(line[len("package:"):])
+            paths.append(line[len("package:") :])
     if not paths:
         raise AdbError(f"No APK paths found for {package}")
     return paths
@@ -97,7 +99,9 @@ def pull_apk(remote_path: str, local_path: Path) -> Path:
     """
     result = subprocess.run(
         ["adb", "pull", remote_path, str(local_path)],
-        capture_output=True, text=True, timeout=120,
+        capture_output=True,
+        text=True,
+        timeout=120,
     )
     if result.returncode != 0:
         raise AdbError(f"Failed to pull APK: {result.stderr.strip()}")
@@ -179,7 +183,9 @@ def set_proxy(host: str, port: int) -> None:
     """
     result = subprocess.run(
         ["adb", "shell", "settings", "put", "global", "http_proxy", f"{host}:{port}"],
-        capture_output=True, text=True, timeout=10,
+        capture_output=True,
+        text=True,
+        timeout=10,
     )
     if result.returncode != 0:
         raise AdbError(f"Failed to set proxy: {result.stderr.strip()}")
@@ -190,11 +196,15 @@ def clear_proxy() -> None:
     # Setting to :0 effectively clears it; on some devices we also need to delete
     subprocess.run(
         ["adb", "shell", "settings", "put", "global", "http_proxy", ":0"],
-        capture_output=True, text=True, timeout=10,
+        capture_output=True,
+        text=True,
+        timeout=10,
     )
     subprocess.run(
         ["adb", "shell", "settings", "delete", "global", "http_proxy"],
-        capture_output=True, text=True, timeout=10,
+        capture_output=True,
+        text=True,
+        timeout=10,
     )
 
 
@@ -207,9 +217,19 @@ def launch_app(package: str) -> None:
         package: Package name (e.g. "com.example.app").
     """
     result = subprocess.run(
-        ["adb", "shell", "monkey", "-p", package, "-c",
-         "android.intent.category.LAUNCHER", "1"],
-        capture_output=True, text=True, timeout=15,
+        [
+            "adb",
+            "shell",
+            "monkey",
+            "-p",
+            package,
+            "-c",
+            "android.intent.category.LAUNCHER",
+            "1",
+        ],
+        capture_output=True,
+        text=True,
+        timeout=15,
     )
     if result.returncode != 0:
         raise AdbError(f"Failed to launch {package}: {result.stderr.strip()}")
