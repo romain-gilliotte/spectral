@@ -1,8 +1,9 @@
-"""CLI command for inspecting capture bundles."""
+"""CLI commands for capture: inspect bundles, run MITM proxy."""
 
 from __future__ import annotations
 
 import json
+from pathlib import Path
 
 import click
 from rich.table import Table
@@ -18,7 +19,12 @@ def _truncate(s: str, max_len: int) -> str:
     return s[: max_len - 3] + "..."
 
 
-@click.command()
+@click.group()
+def capture() -> None:
+    """Capture tools: inspect bundles, run MITM proxy."""
+
+
+@capture.command()
 @click.argument("capture_path", type=click.Path(exists=True))
 @click.option(
     "--trace", "trace_id", default=None, help="Show details for a specific trace"
@@ -33,6 +39,48 @@ def inspect(capture_path: str, trace_id: str | None) -> None:
         _inspect_trace(bundle, trace_id)
     else:
         _inspect_summary(bundle)
+
+
+@capture.command()
+@click.option("-p", "--port", default=8080, help="Proxy listen port")
+@click.option("-o", "--output", default=None, help="Output bundle path (.zip)")
+@click.option(
+    "-d",
+    "--domain",
+    "domains",
+    multiple=True,
+    help="Only intercept these domains (regex). Can be repeated.",
+)
+def proxy(port: int, output: str | None, domains: tuple[str, ...]) -> None:
+    """Start a MITM proxy to capture traffic.
+
+    Without -d, runs in discovery mode: logs domains without MITM.
+    With -d, captures matching traffic and writes a bundle.
+    """
+    from cli.capture.proxy import run_proxy
+
+    allow_hosts = list(domains) if domains else None
+    discovery_mode = not allow_hosts
+
+    if discovery_mode:
+        console.print(f"[bold]Starting domain discovery on port {port}[/bold]")
+        console.print("  No -d specified — passthrough mode, logging domains only.")
+        output_path = Path(output) if output else None
+        app_name = "app"
+    else:
+        output_path = Path(output or "capture.zip")
+        app_name = output_path.stem if output else "app"
+        console.print(f"[bold]Starting MITM proxy on port {port}[/bold]")
+        console.print(f"  Output:  {output_path}")
+        console.print(f"  Domains: {', '.join(allow_hosts)}")
+
+    stats = run_proxy(port, output_path, app_name, allow_hosts=allow_hosts)
+    if stats:
+        console.print()
+        console.print(f"[green]Capture bundle written to {output_path}[/green]")
+        console.print(
+            f"  {stats.trace_count} HTTP traces, {stats.ws_connection_count} WS connections, {stats.ws_message_count} WS messages"
+        )
 
 
 def _inspect_summary(bundle: CaptureBundle) -> None:

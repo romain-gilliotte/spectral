@@ -1,11 +1,10 @@
-"""MITM proxy capture using mitmproxy, producing a CaptureBundle."""
+"""Generic MITM proxy capture engine, producing a CaptureBundle."""
 
 from __future__ import annotations
 
 from datetime import datetime, timezone
 from pathlib import Path
 import signal
-import subprocess
 from typing import TYPE_CHECKING
 import uuid
 
@@ -40,8 +39,8 @@ def _ensure_mitmproxy() -> None:
         del _mitmproxy
     except ImportError:
         raise ImportError(
-            "mitmproxy is required for Android capture.\n"
-            "Install it with: uv add 'spectral[android]'\n"
+            "mitmproxy is required for proxy capture.\n"
+            "Install it with: uv add 'spectral[proxy]'\n"
             "  or: pip install mitmproxy>=10.0"
         )
 
@@ -273,7 +272,7 @@ class CaptureAddon:
                 ws_message_count=ws_msg_count,
                 context_count=0,
             ),
-            capture_method="android_proxy",
+            capture_method="proxy",
         )
 
         events: list[TimelineEvent] = []
@@ -312,8 +311,8 @@ def run_proxy(
 ) -> CaptureStats | None:
     """Start a MITM proxy, capture traffic, and write a bundle on stop.
 
-    Uses ``adb reverse`` to tunnel device traffic through USB (no firewall
-    issues). The proxy runs until the user presses Ctrl+C.
+    This is the generic proxy engine — no device-specific setup.
+    The proxy runs until the user presses Ctrl+C.
 
     Args:
         port: Proxy listen port.
@@ -328,77 +327,11 @@ def run_proxy(
     _ensure_mitmproxy()
 
     import asyncio
-    from pathlib import Path as P
     import threading
     import time
 
     from mitmproxy.options import Options
     from mitmproxy.tools.dump import DumpMaster
-
-    # --- Device setup ---
-
-    # Tunnel: device localhost:port → computer localhost:port via USB
-    subprocess.run(
-        ["adb", "reverse", f"tcp:{port}", f"tcp:{port}"],
-        capture_output=True,
-        text=True,
-        timeout=10,
-        check=True,
-    )
-
-    # Push mitmproxy CA cert (.pem as .crt — Android recognizes this)
-    cert_path = P.home() / ".mitmproxy" / "mitmproxy-ca-cert.pem"
-    if not cert_path.exists():
-        click.echo(
-            f"\n  No mitmproxy cert found at {cert_path}.\n"
-            f"  Run 'mitmproxy' once to generate it, then retry.\n"
-        )
-        return None
-
-    subprocess.run(
-        ["adb", "push", str(cert_path), "/sdcard/mitmproxy-ca-cert.crt"],
-        capture_output=True,
-        timeout=10,
-    )
-
-    # Try to set proxy programmatically (works on some devices)
-    proxy_set = (
-        subprocess.run(
-            [
-                "adb",
-                "shell",
-                "settings",
-                "put",
-                "global",
-                "http_proxy",
-                f"127.0.0.1:{port}",
-            ],
-            capture_output=True,
-            text=True,
-            timeout=10,
-        ).returncode
-        == 0
-    )
-
-    def _cleanup_device():
-        if proxy_set:
-            subprocess.run(
-                ["adb", "shell", "settings", "put", "global", "http_proxy", ":0"],
-                capture_output=True,
-                timeout=10,
-            )
-            subprocess.run(
-                ["adb", "shell", "settings", "delete", "global", "http_proxy"],
-                capture_output=True,
-                timeout=10,
-            )
-        subprocess.run(
-            ["adb", "reverse", "--remove-all"],
-            capture_output=True,
-            timeout=10,
-        )
-
-    # --- Start proxy first (so it's reachable during user setup) ---
 
     discovery_mode = not allow_hosts
 
@@ -426,25 +359,13 @@ def run_proxy(
     def _shutdown():
         loop.call_soon_threadsafe(master.shutdown)
         proxy_thread.join(timeout=10)
-        _cleanup_device()
-
-    # --- Show instructions ---
 
     if discovery_mode:
         click.echo("\n  Discovery mode — no MITM, just logging domains.")
         click.echo("  Re-run with -d <domain> to capture traffic.\n")
-    else:
-        click.echo("\n  Install the CA certificate (if not already done):")
-        click.echo("     Settings → Security → Install from storage → CA certificate")
-        click.echo("     → select mitmproxy-ca-cert.crt\n")
-
-    if not proxy_set:
-        click.echo(f"  Ensure Wi-Fi proxy is set on device: 127.0.0.1:{port}\n")
-
-    if discovery_mode:
         click.echo("  Listening... press Ctrl+C to stop.\n")
     else:
-        click.echo("  Capturing... press Ctrl+C to stop.\n")
+        click.echo("\n  Capturing... press Ctrl+C to stop.\n")
 
     start_time = time.time()
 
@@ -455,14 +376,7 @@ def run_proxy(
 
     end_time = time.time()
 
-    if not proxy_set:
-        click.echo(
-            "\n  Don't forget to remove the proxy on your device:\n"
-            "  Settings → Wi-Fi → your network → Proxy → None\n"
-        )
-
     if discovery_mode:
-        # Print domain summary
         assert discovery_addon is not None
         domains = discovery_addon.domains
         if domains:
@@ -471,7 +385,7 @@ def run_proxy(
                 click.echo(f"    {count:4d}  {domain}")
             click.echo("\n  Re-run with -d to capture specific domains, e.g.:")
             top = sorted(domains.items(), key=lambda x: -x[1])[0][0]
-            click.echo(f"    spectral android capture -d '{top}'\n")
+            click.echo(f"    spectral capture proxy -d '{top}'\n")
         else:
             click.echo("\n  No domains discovered.\n")
         return None

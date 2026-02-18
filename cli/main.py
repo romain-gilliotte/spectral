@@ -7,7 +7,7 @@ from dotenv import load_dotenv
 
 from cli.analyze.cmd import analyze
 from cli.android.cmd import android
-from cli.capture.cmd import inspect
+from cli.capture.cmd import capture
 from cli.client.cmd import call_command
 from cli.generate.cmd import generate
 
@@ -23,7 +23,7 @@ def cli() -> None:
 cli.add_command(analyze)
 cli.add_command(generate)
 cli.add_command(call_command)
-cli.add_command(inspect)
+cli.add_command(capture)
 cli.add_command(android)
 
 if __name__ == "__main__":

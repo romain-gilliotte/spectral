@@ -171,6 +171,31 @@ def install_apk(path: Path) -> None:
         raise AdbError(f"Failed to install: {result.stderr.strip()}")
 
 
+def push_cert(cert_path: Path) -> str:
+    """Push a CA certificate to the device's /sdcard/.
+
+    Args:
+        cert_path: Path to the certificate file (e.g. mitmproxy-ca-cert.pem).
+
+    Returns:
+        The device-side filename (e.g. "mitmproxy-ca-cert.crt").
+
+    Raises:
+        AdbError: If the push fails.
+    """
+    device_filename = cert_path.stem + ".crt"
+    device_path = f"/sdcard/{device_filename}"
+    result = subprocess.run(
+        ["adb", "push", str(cert_path), device_path],
+        capture_output=True,
+        text=True,
+        timeout=15,
+    )
+    if result.returncode != 0:
+        raise AdbError(f"Failed to push cert: {result.stderr.strip()}")
+    return device_filename
+
+
 def set_proxy(host: str, port: int) -> None:
     """Configure a global HTTP proxy on the connected Android device.
 

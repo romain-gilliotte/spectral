@@ -39,12 +39,20 @@ uv run spectral android list spotify
 uv run spectral android pull com.spotify.music
 uv run spectral android patch com.spotify.music.apk
 uv run spectral android install com.spotify.music-patched.apk
-uv run spectral android capture -d "api\.spotify\.com" -o spotify.zip
+uv run spectral android cert
+uv run spectral capture proxy -d "api\.spotify\.com" -o spotify.zip
 ```
 
-Run `spectral android capture` without `-d` first for discovery mode (logs domains without intercepting).
+Run `spectral capture proxy` without `-d` first for discovery mode (logs domains without intercepting).
 
 ## CLI reference
+
+### Capture
+
+| Command | Description |
+|---|---|
+| `capture inspect <bundle> [--trace ID]` | Inspect a capture bundle |
+| `capture proxy [-d domain...] [-p port] [-o path]` | MITM proxy capture |
 
 ### Android
 
@@ -54,7 +62,7 @@ Run `spectral android capture` without `-d` first for discovery mode (logs domai
 | `android pull <package> [-o path]` | Pull APK(s) from device |
 | `android patch <apk> [-o path]` | Patch APK to trust user CA certs |
 | `android install <apk>` | Install patched APK |
-| `android capture [-d domain...] [-p port] [-o path]` | MITM proxy capture |
+| `android cert [cert_path]` | Push CA certificate to device |
 
 ### Analyze
 
@@ -80,7 +88,6 @@ Types: `openapi`, `mcp-server`, `python-client`, `markdown-docs`, `curl-scripts`
 
 | Command | Description |
 |---|---|
-| `inspect <bundle> [--trace ID]` | Inspect a capture bundle |
 | `call <spec> --list` | List discovered endpoints |
 | `call <spec> <endpoint> [key=value...]` | Call an endpoint from the spec |
 

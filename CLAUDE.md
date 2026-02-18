@@ -42,8 +42,10 @@ api-discover/
 │       └── icon128.png
 ├── cli/                    # Python CLI tool
 │   ├── __init__.py
-│   ├── main.py             # Entry point: commands (analyze, generate, inspect, call)
-│   ├── capture/            # Capture bundle parsing
+│   ├── main.py             # Entry point: commands (analyze, generate, capture, call, android)
+│   ├── capture/            # Capture: bundle parsing, inspect, MITM proxy
+│   │   ├── cmd.py          # CLI group: capture inspect, capture proxy
+│   │   ├── proxy.py        # Generic MITM proxy engine (mitmproxy addons, run_proxy)
 │   │   ├── loader.py       # Unzips and loads a capture bundle (+ write_bundle)
 │   │   └── types.py        # Data classes for traces, contexts, timeline (wraps Pydantic + binary)
 │   ├── analyze/            # Analysis engine
@@ -87,7 +89,9 @@ api-discover/
 │   ├── test_llm_tools.py    # Tool executors, _call_with_tools, DetectBaseUrlStep
 │   ├── test_generators.py
 │   ├── test_client.py
-│   └── test_cli.py
+│   ├── test_cli.py
+│   ├── test_android.py      # ADB, patch, android CLI (list, pull, patch, install, cert)
+│   └── test_capture_proxy.py # MITM proxy engine, flow conversion, manifest compat
 ├── pyproject.toml
 └── README.md
 ```
@@ -498,9 +502,18 @@ api-discover generate edf-api.json --type python-client -o edf_client.py
 api-discover generate edf-api.json --type markdown-docs -o docs/
 api-discover generate edf-api.json --type curl-scripts  -o scripts/
 
-# Utility: inspect a capture bundle
-api-discover inspect capture_20260213.zip                    # summary stats
-api-discover inspect capture_20260213.zip --trace t_0001     # details of one trace
+# Capture: inspect bundles, run MITM proxy
+spectral capture inspect capture_20260213.zip                    # summary stats
+spectral capture inspect capture_20260213.zip --trace t_0001     # details of one trace
+spectral capture proxy -d "api\.example\.com" -o capture.zip     # MITM proxy capture
+spectral capture proxy                                           # discovery mode (log domains)
+
+# Android: APK tools
+spectral android list spotify
+spectral android pull com.spotify.music
+spectral android patch com.spotify.music.apk
+spectral android install com.spotify.music-patched.apk
+spectral android cert                                            # push mitmproxy CA cert to device
 ```
 
 Note: `analyze` requires LLM analysis (requires `ANTHROPIC_API_KEY`). Default model is `claude-sonnet-4-5-20250929`.

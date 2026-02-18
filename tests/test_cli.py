@@ -357,7 +357,7 @@ class TestInspectCommand:
         write_bundle(sample_bundle, bundle_path)
 
         runner = CliRunner()
-        result = runner.invoke(cli, ["inspect", str(bundle_path)])
+        result = runner.invoke(cli, ["capture", "inspect", str(bundle_path)])
 
         assert result.exit_code == 0
         assert "Test App" in result.output
@@ -368,7 +368,7 @@ class TestInspectCommand:
         write_bundle(sample_bundle, bundle_path)
 
         runner = CliRunner()
-        result = runner.invoke(cli, ["inspect", str(bundle_path), "--trace", "t_0001"])
+        result = runner.invoke(cli, ["capture", "inspect", str(bundle_path), "--trace", "t_0001"])
 
         assert result.exit_code == 0
         assert "t_0001" in result.output
@@ -381,7 +381,7 @@ class TestInspectCommand:
         write_bundle(sample_bundle, bundle_path)
 
         runner = CliRunner()
-        result = runner.invoke(cli, ["inspect", str(bundle_path), "--trace", "t_9999"])
+        result = runner.invoke(cli, ["capture", "inspect", str(bundle_path), "--trace", "t_9999"])
 
         assert result.exit_code == 0
         assert "not found" in result.output
