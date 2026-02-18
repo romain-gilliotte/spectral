@@ -3,9 +3,9 @@
 from __future__ import annotations
 
 from pathlib import Path
-import re
 
 from cli.formats.api_spec import ApiSpec, EndpointSpec
+from cli.helpers.naming import python_type, safe_name, to_identifier
 
 
 def generate_mcp_server(spec: ApiSpec, output_path: str | Path) -> None:
@@ -86,7 +86,7 @@ def build_mcp_server(spec: ApiSpec) -> str:
 
 def _build_tool(endpoint: EndpointSpec, spec: ApiSpec) -> list[str]:
     """Build an MCP tool function for an endpoint."""
-    func_name = _to_func_name(endpoint.id)
+    func_name = to_identifier(endpoint.id, fallback="api_call")
     description = endpoint.business_purpose or f"{endpoint.method} {endpoint.path}"
 
     # Parameters
@@ -97,11 +97,11 @@ def _build_tool(endpoint: EndpointSpec, spec: ApiSpec) -> list[str]:
     all_params = path_params + body_params + query_params
     param_strs: list[str] = []
     for p in all_params:
-        type_hint = _python_type(p.type)
+        type_hint = python_type(p.type, fallback="str")
         if p.required:
-            param_strs.append(f"{_safe_name(p.name)}: {type_hint}")
+            param_strs.append(f"{safe_name(p.name)}: {type_hint}")
         else:
-            param_strs.append(f"{_safe_name(p.name)}: {type_hint} | None = None")
+            param_strs.append(f"{safe_name(p.name)}: {type_hint} | None = None")
 
     sig_params = ", ".join(param_strs)
 
@@ -116,7 +116,7 @@ def _build_tool(endpoint: EndpointSpec, spec: ApiSpec) -> list[str]:
     for p in path_params:
         path = path.replace(
             "{" + p.name + "}",
-            '" + str(' + _safe_name(p.name) + ') + "',
+            '" + str(' + safe_name(p.name) + ') + "',
         )
     lines.append(f'    url = BASE_URL + "{path}"')
 
@@ -124,7 +124,7 @@ def _build_tool(endpoint: EndpointSpec, spec: ApiSpec) -> list[str]:
     if query_params:
         lines.append("    params = {}")
         for p in query_params:
-            name = _safe_name(p.name)
+            name = safe_name(p.name)
             lines.append(f"    if {name} is not None:")
             lines.append(f'        params["{p.name}"] = {name}')
     else:
@@ -135,7 +135,7 @@ def _build_tool(endpoint: EndpointSpec, spec: ApiSpec) -> list[str]:
     if body_params:
         lines.append("    json_body = {}")
         for p in body_params:
-            name = _safe_name(p.name)
+            name = safe_name(p.name)
             if p.required:
                 lines.append(f'    json_body["{p.name}"] = {name}')
             else:
@@ -191,43 +191,3 @@ def _build_readme(spec: ApiSpec) -> str:
 
     lines.append("")
     return "\n".join(lines)
-
-
-def _to_func_name(endpoint_id: str) -> str:
-    """Convert endpoint ID to a valid Python function name."""
-    name = re.sub(r"[^a-zA-Z0-9_]", "_", endpoint_id)
-    name = re.sub(r"_+", "_", name).strip("_")
-    return name or "api_call"
-
-
-def _safe_name(name: str) -> str:
-    """Make a safe Python parameter name."""
-    name = re.sub(r"[^a-zA-Z0-9_]", "_", name)
-    if name and name[0].isdigit():
-        name = "_" + name
-    if name in (
-        "class",
-        "type",
-        "import",
-        "from",
-        "return",
-        "def",
-        "if",
-        "for",
-        "in",
-        "is",
-    ):
-        name = name + "_"
-    return name
-
-
-def _python_type(json_type: str) -> str:
-    """Map JSON type to Python type hint."""
-    return {
-        "string": "str",
-        "integer": "int",
-        "number": "float",
-        "boolean": "bool",
-        "array": "list",
-        "object": "dict",
-    }.get(json_type, "str")

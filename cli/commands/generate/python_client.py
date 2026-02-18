@@ -3,9 +3,9 @@
 from __future__ import annotations
 
 from pathlib import Path
-import re
 
 from cli.formats.api_spec import ApiSpec, EndpointSpec
+from cli.helpers.naming import python_type, safe_name, to_class_name, to_identifier
 
 
 def generate_python_client(spec: ApiSpec, output_path: str | Path) -> None:
@@ -19,7 +19,7 @@ def generate_python_client(spec: ApiSpec, output_path: str | Path) -> None:
 
 def build_python_client(spec: ApiSpec) -> str:
     """Build Python client source code from an enriched API spec."""
-    class_name = _to_class_name(spec.name)
+    class_name = to_class_name(spec.name, suffix="Client")
     base_url = spec.protocols.rest.base_url
 
     lines = [
@@ -64,7 +64,7 @@ def build_python_client(spec: ApiSpec) -> str:
 
 def _build_method(endpoint: EndpointSpec) -> list[str]:
     """Build a Python method for an endpoint."""
-    method_name = _to_method_name(endpoint)
+    method_name = to_identifier(endpoint.id, fallback="request")
     http_method = endpoint.method.lower()
 
     # Build parameters
@@ -75,16 +75,16 @@ def _build_method(endpoint: EndpointSpec) -> list[str]:
     # Method signature
     params = ["self"]
     for p in path_params:
-        params.append(f"{_safe_name(p.name)}: str")
+        params.append(f"{safe_name(p.name)}: str")
     for p in body_params:
-        type_hint = _python_type(p.type)
+        type_hint = python_type(p.type)
         if p.required:
-            params.append(f"{_safe_name(p.name)}: {type_hint}")
+            params.append(f"{safe_name(p.name)}: {type_hint}")
         else:
-            params.append(f"{_safe_name(p.name)}: {type_hint} | None = None")
+            params.append(f"{safe_name(p.name)}: {type_hint} | None = None")
     for p in query_params:
-        type_hint = _python_type(p.type)
-        params.append(f"{_safe_name(p.name)}: {type_hint} | None = None")
+        type_hint = python_type(p.type)
+        params.append(f"{safe_name(p.name)}: {type_hint} | None = None")
 
     sig = f"    def {method_name}({', '.join(params)}) -> Any:"
 
@@ -98,7 +98,7 @@ def _build_method(endpoint: EndpointSpec) -> list[str]:
     path = endpoint.path
     if path_params:
         for p in path_params:
-            path = path.replace("{" + p.name + "}", "{" + _safe_name(p.name) + "}")
+            path = path.replace("{" + p.name + "}", "{" + safe_name(p.name) + "}")
         lines.append(f'        url = f"{{self.base_url}}{path}"')
     else:
         lines.append(f'        url = f"{{self.base_url}}{path}"')
@@ -107,7 +107,7 @@ def _build_method(endpoint: EndpointSpec) -> list[str]:
     if query_params:
         lines.append("        params = {}")
         for p in query_params:
-            name = _safe_name(p.name)
+            name = safe_name(p.name)
             lines.append(f"        if {name} is not None:")
             lines.append(f'            params["{p.name}"] = {name}')
     else:
@@ -117,7 +117,7 @@ def _build_method(endpoint: EndpointSpec) -> list[str]:
     if body_params:
         lines.append("        json_body = {}")
         for p in body_params:
-            name = _safe_name(p.name)
+            name = safe_name(p.name)
             if p.required:
                 lines.append(f'        json_body["{p.name}"] = {name}')
             else:
@@ -137,59 +137,3 @@ def _build_method(endpoint: EndpointSpec) -> list[str]:
     lines.append("        return None")
 
     return lines
-
-
-def _to_class_name(name: str) -> str:
-    """Convert API name to a Python class name."""
-    # Remove non-alphanumeric, capitalize words
-    words = re.split(r"[^a-zA-Z0-9]+", name)
-    class_name = "".join(w.capitalize() for w in words if w)
-    if not class_name:
-        return "ApiClient"
-    if not class_name.endswith("Client"):
-        class_name += "Client"
-    return class_name
-
-
-def _to_method_name(endpoint: EndpointSpec) -> str:
-    """Convert endpoint to a Python method name."""
-    # Prefer the endpoint ID which is already snake_case
-    name = endpoint.id
-    # Clean up
-    name = re.sub(r"[^a-zA-Z0-9_]", "_", name)
-    name = re.sub(r"_+", "_", name).strip("_")
-    return name or "request"
-
-
-def _safe_name(name: str) -> str:
-    """Make a safe Python parameter name."""
-    name = re.sub(r"[^a-zA-Z0-9_]", "_", name)
-    if name and name[0].isdigit():
-        name = "_" + name
-    # Avoid Python keywords
-    if name in (
-        "class",
-        "type",
-        "import",
-        "from",
-        "return",
-        "def",
-        "if",
-        "for",
-        "in",
-        "is",
-    ):
-        name = name + "_"
-    return name
-
-
-def _python_type(json_type: str) -> str:
-    """Map JSON type to Python type hint."""
-    return {
-        "string": "str",
-        "integer": "int",
-        "number": "float",
-        "boolean": "bool",
-        "array": "list",
-        "object": "dict",
-    }.get(json_type, "Any")

@@ -6,7 +6,7 @@ import re
 from typing import Any
 from urllib.parse import urlparse
 
-from cli.formats.capture_bundle import Header
+from cli.helpers.http import get_header as get_header
 
 
 def pattern_to_regex(pattern: str) -> re.Pattern[str]:
@@ -21,15 +21,6 @@ def pattern_to_regex(pattern: str) -> re.Pattern[str]:
             regex += r"[^/]+"
 
     return re.compile(f"^{regex}$")
-
-
-def get_header(headers: list[Header], name: str) -> str | None:
-    """Get a header value by name (case-insensitive)."""
-    name_lower = name.lower()
-    for h in headers:
-        if h.name.lower() == name_lower:
-            return h.value
-    return None
 
 
 def compact_url(url: str) -> str:

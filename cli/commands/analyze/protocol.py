@@ -7,7 +7,7 @@ import re
 from typing import Any
 
 from cli.commands.capture.types import Trace, WsConnection
-from cli.formats.capture_bundle import Header
+from cli.helpers.http import get_header
 
 
 def detect_trace_protocol(trace: Trace) -> str:
@@ -17,8 +17,8 @@ def detect_trace_protocol(trace: Trace) -> str:
     """
     url = trace.meta.request.url
     method = trace.meta.request.method.upper()
-    content_type = _get_header(trace.meta.request.headers, "content-type")
-    resp_content_type = _get_header(trace.meta.response.headers, "content-type")
+    content_type = get_header(trace.meta.request.headers, "content-type")
+    resp_content_type = get_header(trace.meta.response.headers, "content-type")
 
     # gRPC detection
     if content_type and "grpc" in content_type.lower():
@@ -102,12 +102,3 @@ def _is_graphql(url: str, method: str, body: bytes, content_type: str | None) ->
         return True
 
     return False
-
-
-def _get_header(headers: list[Header], name: str) -> str | None:
-    """Get a header value by name (case-insensitive)."""
-    name_lower = name.lower()
-    for h in headers:
-        if h.name.lower() == name_lower:
-            return h.value
-    return None

@@ -7,6 +7,8 @@ import shutil
 import socket
 import subprocess
 
+from cli.helpers.subprocess import run_cmd
+
 
 class AdbError(Exception):
     """Raised when an ADB operation fails."""
@@ -25,11 +27,7 @@ def check_adb() -> None:
             "  - Or download from: https://developer.android.com/tools/releases/platform-tools"
         )
     # Verify adb can connect (will fail if no device)
-    result = subprocess.run(
-        ["adb", "devices"], capture_output=True, text=True, timeout=10
-    )
-    if result.returncode != 0:
-        raise AdbError(f"adb failed: {result.stderr.strip()}")
+    run_cmd(["adb", "devices"], "adb failed", timeout=10)
 
 
 def list_packages(filter_str: str | None = None) -> list[str]:
@@ -45,9 +43,7 @@ def list_packages(filter_str: str | None = None) -> list[str]:
     if filter_str:
         cmd.append(filter_str)
 
-    result = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
-    if result.returncode != 0:
-        raise AdbError(f"Failed to list packages: {result.stderr.strip()}")
+    result = run_cmd(cmd, "Failed to list packages", timeout=30)
 
     packages: list[str] = []
     for line in result.stdout.strip().splitlines():
@@ -68,14 +64,11 @@ def get_apk_paths(package: str) -> list[str]:
     Returns:
         List of remote APK paths on the device.
     """
-    result = subprocess.run(
+    result = run_cmd(
         ["adb", "shell", "pm", "path", package],
-        capture_output=True,
-        text=True,
+        f"Package not found: {package}",
         timeout=15,
     )
-    if result.returncode != 0:
-        raise AdbError(f"Package not found: {package}\n{result.stderr.strip()}")
 
     paths: list[str] = []
     for line in result.stdout.strip().splitlines():
@@ -97,14 +90,11 @@ def pull_apk(remote_path: str, local_path: Path) -> Path:
     Returns:
         The local path where the APK was saved.
     """
-    result = subprocess.run(
+    run_cmd(
         ["adb", "pull", remote_path, str(local_path)],
-        capture_output=True,
-        text=True,
+        "Failed to pull APK",
         timeout=120,
     )
-    if result.returncode != 0:
-        raise AdbError(f"Failed to pull APK: {result.stderr.strip()}")
 
     if not local_path.exists():
         raise AdbError(f"Pull succeeded but file not found at {local_path}")
@@ -166,9 +156,7 @@ def install_apk(path: Path) -> None:
     else:
         cmd = ["adb", "install", "-r", str(path)]
 
-    result = subprocess.run(cmd, capture_output=True, text=True, timeout=120)
-    if result.returncode != 0:
-        raise AdbError(f"Failed to install: {result.stderr.strip()}")
+    run_cmd(cmd, "Failed to install", timeout=120)
 
 
 def push_cert(cert_path: Path) -> str:
@@ -185,14 +173,11 @@ def push_cert(cert_path: Path) -> str:
     """
     device_filename = cert_path.stem + ".crt"
     device_path = f"/sdcard/{device_filename}"
-    result = subprocess.run(
+    run_cmd(
         ["adb", "push", str(cert_path), device_path],
-        capture_output=True,
-        text=True,
+        "Failed to push cert",
         timeout=15,
     )
-    if result.returncode != 0:
-        raise AdbError(f"Failed to push cert: {result.stderr.strip()}")
     return device_filename
 
 
@@ -206,14 +191,11 @@ def set_proxy(host: str, port: int) -> None:
         host: The proxy host IP (your machine's LAN IP).
         port: The proxy port.
     """
-    result = subprocess.run(
+    run_cmd(
         ["adb", "shell", "settings", "put", "global", "http_proxy", f"{host}:{port}"],
-        capture_output=True,
-        text=True,
+        "Failed to set proxy",
         timeout=10,
     )
-    if result.returncode != 0:
-        raise AdbError(f"Failed to set proxy: {result.stderr.strip()}")
 
 
 def clear_proxy() -> None:
@@ -241,7 +223,7 @@ def launch_app(package: str) -> None:
     Args:
         package: Package name (e.g. "com.example.app").
     """
-    result = subprocess.run(
+    run_cmd(
         [
             "adb",
             "shell",
@@ -252,12 +234,9 @@ def launch_app(package: str) -> None:
             "android.intent.category.LAUNCHER",
             "1",
         ],
-        capture_output=True,
-        text=True,
+        f"Failed to launch {package}",
         timeout=15,
     )
-    if result.returncode != 0:
-        raise AdbError(f"Failed to launch {package}: {result.stderr.strip()}")
 
 
 def get_host_lan_ip() -> str:

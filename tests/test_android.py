@@ -56,7 +56,7 @@ class TestCheckAdb:
                 mock_run.return_value = subprocess.CompletedProcess(
                     args=[], returncode=1, stdout="", stderr="daemon not running"
                 )
-                with pytest.raises(AdbError, match="adb failed"):
+                with pytest.raises(RuntimeError, match="adb failed"):
                     check_adb()
 
 
@@ -87,7 +87,7 @@ class TestListPackages:
             mock_run.return_value = subprocess.CompletedProcess(
                 args=[], returncode=1, stdout="", stderr="error: no devices"
             )
-            with pytest.raises(AdbError, match="Failed to list packages"):
+            with pytest.raises(RuntimeError, match="Failed to list packages"):
                 list_packages()
 
 
@@ -118,7 +118,7 @@ class TestGetApkPaths:
             mock_run.return_value = subprocess.CompletedProcess(
                 args=[], returncode=1, stdout="", stderr=""
             )
-            with pytest.raises(AdbError, match="Package not found"):
+            with pytest.raises(RuntimeError, match="Package not found"):
                 get_apk_paths("com.nonexistent")
 
 
@@ -140,7 +140,7 @@ class TestPullApk:
             mock_run.return_value = subprocess.CompletedProcess(
                 args=[], returncode=1, stdout="", stderr="remote object does not exist"
             )
-            with pytest.raises(AdbError, match="Failed to pull APK"):
+            with pytest.raises(RuntimeError, match="Failed to pull APK"):
                 pull_apk("/data/app/base.apk", local_path)
 
 
@@ -169,7 +169,7 @@ class TestPushCert:
             mock_run.return_value = subprocess.CompletedProcess(
                 args=[], returncode=1, stdout="", stderr="device offline"
             )
-            with pytest.raises(AdbError, match="Failed to push cert"):
+            with pytest.raises(RuntimeError, match="Failed to push cert"):
                 push_cert(cert)
 
     def test_custom_cert_name(self, tmp_path: Path) -> None:
@@ -201,7 +201,7 @@ class TestSetProxy:
             mock_run.return_value = subprocess.CompletedProcess(
                 args=[], returncode=1, stdout="", stderr="permission denied"
             )
-            with pytest.raises(AdbError, match="Failed to set proxy"):
+            with pytest.raises(RuntimeError, match="Failed to set proxy"):
                 set_proxy("192.168.1.10", 8080)
 
 
@@ -236,7 +236,7 @@ class TestLaunchApp:
             mock_run.return_value = subprocess.CompletedProcess(
                 args=[], returncode=1, stdout="", stderr="No activities found"
             )
-            with pytest.raises(AdbError, match="Failed to launch"):
+            with pytest.raises(RuntimeError, match="Failed to launch"):
                 launch_app("com.nonexistent")
 
 
@@ -459,7 +459,7 @@ class TestPullApks:
             )
 
         with patch("subprocess.run", side_effect=fake_run):
-            with pytest.raises(AdbError, match="Failed to pull APK"):
+            with pytest.raises(RuntimeError, match="Failed to pull APK"):
                 pull_apks("com.example", output)
 
         # Cleaned up: pulled files should be removed
@@ -518,7 +518,7 @@ class TestInstallApk:
             mock_run.return_value = subprocess.CompletedProcess(
                 args=[], returncode=1, stdout="", stderr="INSTALL_FAILED_ALREADY_EXISTS"
             )
-            with pytest.raises(AdbError, match="Failed to install"):
+            with pytest.raises(RuntimeError, match="Failed to install"):
                 install_apk(apk)
 
 

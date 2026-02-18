@@ -5,10 +5,11 @@ from __future__ import annotations
 from pathlib import Path
 import re
 import shutil
-import subprocess
 import tempfile
 import urllib.request
 from xml.etree import ElementTree as ET
+
+from cli.helpers.subprocess import run_cmd
 
 NETWORK_SECURITY_CONFIG = """\
 <?xml version="1.0" encoding="utf-8"?>
@@ -98,9 +99,10 @@ def patch_apk(apk_path: Path, output_path: Path, keystore: Path | None = None) -
         unsigned_apk = Path(tmpdir) / "unsigned.apk"
 
         # 1. Decompile (--no-src skips DEX disassembly — much faster)
-        _run_cmd(
+        run_cmd(
             [*_apktool(), "d", "--no-src", str(apk_path), "-o", str(work_dir), "-f"],
             "Decompiling APK",
+            timeout=300,
         )
 
         # 2. Inject/replace network_security_config.xml
@@ -113,9 +115,10 @@ def patch_apk(apk_path: Path, output_path: Path, keystore: Path | None = None) -
         _fix_resources(work_dir)
 
         # 5. Recompile
-        _run_cmd(
+        run_cmd(
             [*_apktool(), "b", str(work_dir), "-o", str(unsigned_apk)],
             "Recompiling APK",
+            timeout=300,
         )
 
         # 6. Sign
@@ -238,7 +241,7 @@ def _ensure_debug_keystore(keystore_path: Path) -> None:
     if keystore_path.exists():
         return
 
-    _run_cmd(
+    run_cmd(
         [
             "keytool",
             "-genkey",
@@ -271,7 +274,7 @@ def _sign_apk(unsigned_apk: Path, output_path: Path, keystore: Path) -> None:
         staging.parent.mkdir()
         shutil.copy2(unsigned_apk, staging)
 
-        _run_cmd(
+        run_cmd(
             [
                 *_uber_signer(),
                 "--apks",
@@ -289,21 +292,10 @@ def _sign_apk(unsigned_apk: Path, output_path: Path, keystore: Path) -> None:
                 "--allowResign",
             ],
             "Signing APK",
+            timeout=300,
         )
 
         signed_files = list((Path(sign_dir) / "out").glob("*-aligned-signed.apk"))
         if not signed_files:
             raise PatchError("uber-apk-signer produced no output")
         shutil.copy2(signed_files[0], output_path)
-
-
-def _run_cmd(
-    cmd: list[str], description: str, timeout: int = 300
-) -> subprocess.CompletedProcess[str]:
-    """Run a subprocess command, raising PatchError on failure."""
-    result = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
-    if result.returncode != 0:
-        raise PatchError(
-            f"{description} failed (exit {result.returncode}):\n{result.stderr.strip()}"
-        )
-    return result
