@@ -10,7 +10,11 @@ from urllib.parse import urlparse
 
 from cli.commands.analyze.schemas import extract_query_params, infer_schema
 from cli.commands.analyze.steps.base import MechanicalStep
-from cli.commands.analyze.steps.types import Correlation, EndpointGroup, GroupedTraceData
+from cli.commands.analyze.steps.types import (
+    Correlation,
+    EndpointGroup,
+    GroupedTraceData,
+)
 from cli.commands.analyze.utils import get_header, pattern_to_regex
 from cli.commands.capture.types import Trace
 from cli.formats.api_spec import (

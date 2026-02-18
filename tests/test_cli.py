@@ -54,14 +54,14 @@ def _make_mock_anthropic_module() -> MagicMock:
 
     enrich_response = json.dumps(
         {
-            "endpoints": {},
-            "business_context": {
-                "domain": "Testing",
-                "description": "Test API",
-                "user_personas": ["tester"],
-                "key_workflows": [],
-                "business_glossary": {},
-            },
+            "business_purpose": "test purpose",
+            "user_story": "As a user, I want to test",
+            "correlation_confidence": 0.8,
+            "parameter_meanings": {},
+            "parameter_constraints": {},
+            "response_details": {},
+            "trigger_explanations": [],
+            "discovery_notes": None,
         }
     )
 
@@ -84,7 +84,7 @@ def _make_mock_anthropic_module() -> MagicMock:
             mock_content.text = groups_response
         elif "authentication" in msg:
             mock_content.text = auth_response
-        elif "SINGLE JSON response" in msg:
+        elif "single API endpoint" in msg:
             mock_content.text = enrich_response
         else:
             # Fallback
@@ -189,14 +189,14 @@ class TestGenerateCommand:
 
         enrich_response = json.dumps(
             {
-                "endpoints": {},
-                "business_context": {
-                    "domain": "",
-                    "description": "",
-                    "user_personas": [],
-                    "key_workflows": [],
-                    "business_glossary": {},
-                },
+                "business_purpose": "test purpose",
+                "user_story": "As a user, I want to test",
+                "correlation_confidence": 0.8,
+                "parameter_meanings": {},
+                "parameter_constraints": {},
+                "response_details": {},
+                "trigger_explanations": [],
+                "discovery_notes": None,
             }
         )
 
@@ -223,7 +223,7 @@ class TestGenerateCommand:
                         "token_prefix": "Bearer",
                     }
                 )
-            elif "SINGLE JSON response" in msg:
+            elif "single API endpoint" in msg:
                 mock_content.text = enrich_response
             else:
                 mock_content.text = enrich_response

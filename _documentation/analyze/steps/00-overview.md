@@ -6,7 +6,7 @@ The analysis pipeline transforms a raw `CaptureBundle` into an enriched `ApiSpec
 - [01 — Detect Base URL](./01-detect-base-url.md) — LLM identifies the business API origin
 - [02 — Group Endpoints](./02-group-endpoints.md) — LLM groups URLs into endpoint patterns
 - [03 — Mechanical Extraction](./03-mechanical-extraction.md) — schemas, params, UI triggers, correlator
-- [04 — Enrich + Business Context](./04-enrich-and-context.md) — single LLM call for all endpoints
+- [04 — Per-Endpoint Enrichment](./04-enrich-and-context.md) — parallel per-endpoint LLM calls
 - [05 — Auth Analysis](./05-auth-analysis.md) — LLM finds auth flow from ALL traces (parallel)
 
 ---
@@ -31,7 +31,7 @@ Three classes:
 | Group endpoints | `LLMStep` | `list[tuple[str, str]]` | `list[EndpointGroup]` | [02-group-endpoints](./02-group-endpoints.md) |
 | Strip prefix | `MechanicalStep` | `(list[EndpointGroup], str)` | `list[EndpointGroup]` | [overview](#trivial-mechanical-steps) |
 | Mechanical extraction | `MechanicalStep` | `(list[EndpointGroup], list[Trace])` | `list[EndpointSpec]` | [03-mechanical-extraction](./03-mechanical-extraction.md) |
-| Enrich + context | `LLMStep` | `(list[EndpointSpec], list[Correlation], str, str)` | `(list[EndpointSpec], BusinessContext, dict)` | [04-enrich-and-context](./04-enrich-and-context.md) |
+| Enrich endpoints | `LLMStep` | `EnrichmentContext` | `list[EndpointSpec]` | [04-enrich-and-context](./04-enrich-and-context.md) |
 | Auth analysis | `LLMStep` | `list[Trace]` | `AuthInfo` | [05-auth-analysis](./05-auth-analysis.md) (no tools, summary-based) |
 | WebSocket specs | `MechanicalStep` | `list[WsConnection]` | `WebSocketProtocol` | [overview](#trivial-mechanical-steps) |
 | Assemble | `MechanicalStep` | all above | `ApiSpec` | [overview](#trivial-mechanical-steps) |
@@ -43,14 +43,14 @@ Three classes:
 | **Detect base URL** | Valid URL (scheme + host). At least N% of traces match. Not a known CDN/tracker domain. |
 | **Group endpoints** | Every filtered trace URL assigned to a group. Each URL matches its group's pattern. No duplicate `(method, pattern)`. |
 | **Auth analysis** | Best-effort — no validation yet. Empty fields acceptable. Fallback to `detect_auth_mechanical()`. |
-| **Enrich + context** | Best-effort — no validation, `_validate_output` returns `[]`. Empty fields are acceptable. |
+| **Enrich endpoints** | Best-effort — no validation. Empty fields are acceptable. |
 
 ---
 
 ## Pipeline Diagram
 
 Three parallel branches converge at assembly:
-- **Main branch**: base URL detection → filtering → endpoint grouping → mechanical extraction → LLM enrichment
+- **Main branch**: base URL detection → filtering → endpoint grouping → mechanical extraction → per-endpoint LLM enrichment
 - **Auth branch** (parallel): auth analysis on ALL unfiltered traces
 - **WS branch** (parallel): WebSocket specs from capture bundle
 
@@ -71,7 +71,7 @@ flowchart TD
     step2["<b>Step 2</b><br>group_endpoints"]
     step2b["<b>Step 2b</b><br>strip_prefix"]
     step3["<b>Step 3</b><br>mechanical_extraction"]
-    step4["<b>Step 4</b><br>enrich_and_context"]
+    step4["<b>Step 4</b><br>enrich_endpoints<br>(N parallel calls)"]
     step_auth["<b>Auth</b><br>analyze_auth"]
     step_ws["<b>WS</b><br>build_ws_specs"]
     step6["<b>Step 6</b><br>assemble"]
@@ -86,8 +86,7 @@ flowchart TD
     step2 -- "EndpointGroup[]" --> step2b
     step2b -- "EndpointGroup[]" --> step3
     step3 -- "EndpointSpec[]" --> step4
-    input -- "Correlation[]" --> step4
-    step4 -- "EndpointSpec[]<br>BusinessContext, glossary" --> step6
+    step4 -- "EndpointSpec[]" --> step6
     step_auth -- "AuthInfo" --> step6
     step_ws -- "WsConnectionSpec[]" --> step6
     step6 --> output
@@ -125,7 +124,7 @@ Mechanical extraction from `bundle.ws_connections`: protocol detection (`detect_
 
 ### Assemble (Step 6)
 
-Combines all outputs into a single `ApiSpec`: enriched endpoints, auth info, business context, glossary, WebSocket specs.
+Combines all outputs into a single `ApiSpec`: enriched endpoints, auth info, WebSocket specs.
 
 ---
 

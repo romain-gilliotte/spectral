@@ -11,13 +11,11 @@ This document describes the root-level sections. For deep dives into specific pa
 | Field | Type | Source | Purpose |
 |---|---|---|---|
 | `api_spec_version` | string | Mechanical | Format version (semver). Currently `"1.0.0"`. |
-| `name` | string | LLM-inferred | Human-readable name for the API (e.g. "EDF Customer Portal API") |
+| `name` | string | Mechanical | Human-readable name for the API, derived from the app name in the capture bundle |
 | `discovery_date` | string (ISO 8601) | Mechanical | When the analysis was performed |
 | `source_captures` | list of strings | Mechanical | Filenames of the capture bundles that produced this spec |
-| `business_context` | object | LLM-inferred | Domain, personas, workflows — see below |
 | `auth` | object | Mixed | Authentication mechanism — see [authentication.md](./authentication.md) |
 | `protocols` | object | Mixed | REST endpoints and WebSocket connections — see below |
-| `business_glossary` | dict (term → definition) | LLM-inferred | Domain-specific vocabulary extracted from UI text and API field names |
 
 ---
 
@@ -25,40 +23,7 @@ This document describes the root-level sections. For deep dives into specific pa
 
 The metadata fields (`api_spec_version`, `name`, `discovery_date`, `source_captures`) identify the spec and its provenance. `source_captures` lists every capture bundle that contributed data, supporting future bundle-merging where multiple sessions for the same application are combined into a single spec.
 
-The `name` field is inferred by the LLM from the application's title, visible branding, and the nature of the discovered endpoints. It should read as a natural name a developer would recognize — "Stripe Payment API," not "api.stripe.com REST endpoints."
-
----
-
-## Business context
-
-The `business_context` section captures domain-level understanding that applies across all endpoints.
-
-| Field | Type | Description |
-|---|---|---|
-| `domain` | string | The business domain: "E-commerce," "Energy Management," "Healthcare," etc. |
-| `description` | string | One-line description of what this API serves |
-| `user_personas` | list of strings | Types of users observed: "residential_customer," "admin," "merchant" |
-| `key_workflows` | list of WorkflowStep | Reconstructed user journeys through the application |
-
-**WorkflowStep** describes a sequence of actions the user performed that the LLM has identified as a coherent workflow:
-
-| Field | Type | Description |
-|---|---|---|
-| `name` | string | Workflow identifier (e.g. "view_consumption") |
-| `description` | string | What the user accomplished |
-| `steps` | list of strings | Ordered step names referencing endpoint IDs or UI actions |
-
-Workflows are reconstructed from the timeline of UI actions and correlated API calls. They represent what the user actually did during the capture session, not hypothetical use cases.
-
----
-
-## Business glossary
-
-A flat dictionary mapping domain terms to their definitions. The LLM extracts these from visible page content (headings, navigation labels, form fields, help text) and API field names.
-
-Terms should be specific to the application's domain — "PDL" (Point de Livraison) for an energy provider, "SKU" for an e-commerce platform. Generic API terms (endpoint, request, response) do not belong here.
-
-Generators use the glossary to produce a dedicated glossary page and can optionally add inline definitions when domain terms appear in endpoint descriptions.
+The `name` field is derived from the application name in the capture bundle manifest (e.g. "Test App" becomes "Test App API").
 
 ---
 

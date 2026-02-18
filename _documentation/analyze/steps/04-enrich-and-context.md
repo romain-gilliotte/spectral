@@ -1,8 +1,8 @@
-# Step 4 — Enrich + Business Context
+# Step 4 — Per-Endpoint Enrichment
 
-> `LLMStep[(list[EndpointSpec], str, str), (list[EndpointSpec], BusinessContext, dict)]`
+> `LLMStep[EnrichmentContext, list[EndpointSpec]]`
 >
-> **In:** mechanical endpoint specs + app_name + base_url — **Out:** enriched endpoints + business context + glossary
+> **In:** mechanical endpoint specs + traces + app_name + base_url — **Out:** enriched endpoints
 
 [← Back to overview](./00-overview.md)
 
@@ -10,32 +10,35 @@
 
 ## Purpose
 
-Single LLM call that enriches ALL endpoints with business semantics AND infers overall business context. Replaces the previous N+1 calls (N per-endpoint + 1 business context).
+Parallel per-endpoint LLM calls that enrich each endpoint individually with business semantics. Each call is focused on a single endpoint, producing higher-quality enrichment than the previous single-batch approach.
 
-## Why one call instead of N+1
+## Why per-endpoint instead of batch
 
-- The LLM sees all endpoints at once → better business context inference
-- Cross-endpoint knowledge: consistent parameter naming, shared pattern detection
-- Much fewer API calls (1 vs N+1), lower latency
-- The mechanical schemas are already extracted, so the LLM input is structured and concise
+- Each call is focused — the LLM reasons about one endpoint at a time with full context
+- Parallel execution via asyncio.gather — latency is roughly that of the slowest single call
+- Failures are isolated — one endpoint failing doesn't affect the others
+- Prompt is small and focused — less chance of the LLM losing track of instructions
 
 ## Input
 
-For each mechanical endpoint, a summary containing:
-- `method`, `pattern`, `observed_count`
-- `request` annotated schema (params with observed values inline)
-- `responses` by status code, each with annotated schema
-- `ui_triggers` with action, element text, page URL
+For each endpoint, a summary containing:
+- `method`, `path`, `observed_count`
+- Up to 3 UI triggers with action, element text, page URL
+- Sample request body and response body from the first trace
+- All observed response status codes
+- Parameters with observed values
 
-Plus global context: `app_name`, `base_url`
+Plus global context: `app_name`, `base_url` (included in each per-endpoint prompt).
 
 ## Prompt
 
-> "Here are all the endpoints discovered from this app, with their annotated schemas and UI triggers. For each endpoint, provide business_purpose, user_story, parameter_meanings, response_meanings, trigger_explanations, and identify enums from observed values. Also provide overall business_context (domain, personas, workflows) and business_glossary."
+Each per-endpoint call receives a prompt like:
+
+> "You are analyzing a single API endpoint discovered from [app_name] ([base_url]). Here is the endpoint's mechanical data: [...]. Provide a JSON response with business_purpose, user_story, correlation_confidence, parameter_meanings, parameter_constraints, response_details, trigger_explanations, discovery_notes."
 
 ## Output
 
-### Per endpoint
+Per endpoint:
 
 | Field | Description |
 |---|---|
@@ -43,41 +46,34 @@ Plus global context: `app_name`, `base_url`
 | `user_story` | "As a [persona], I want to [action] so that [goal]" |
 | `correlation_confidence` | 0.0–1.0 confidence in UI↔API correlation |
 | `parameter_meanings` | `{param_name: "business meaning"}` for each parameter |
-| `response_meanings` | `{status_code: "business meaning"}` for each status |
+| `parameter_constraints` | `{param_name: "constraint text"}` for parameters where constraints can be inferred |
+| `response_details` | `{status_code: {business_meaning, example_scenario, user_impact, resolution}}` |
 | `trigger_explanations` | Natural language description for each UI trigger |
-| `enum_fields` | Fields identified as enums from observed values (e.g. `status: ["active", "inactive"]`) |
-
-### Overall
-
-| Field | Description |
-|---|---|
-| `business_context.domain` | Business domain (e.g. "E-commerce", "Energy Management") |
-| `business_context.description` | One-line description of the API |
-| `business_context.user_personas` | Types of users (e.g. "residential_customer") |
-| `business_context.key_workflows` | Reconstructed user workflows with steps |
-| `business_glossary` | `{term: "definition"}` for domain-specific terms |
+| `discovery_notes` | Observations, edge cases, or dependencies worth noting |
 
 ## Application
 
-`_apply_enrichment` maps LLM output onto the mechanical endpoints:
+`_apply_enrichment` maps each LLM response onto the corresponding endpoint:
 - `endpoint.business_purpose` ← `enrichment.business_purpose`
 - `endpoint.user_story` ← `enrichment.user_story`
 - `endpoint.correlation_confidence` ← `enrichment.correlation_confidence`
 - For each param: `param.business_meaning` ← `enrichment.parameter_meanings[param.name]`
-- For each response: `resp.business_meaning` ← `enrichment.response_meanings[resp.status]`
+- For each param: `param.constraints` ← `enrichment.parameter_constraints[param.name]`
+- For each response: rich details from `enrichment.response_details[status]`
 - For each trigger by index: `trigger.user_explanation` ← `enrichment.trigger_explanations[i]`
 
 ## Configuration
 
 | Parameter | Value |
 |---|---|
-| `max_tokens` | 4096 |
+| `max_tokens` | 2048 per endpoint |
 | Tools | None (direct `client.messages.create`) |
+| Parallelism | All endpoints enriched concurrently via `asyncio.gather` |
 
 ## Validation
 
-Best-effort — `_validate_output` returns `[]`. Empty fields are acceptable. The pipeline continues with whatever the LLM provides.
+Best-effort — no validation on enrichment output. Empty fields are acceptable. The pipeline continues with whatever the LLM provides.
 
 ## Fallback
 
-Returns empty enrichments and empty `BusinessContext` on parse error.
+If a per-endpoint call fails (exception), the endpoint is left un-enriched. The pipeline continues with the mechanical data.

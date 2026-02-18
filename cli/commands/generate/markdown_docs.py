@@ -37,14 +37,6 @@ def build_index_markdown(spec: ApiSpec) -> str:
         "",
     ]
 
-    if spec.business_context.description:
-        lines.append(spec.business_context.description)
-        lines.append("")
-
-    if spec.business_context.domain:
-        lines.append(f"**Domain:** {spec.business_context.domain}")
-        lines.append("")
-
     # Base URL
     if spec.protocols.rest.base_url:
         lines.append(f"**Base URL:** `{spec.protocols.rest.base_url}`")
@@ -75,14 +67,6 @@ def build_index_markdown(spec: ApiSpec) -> str:
             lines.append(f"- **{ws.id}**: `{ws.url}`")
             if ws.business_purpose:
                 lines.append(f"  {ws.business_purpose}")
-        lines.append("")
-
-    # Business glossary
-    if spec.business_glossary:
-        lines.append("## Glossary")
-        lines.append("")
-        for term, definition in sorted(spec.business_glossary.items()):
-            lines.append(f"- **{term}**: {definition}")
         lines.append("")
 
     return "\n".join(lines) + "\n"

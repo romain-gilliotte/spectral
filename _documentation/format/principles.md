@@ -14,8 +14,6 @@ The principles come from GitBook's guides on API documentation best practices: c
 
 The spec carries business-language descriptions at every level. `business_purpose` on each endpoint explains what it does in domain terms, not HTTP terms. `user_story` frames the endpoint from the user's perspective. `business_meaning` on parameters and responses explains their role in the business domain.
 
-The `business_glossary` at the top level defines domain-specific terms that appear throughout the spec. Generators can use this to create a glossary page and to add inline definitions when domain terms appear in endpoint descriptions.
-
 UI trigger explanations (`user_explanation`) describe what the user did in plain language — "User clicks on 'My Consumption' tab in the navigation" rather than "POST /api/consumption/monthly."
 
 **Limitations:** Clarity depends on the quality of the captured UI text. If the application's own UI uses cryptic labels or abbreviations, the LLM has less context to produce clear descriptions. Applications in languages the LLM handles well produce better results than those in less-represented languages.
@@ -32,7 +30,7 @@ The format separates structured data (schemas, parameters, status codes) from pr
 
 Annotated schemas include up to five observed values per property, giving developers a quick sense of what to expect without lengthy explanations. The `example_body` field provides a single representative example rather than exhaustive documentation of every possible response shape.
 
-Batch enrichment (all endpoints in one LLM call) naturally produces consistent, concise descriptions because the LLM sees the full picture and avoids repeating context that applies globally.
+Per-endpoint enrichment (one focused LLM call per endpoint) produces concise descriptions because the LLM focuses on a single endpoint at a time without being overwhelmed by context from the full endpoint list.
 
 **Limitations:** LLM-generated prose varies in conciseness. The enrichment prompt requests brief descriptions, but the LLM may sometimes over-explain simple endpoints or under-explain complex ones. This is a prompt-tuning concern, not a format limitation.
 
@@ -45,10 +43,6 @@ Batch enrichment (all endpoints in one LLM call) naturally produces consistent, 
 **How the format enables it:**
 
 This is the strongest principle for the enriched spec. UI triggers connect each endpoint to the user action that caused it — "This API call happens when the user clicks 'Export PDF' on the invoice page." No other API documentation tool provides this link between user interface and API behavior.
-
-`key_workflows` in `business_context` reconstruct the user's journey through the application, showing how endpoints relate to each other in sequence. A developer can understand that `GET /api/invoices` is typically called after login, followed by `GET /api/invoices/{id}` when the user selects a specific invoice, then `POST /api/invoices/{id}/export` when they click export.
-
-`user_personas` identify who uses the API and for what purpose, helping developers understand whether an endpoint serves end-users, administrators, or internal systems.
 
 The `page_url` and page content captured with each UI context let the LLM understand what the user was looking at when the API call happened — form fields, navigation state, visible data, error messages.
 
@@ -84,11 +78,7 @@ The format does not claim completeness — `observed_count` and `source_trace_re
 
 The format enforces structural consistency by design: every endpoint has the same set of fields (`id`, `path`, `method`, `business_purpose`, `user_story`, `request`, `responses`, etc.). Generators can rely on this uniform structure to produce consistent documentation pages.
 
-The batch enrichment approach (single LLM call for all endpoints) encourages terminological consistency. The LLM sees every endpoint at once and naturally uses the same vocabulary when describing similar concepts across different endpoints.
-
-`business_glossary` establishes canonical definitions for domain terms. Generators can enforce consistent usage of these terms throughout the documentation.
-
-**Limitations:** The LLM may still produce inconsistencies — calling the same concept "billing period" in one endpoint and "invoice cycle" in another. The batch approach reduces this risk but cannot eliminate it entirely. Future improvements could add a post-processing step to detect and reconcile terminological inconsistencies.
+**Limitations:** Per-endpoint enrichment may produce terminological inconsistencies — calling the same concept "billing period" in one endpoint and "invoice cycle" in another — since each call is independent. Future improvements could add a post-processing step to detect and reconcile such inconsistencies.
 
 Structural consistency is guaranteed by the Pydantic models. Terminological consistency is best-effort.
 
@@ -122,7 +112,7 @@ Examples are limited to what was captured. If the user only ever sent one type o
 
 The format is structured for multiple output generators. The same enriched spec produces OpenAPI (for tooling integration), a Python client (for immediate programmatic use), cURL scripts (for quick testing), Markdown docs (for reading), and an MCP server scaffold (for AI agent integration).
 
-`key_workflows` in business context provide natural groupings for a quickstart guide — the LLM has already identified the most common user journeys, and generators can present the simplest workflow as a getting-started path.
+UI triggers provide natural groupings for a quickstart guide — developers can identify the most common user journeys from the trigger data.
 
 The flat endpoint list with `id` fields enables generators to create deep links, cross-references, and table-of-contents navigation. The `requires_auth` flag on each endpoint lets generators clearly separate authenticated and unauthenticated endpoints.
 

@@ -10,7 +10,7 @@ from cli.commands.analyze.pipeline import build_spec
 from cli.commands.analyze.schemas import extract_query_params, infer_schema
 from cli.commands.analyze.steps.types import EndpointGroup
 from cli.commands.analyze.steps.enrich_and_context import (
-    _apply_enrichment,  # pyright: ignore[reportPrivateUsage]
+    _apply_enrichment as _apply_enrichment,  # pyright: ignore[reportPrivateUsage]
 )
 from cli.commands.analyze.steps.mechanical_extraction import (
     _build_endpoint_mechanical as _build_endpoint_mechanical,  # pyright: ignore[reportPrivateUsage]
@@ -401,8 +401,6 @@ def _make_mock_create(
     groups_response: str | None = None,
     auth_response: str | None = None,
     enrich_response: str | None = None,
-    detail_response: str | None = None,
-    context_response: str | None = None,
 ) -> Any:
     """Build a mock client.messages.create that routes by prompt content."""
 
@@ -445,23 +443,16 @@ def _make_mock_create(
     if enrich_response is None:
         enrich_response = json.dumps(
             {
-                "endpoints": {},
-                "business_context": {
-                    "domain": "User Management",
-                    "description": "API for managing users and orders",
-                    "user_personas": ["admin", "user"],
-                    "key_workflows": [
-                        {
-                            "name": "browse_users",
-                            "description": "Browse user list",
-                            "steps": ["login", "view_users"],
-                        }
-                    ],
-                    "business_glossary": {"user": "A registered account"},
-                },
+                "business_purpose": "test purpose",
+                "user_story": "As a user, I want to do something",
+                "correlation_confidence": 0.8,
+                "parameter_meanings": {},
+                "parameter_constraints": {},
+                "response_details": {},
+                "trigger_explanations": [],
+                "discovery_notes": None,
             }
         )
-    # detail_response and context_response kept for backward compat but not used in new pipeline
 
     async def mock_create(**kwargs: Any) -> MagicMock:
         mock_response = MagicMock()
@@ -476,31 +467,12 @@ def _make_mock_create(
             mock_content.text = groups_response
         elif "authentication mechanism" in msg:
             mock_content.text = auth_response
-        elif "SINGLE JSON response" in msg:
+        elif "single API endpoint" in msg:
+            # Per-endpoint enrichment call
             mock_content.text = enrich_response
-        elif "business domain" in msg or "Based on these API endpoints" in msg:
-            # Fallback for old-style context call (shouldn't happen in new pipeline)
-            mock_content.text = context_response or json.dumps(
-                {
-                    "domain": "",
-                    "description": "",
-                    "user_personas": [],
-                    "key_workflows": [],
-                    "business_glossary": {},
-                }
-            )
         else:
-            # Fallback for old-style detail call
-            mock_content.text = detail_response or json.dumps(
-                {
-                    "business_purpose": "test",
-                    "user_story": "test",
-                    "correlation_confidence": 0.5,
-                    "parameter_meanings": {},
-                    "response_meanings": {},
-                    "trigger_explanations": [],
-                }
-            )
+            # Fallback
+            mock_content.text = enrich_response
 
         mock_response.content = [mock_content]
         return mock_response
@@ -527,8 +499,6 @@ class TestBuildSpec:
         assert "test.zip" in spec.source_captures
         assert len(spec.protocols.rest.endpoints) > 0
         assert spec.auth.type == "bearer_token"
-        assert spec.business_context.domain == "User Management"
-        assert "user" in spec.business_glossary
         assert spec.protocols.rest.base_url == "https://api.example.com"
 
     @pytest.mark.asyncio
@@ -576,72 +546,3 @@ class TestBuildSpec:
         assert "t_cdn" not in all_refs
         assert spec.protocols.rest.base_url == "https://api.example.com"
 
-    @pytest.mark.asyncio
-    async def test_api_name_from_enrichment(self, sample_bundle: CaptureBundle) -> None:
-        """When the LLM returns an api_name, it should be used as spec.name."""
-        mock_client = AsyncMock()
-        mock_client.messages.create = _make_mock_create(
-            enrich_response=json.dumps(
-                {
-                    "endpoints": {},
-                    "business_context": {
-                        "api_name": "Acme User Management API",
-                        "domain": "User Management",
-                        "description": "API for managing users",
-                        "user_personas": [],
-                        "key_workflows": [],
-                        "business_glossary": {},
-                    },
-                }
-            ),
-        )
-        spec = await build_spec(sample_bundle, client=mock_client, model="test-model")
-        assert spec.name == "Acme User Management API"
-
-    @pytest.mark.asyncio
-    async def test_api_name_fallback_to_app_name(
-        self, sample_bundle: CaptureBundle
-    ) -> None:
-        """When no api_name is returned, fall back to bundle app name."""
-        mock_client = AsyncMock()
-        mock_client.messages.create = _make_mock_create(
-            enrich_response=json.dumps(
-                {
-                    "endpoints": {},
-                    "business_context": {
-                        "domain": "User Management",
-                        "description": "API for managing users",
-                        "user_personas": [],
-                        "key_workflows": [],
-                        "business_glossary": {},
-                    },
-                }
-            ),
-        )
-        spec = await build_spec(sample_bundle, client=mock_client, model="test-model")
-        assert spec.name == "Test App API"
-
-    @pytest.mark.asyncio
-    async def test_ws_enrichment_applied(self, sample_bundle: CaptureBundle) -> None:
-        """When the LLM returns websocket_purposes, they should be applied."""
-        mock_client = AsyncMock()
-        mock_client.messages.create = _make_mock_create(
-            enrich_response=json.dumps(
-                {
-                    "endpoints": {},
-                    "business_context": {
-                        "domain": "Test",
-                        "description": "Test API",
-                        "user_personas": [],
-                        "key_workflows": [],
-                        "business_glossary": {},
-                    },
-                    "websocket_purposes": {
-                        "ws_0001": "Real-time data streaming for live updates",
-                    },
-                }
-            ),
-        )
-        spec = await build_spec(sample_bundle, client=mock_client, model="test-model")
-        ws = spec.protocols.websocket.connections[0]
-        assert ws.business_purpose == "Real-time data streaming for live updates"

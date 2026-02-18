@@ -35,7 +35,7 @@ These fields are LLM-inferred from the combination of observed traffic, UI conte
 
 **Business purpose** should use the application's own vocabulary. For an energy provider, "Retrieve customer's monthly electricity consumption data" is better than "GET endpoint returning JSON." The LLM derives this from UI context (what tab or button triggered the call, what page the user was on) and response body content.
 
-**User story** follows a standard format and references personas from `business_context.user_personas`. It helps developers understand who benefits from this endpoint and why.
+**User story** follows a standard format with inferred personas. It helps developers understand who benefits from this endpoint and why.
 
 **Correlation confidence** ranges from high (the UI trigger clearly maps to this specific API call, with matching timing and context) to low (the API call happened during the session but its connection to a specific user action is unclear). Generators can use this to qualify descriptions — high-confidence endpoints can be described assertively, while low-confidence ones should note that the correlation is approximate.
 

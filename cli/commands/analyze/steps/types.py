@@ -9,10 +9,9 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
-from cli.commands.capture.types import Context, Trace, WsConnection, WsMessage
+from cli.commands.capture.types import Context, Trace, WsMessage
 from cli.formats.api_spec import (
     AuthInfo,
-    BusinessContext,
     EndpointSpec,
     WebSocketProtocol,
 )
@@ -81,29 +80,17 @@ class GroupedTraceData:
     correlations: list[Correlation]
 
 
-# -- Enrichment (LLM batch call) --------------------------------------------
+# -- Enrichment (per-endpoint LLM calls) ------------------------------------
 
 
 @dataclass
 class EnrichmentContext:
-    """Input for the batch enrichment + business-context LLM step."""
+    """Input for the per-endpoint enrichment LLM step."""
 
     endpoints: list[EndpointSpec]
     traces: list[Trace]
     app_name: str
     base_url: str
-    ws_connections: list[WsConnection] | None = None
-
-
-@dataclass
-class EnrichmentResult:
-    """Output of the batch enrichment + business-context LLM step."""
-
-    endpoints: list[EndpointSpec]
-    business_context: BusinessContext
-    glossary: dict[str, str]
-    api_name: str | None = None
-    ws_enrichments: dict[str, str] | None = None  # ws_id -> business_purpose
 
 
 # -- Final assembly ----------------------------------------------------------
@@ -118,7 +105,4 @@ class SpecComponents:
     base_url: str
     endpoints: list[EndpointSpec]
     auth: AuthInfo
-    business_context: BusinessContext
-    glossary: dict[str, str]
     ws_specs: WebSocketProtocol
-    api_name: str | None = None

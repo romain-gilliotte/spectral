@@ -3,7 +3,6 @@
 from cli.formats.api_spec import (
     ApiSpec,
     AuthInfo,
-    BusinessContext,
     EndpointSpec,
     LoginEndpointConfig,
     ParameterSpec,
@@ -155,9 +154,6 @@ class TestApiSpec:
             name="Test API",
             discovery_date="2026-02-13T15:30:00Z",
             source_captures=["test.zip"],
-            business_context=BusinessContext(
-                domain="Testing", description="A test API"
-            ),
             auth=AuthInfo(
                 type="bearer_token", token_header="Authorization", token_prefix="Bearer"
             ),
@@ -182,14 +178,12 @@ class TestApiSpec:
                     ],
                 ),
             ),
-            business_glossary={"user": "A registered person"},
         )
         json_str = spec.model_dump_json(by_alias=True)
         loaded = ApiSpec.model_validate_json(json_str)
         assert loaded.name == "Test API"
         assert len(loaded.protocols.rest.endpoints) == 1
         assert loaded.protocols.rest.endpoints[0].id == "get_users"
-        assert loaded.business_glossary["user"] == "A registered person"
 
     def test_response_schema_alias(self):
         """Test that 'schema' field uses alias correctly."""
@@ -251,7 +245,6 @@ class TestApiSpec:
         assert spec.api_spec_version == "1.0.0"
         assert spec.protocols.rest.endpoints == []
         assert spec.protocols.websocket.connections == []
-        assert spec.business_glossary == {}
 
     def test_login_endpoint_config_roundtrip(self):
         config = LoginEndpointConfig(

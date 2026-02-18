@@ -7,7 +7,6 @@ import yaml
 from cli.formats.api_spec import (
     ApiSpec,
     AuthInfo,
-    BusinessContext,
     EndpointSpec,
     LoginEndpointConfig,
     ParameterSpec,
@@ -42,9 +41,6 @@ def _make_sample_spec() -> ApiSpec:
     return ApiSpec(
         name="Pet Store API",
         discovery_date="2026-02-13T15:30:00Z",
-        business_context=BusinessContext(
-            domain="E-commerce", description="Pet store management API"
-        ),
         auth=AuthInfo(
             type="bearer_token", token_header="Authorization", token_prefix="Bearer"
         ),
@@ -167,7 +163,6 @@ def _make_sample_spec() -> ApiSpec:
                 ],
             ),
         ),
-        business_glossary={"pet": "An animal available for adoption"},
     )
 
 
@@ -313,12 +308,6 @@ class TestMarkdownDocsGenerator:
         assert "# Pet Store API" in index
         assert "| `GET` | `/api/pets`" in index
         assert "| `POST` | `/api/pets`" in index
-        assert "E-commerce" in index
-
-    def test_index_contains_glossary(self):
-        spec = _make_sample_spec()
-        index = build_index_markdown(spec)
-        assert "**pet**:" in index
 
     def test_index_contains_websocket(self):
         spec = _make_sample_spec()

@@ -27,8 +27,7 @@ def build_openapi_dict(spec: ApiSpec) -> dict[str, Any]:
         "openapi": "3.1.0",
         "info": {
             "title": spec.name,
-            "description": spec.business_context.description
-            or f"API specification for {spec.name}",
+            "description": f"API specification for {spec.name}",
             "version": "1.0.0",
         },
         "servers": [],

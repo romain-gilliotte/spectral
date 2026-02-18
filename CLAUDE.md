@@ -63,7 +63,7 @@ api-discover/
 │   │   │       ├── detect_base_url.py  # LLMStep: identify business API base URL
 │   │   │       ├── group_endpoints.py  # LLMStep: group URLs into endpoint patterns
 │   │   │       ├── analyze_auth.py     # LLMStep: detect auth mechanism from all traces
-│   │   │       ├── enrich_and_context.py # LLMStep: batch enrichment + business context
+│   │   │       ├── enrich_and_context.py # LLMStep: per-endpoint parallel enrichment
 │   │   │       ├── extract_pairs.py    # MechanicalStep: traces → (method, url) pairs
 │   │   │       ├── filter_traces.py    # MechanicalStep: keep traces matching base URL
 │   │   │       ├── strip_prefix.py     # MechanicalStep: remove base URL path prefix
@@ -352,19 +352,6 @@ This is the output of `api-discover analyze`. It's what makes the project unique
   "discovery_date": "2026-02-13T15:30:00Z",
   "source_captures": ["capture_20260213_153000.zip"],
 
-  "business_context": {
-    "domain": "Energy Management",
-    "description": "Customer-facing API for the EDF energy provider portal",
-    "user_personas": ["residential_customer", "business_customer"],
-    "key_workflows": [
-      {
-        "name": "view_consumption",
-        "description": "Customer views their monthly electricity consumption",
-        "steps": ["login", "navigate_to_dashboard", "select_consumption_tab", "view_data"]
-      }
-    ]
-  },
-
   "auth": {
     "type": "bearer_token",
     "obtain_flow": "oauth2_authorization_code",
@@ -468,13 +455,6 @@ This is the output of `api-discover analyze`. It's what makes the project unique
         }
       ]
     }
-  },
-
-  "business_glossary": {
-    "consumption": "kWh energy usage measured by smart meter",
-    "billing_period": "Monthly cycles from 1st to last day of month",
-    "contract": "Legal agreement between EDF and customer for energy supply",
-    "PDL": "Point de Livraison — unique identifier for a delivery point (meter)"
   }
 }
 ```
@@ -490,8 +470,6 @@ The LLM is called during `api-discover analyze` to produce these fields that a p
 - `parameters[].constraints` — inferred constraints from observed values
 - `responses[].business_meaning` — what a response means
 - `responses[].resolution` — how to fix an error, in user terms
-- `business_glossary` — domain-specific terms extracted from UI text and API field names
-- `business_context.key_workflows` — user workflows reconstructed from the timeline
 - `auth.user_journey` — the authentication flow described for humans
 - `correlation_confidence` — how confident the LLM is in the UI↔API correlation
 
@@ -612,7 +590,7 @@ The `build_spec()` function in `pipeline.py` orchestrates a Step-based pipeline 
 4. **Group endpoints** — `LLMStep`: group URLs into endpoint patterns with `{param}` syntax (with investigation tools)
 5. **Strip prefix** — `MechanicalStep`: remove base URL path prefix from patterns
 6. **Mechanical extraction** — `MechanicalStep`: build `EndpointSpec[]` with schemas, params, UI triggers
-7. **Enrich + context** — `LLMStep`: single batch call for ALL endpoint enrichments + business context + glossary
+7. **Enrich endpoints** — `LLMStep`: N parallel per-endpoint LLM calls for business semantics
 
 **Parallel branches** (run via `asyncio.gather` alongside step 7):
 - **Auth analysis** — `LLMStep`: detect auth mechanism from ALL unfiltered traces (summary-based, no tools)
@@ -634,7 +612,7 @@ The `build_spec()` function in `pipeline.py` orchestrates a Step-based pipeline 
 |---|---|---|---|
 | Detect base URL | `detect_base_url.py` | decode_base64, decode_url, decode_jwt | Valid URL (scheme + host) |
 | Group endpoints | `group_endpoints.py` | decode_base64, decode_url, decode_jwt | Coverage, pattern match, no duplicates |
-| Enrich + context | `enrich_and_context.py` | none | Best-effort (no validation) |
+| Enrich endpoints | `enrich_and_context.py` | none | Best-effort (no validation) |
 | Auth analysis | `analyze_auth.py` | none | Best-effort (fallback to mechanical) |
 
 All LLM steps use `_extract_json()` to robustly parse LLM JSON responses (handles markdown blocks, nested objects).
@@ -659,7 +637,7 @@ All LLM steps use `_extract_json()` to robustly parse LLM JSON responses (handle
 - [x] Step abstraction (`cli/commands/analyze/steps/base.py`) — Step[In,Out], LLMStep (retry), MechanicalStep
 - [x] LLM base URL detection (`steps/detect_base_url.py`) — with investigation tools
 - [x] LLM endpoint grouping (`steps/group_endpoints.py`) — with investigation tools + validation
-- [x] LLM batch enrichment + business context (`steps/enrich_and_context.py`) — single call for all endpoints
+- [x] LLM per-endpoint enrichment (`steps/enrich_and_context.py`) — parallel per-endpoint calls via asyncio.gather
 - [x] LLM auth analysis (`steps/analyze_auth.py`) — on all unfiltered traces, with mechanical fallback
 - [x] Mechanical extraction (`steps/mechanical_extraction.py`) — schemas, params, UI triggers, trace matching
 - [x] JSON schema inference with format detection (`cli/commands/analyze/schemas.py`) — date, email, UUID, URI
@@ -716,12 +694,12 @@ The analysis pipeline is LLM-first (not mechanical-first with LLM enrichment):
 1. The LLM identifies the business API base URL — filtering out CDN, analytics, trackers
 2. The LLM groups URLs into endpoint patterns — this is more accurate than mechanical heuristics for complex APIs
 3. For each group, mechanical extraction provides the raw data (schemas, params, headers)
-4. A single batch LLM call enriches ALL endpoints with business semantics + infers business context + glossary
+4. N parallel per-endpoint LLM calls enrich each endpoint with focused business semantics
 5. Per-step validation catches LLM mistakes (coverage, pattern mismatches) and retries once
 
 Auth analysis runs in parallel on ALL unfiltered traces (external auth providers would be filtered out by base URL detection). Three branches converge at assembly via `asyncio.gather`.
 
-This keeps token usage low (batch enrichment instead of N+1 calls) while leveraging the LLM's strength at pattern recognition and semantic inference.
+Per-endpoint enrichment trades a single large prompt for N small focused prompts. Each call reasons about one endpoint with full context, producing higher-quality enrichment. Failures are isolated — one endpoint failing doesn't affect others. All calls run concurrently via `asyncio.gather`.
 
 ### Path parameter inference
 In the LLM-first pipeline, path parameters are inferred by the LLM during URL grouping. The LLM sees all observed URLs and identifies variable segments (IDs, UUIDs, hashes) to produce patterns like `/api/users/{user_id}/orders`.

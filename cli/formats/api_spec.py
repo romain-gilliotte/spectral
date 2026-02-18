@@ -5,19 +5,6 @@ from typing import Any
 from pydantic import BaseModel, Field
 
 
-class WorkflowStep(BaseModel):
-    name: str
-    description: str = ""
-    steps: list[str] = []
-
-
-class BusinessContext(BaseModel):
-    domain: str = ""
-    description: str = ""
-    user_personas: list[str] = []
-    key_workflows: list[WorkflowStep] = []
-
-
 class LoginEndpointConfig(BaseModel):
     url: str
     method: str = "POST"
@@ -139,7 +126,5 @@ class ApiSpec(BaseModel):
     name: str = ""
     discovery_date: str = ""
     source_captures: list[str] = []
-    business_context: BusinessContext = Field(default_factory=BusinessContext)
     auth: AuthInfo = Field(default_factory=AuthInfo)
     protocols: Protocols = Field(default_factory=Protocols)
-    business_glossary: dict[str, str] = Field(default_factory=dict)

@@ -20,14 +20,12 @@ class AssembleStep(MechanicalStep[SpecComponents, ApiSpec]):
 
     async def _execute(self, input: SpecComponents) -> ApiSpec:
         return ApiSpec(
-            name=input.api_name or input.app_name,
+            name=input.app_name,
             discovery_date=datetime.now(timezone.utc).isoformat(),
             source_captures=[input.source_filename] if input.source_filename else [],
-            business_context=input.business_context,
             auth=input.auth,
             protocols=Protocols(
                 rest=RestProtocol(base_url=input.base_url, endpoints=input.endpoints),
                 websocket=input.ws_specs,
             ),
-            business_glossary=input.glossary,
         )
