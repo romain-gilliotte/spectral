@@ -8,7 +8,15 @@ import click
 from rich.table import Table
 
 from cli.capture.models import CaptureBundle
-from cli.console import console, truncate
+from cli.console import console
+
+
+def _truncate(s: str, max_len: int) -> str:
+    """Truncate a string to max_len, adding '...' if needed."""
+    if len(s) <= max_len:
+        return s
+    return s[: max_len - 3] + "..."
+
 
 
 @click.command()
@@ -64,7 +72,7 @@ def _inspect_summary(bundle: CaptureBundle) -> None:
             trace_table.add_row(
                 trace.meta.id,
                 trace.meta.request.method,
-                truncate(trace.meta.request.url, 60),
+                _truncate(trace.meta.request.url, 60),
                 str(trace.meta.response.status),
                 f"{trace.meta.timing.total_ms:.0f}",
             )
@@ -120,6 +128,6 @@ def _print_body(body: bytes) -> None:
             data = json.loads(text)
             console.print_json(json.dumps(data))
         except json.JSONDecodeError:
-            console.print(f"  {truncate(text, 500)}")
+            console.print(f"  {_truncate(text, 500)}")
     except UnicodeDecodeError:
         console.print(f"  <binary, {len(body)} bytes>")
