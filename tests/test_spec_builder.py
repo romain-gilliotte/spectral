@@ -6,19 +6,19 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from cli.analyze.pipeline import build_spec
-from cli.analyze.schemas import extract_query_params, infer_schema
-from cli.analyze.steps.types import EndpointGroup
-from cli.analyze.steps.enrich_and_context import (
+from cli.commands.analyze.pipeline import build_spec
+from cli.commands.analyze.schemas import extract_query_params, infer_schema
+from cli.commands.analyze.steps.types import EndpointGroup
+from cli.commands.analyze.steps.enrich_and_context import (
     _apply_enrichment,  # pyright: ignore[reportPrivateUsage]
 )
-from cli.analyze.steps.mechanical_extraction import (
+from cli.commands.analyze.steps.mechanical_extraction import (
     _build_endpoint_mechanical as _build_endpoint_mechanical,  # pyright: ignore[reportPrivateUsage]
     _extract_rate_limit as _extract_rate_limit,  # pyright: ignore[reportPrivateUsage]
     _find_traces_for_group as _find_traces_for_group,  # pyright: ignore[reportPrivateUsage]
     _make_endpoint_id as _make_endpoint_id,  # pyright: ignore[reportPrivateUsage]
 )
-from cli.capture.types import CaptureBundle
+from cli.commands.capture.types import CaptureBundle
 from cli.formats.api_spec import EndpointSpec, ParameterSpec, RequestSpec, ResponseSpec
 from cli.formats.capture_bundle import Header
 from tests.conftest import make_trace

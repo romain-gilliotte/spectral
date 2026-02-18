@@ -21,20 +21,20 @@ from cli.formats.api_spec import (
     WsConnectionSpec,
     WsMessageSpec,
 )
-from cli.generate.curl_scripts import (
+from cli.commands.generate.curl_scripts import (
     build_all_curl_script,
     build_curl_script,
     generate_curl_scripts,
 )
-from cli.generate.markdown_docs import (
+from cli.commands.generate.markdown_docs import (
     build_auth_markdown,
     build_endpoint_markdown,
     build_index_markdown,
     generate_markdown_docs,
 )
-from cli.generate.mcp_server import build_mcp_server, generate_mcp_server
-from cli.generate.openapi import build_openapi_dict, generate_openapi
-from cli.generate.python_client import build_python_client, generate_python_client
+from cli.commands.generate.mcp_server import build_mcp_server, generate_mcp_server
+from cli.commands.generate.openapi import build_openapi_dict, generate_openapi
+from cli.commands.generate.python_client import build_python_client, generate_python_client
 
 
 def _make_sample_spec() -> ApiSpec:

@@ -10,7 +10,7 @@ from unittest.mock import MagicMock, patch
 from click.testing import CliRunner
 import pytest
 
-from cli.android.adb import (
+from cli.commands.android.adb import (
     AdbError,
     check_adb,
     clear_proxy,
@@ -24,7 +24,7 @@ from cli.android.adb import (
     push_cert,
     set_proxy,
 )
-from cli.android.patch import (
+from cli.commands.android.patch import (
     NETWORK_SECURITY_CONFIG,
     PatchError,
     _patch_manifest,  # pyright: ignore[reportPrivateUsage]
@@ -533,8 +533,8 @@ class TestSignApk:
         keystore = tmp_path / "debug.keystore"
         keystore.write_bytes(b"fake-keystore")
 
-        with patch("cli.android.patch._ensure_tools"):
-            with patch("cli.android.patch._sign_apk") as mock_sign:
+        with patch("cli.commands.android.patch._ensure_tools"):
+            with patch("cli.commands.android.patch._sign_apk") as mock_sign:
                 result = sign_apk(input_apk, output_apk, keystore)
                 mock_sign.assert_called_once_with(input_apk, output_apk, keystore)
                 assert result == output_apk
@@ -552,10 +552,10 @@ class TestPatchApkDir:
         (input_dir / "split_config.fr.apk").write_bytes(b"split2")
         output_dir = tmp_path / "output"
 
-        with patch("cli.android.patch._ensure_tools"):
-            with patch("cli.android.patch._ensure_debug_keystore"):
-                with patch("cli.android.patch.patch_apk") as mock_patch:
-                    with patch("cli.android.patch.sign_apk") as mock_sign:
+        with patch("cli.commands.android.patch._ensure_tools"):
+            with patch("cli.commands.android.patch._ensure_debug_keystore"):
+                with patch("cli.commands.android.patch.patch_apk") as mock_patch:
+                    with patch("cli.commands.android.patch.sign_apk") as mock_sign:
 
                         def fake_patch(apk: Path, out: Path, keystore: Path) -> Path:
                             out.parent.mkdir(parents=True, exist_ok=True)
@@ -592,10 +592,10 @@ class TestPatchApkDir:
         (input_dir / "split.apk").write_bytes(b"split-data")
         output_dir = tmp_path / "output"
 
-        with patch("cli.android.patch._ensure_tools"):
-            with patch("cli.android.patch._ensure_debug_keystore"):
-                with patch("cli.android.patch.patch_apk") as mock_patch:
-                    with patch("cli.android.patch.sign_apk") as mock_sign:
+        with patch("cli.commands.android.patch._ensure_tools"):
+            with patch("cli.commands.android.patch._ensure_debug_keystore"):
+                with patch("cli.commands.android.patch.patch_apk") as mock_patch:
+                    with patch("cli.commands.android.patch.sign_apk") as mock_sign:
 
                         def fake_patch_fn(apk: Path, out: Path, keystore: Path) -> Path:
                             out.parent.mkdir(parents=True, exist_ok=True)
@@ -636,10 +636,10 @@ class TestPatchApkDir:
 
         keystores_used: list[Path] = []
 
-        with patch("cli.android.patch._ensure_tools"):
-            with patch("cli.android.patch._ensure_debug_keystore"):
-                with patch("cli.android.patch.patch_apk") as mock_patch:
-                    with patch("cli.android.patch.sign_apk") as mock_sign:
+        with patch("cli.commands.android.patch._ensure_tools"):
+            with patch("cli.commands.android.patch._ensure_debug_keystore"):
+                with patch("cli.commands.android.patch.patch_apk") as mock_patch:
+                    with patch("cli.commands.android.patch.sign_apk") as mock_sign:
 
                         def capture_patch(apk: Path, out: Path, keystore: Path) -> Path:
                             keystores_used.append(keystore)

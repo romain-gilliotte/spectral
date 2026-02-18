@@ -7,9 +7,9 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from cli.analyze.steps.detect_base_url import DetectBaseUrlStep
-from cli.analyze.steps.types import MethodUrlPair
-from cli.analyze.tools import (
+from cli.commands.analyze.steps.detect_base_url import DetectBaseUrlStep
+from cli.commands.analyze.steps.types import MethodUrlPair
+from cli.commands.analyze.tools import (
     INVESTIGATION_TOOLS,
     TOOL_EXECUTORS,
     call_with_tools,

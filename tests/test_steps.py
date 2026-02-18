@@ -2,7 +2,7 @@
 
 import pytest
 
-from cli.analyze.steps.base import (
+from cli.commands.analyze.steps.base import (
     LLMStep,
     MechanicalStep,
     StepValidationError,

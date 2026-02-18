@@ -2,13 +2,13 @@
 
 from pathlib import Path
 
-from cli.capture.loader import (
+from cli.commands.capture.loader import (
     load_bundle,
     load_bundle_bytes,
     write_bundle,
     write_bundle_bytes,
 )
-from cli.capture.types import CaptureBundle
+from cli.commands.capture.types import CaptureBundle
 
 
 class TestBundleRoundtrip:

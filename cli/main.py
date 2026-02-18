@@ -5,11 +5,11 @@ from __future__ import annotations
 import click
 from dotenv import load_dotenv
 
-from cli.analyze.cmd import analyze
-from cli.android.cmd import android
-from cli.capture.cmd import capture
-from cli.client.cmd import call_command
-from cli.generate.cmd import generate
+from cli.commands.analyze.cmd import analyze
+from cli.commands.android.cmd import android
+from cli.commands.capture.cmd import capture
+from cli.commands.client.cmd import call_command
+from cli.commands.generate.cmd import generate
 
 load_dotenv()
 

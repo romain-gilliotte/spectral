@@ -2,7 +2,7 @@
 
 import json
 
-from cli.analyze.protocol import detect_trace_protocol, detect_ws_protocol
+from cli.commands.analyze.protocol import detect_trace_protocol, detect_ws_protocol
 from cli.formats.capture_bundle import Header
 from tests.conftest import make_trace, make_ws_connection, make_ws_message
 
@@ -148,7 +148,7 @@ class TestDetectWsProtocol:
         assert detect_ws_protocol(ws) == "plain-json"
 
     def test_binary_protocol(self):
-        from cli.capture.types import WsMessage
+        from cli.commands.capture.types import WsMessage
         from cli.formats.capture_bundle import WsMessageMeta
 
         msg = WsMessage(

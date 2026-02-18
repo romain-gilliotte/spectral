@@ -5,7 +5,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from cli.client import ApiClient
+from cli.commands.client import ApiClient
 from cli.formats.api_spec import (
     ApiSpec,
     AuthInfo,
@@ -120,7 +120,7 @@ class TestApiClientInit:
         with pytest.raises(ValueError, match="login_config"):
             ApiClient(spec, username="user", password="pass")
 
-    @patch("cli.client.client.requests.Session")
+    @patch("cli.commands.client.client.requests.Session")
     def test_init_with_login(self, mock_session_cls: MagicMock) -> None:
         mock_session = MagicMock()
         mock_session.headers = {}
@@ -171,7 +171,7 @@ class TestApiClientEndpoints:
 
 
 class TestApiClientCall:
-    @patch("cli.client.client.requests.Session")
+    @patch("cli.commands.client.client.requests.Session")
     def test_call_get_with_query(self, mock_session_cls: MagicMock) -> None:
         mock_session = MagicMock()
         mock_session.headers = {}
@@ -192,7 +192,7 @@ class TestApiClientCall:
         assert call_args[0] == ("GET", "https://api.example.com/api/users")
         assert call_args[1]["params"] == {"limit": "10"}
 
-    @patch("cli.client.client.requests.Session")
+    @patch("cli.commands.client.client.requests.Session")
     def test_call_get_with_path_param(self, mock_session_cls: MagicMock) -> None:
         mock_session = MagicMock()
         mock_session.headers = {}
@@ -211,7 +211,7 @@ class TestApiClientCall:
         call_args = mock_session.request.call_args
         assert call_args[0] == ("GET", "https://api.example.com/api/users/42")
 
-    @patch("cli.client.client.requests.Session")
+    @patch("cli.commands.client.client.requests.Session")
     def test_call_post_with_body(self, mock_session_cls: MagicMock) -> None:
         mock_session = MagicMock()
         mock_session.headers = {}
@@ -237,7 +237,7 @@ class TestApiClientCall:
         with pytest.raises(ValueError, match="Unknown endpoint"):
             client.call("nonexistent")
 
-    @patch("cli.client.client.requests.Session")
+    @patch("cli.commands.client.client.requests.Session")
     def test_call_refresh_on_401(self, mock_session_cls: MagicMock) -> None:
         mock_session = MagicMock()
         mock_session.headers = {}
@@ -284,7 +284,7 @@ class TestApiClientCall:
         assert refresh_call[1]["json"]["refresh_token"] == "my-refresh-token"
         assert refresh_call[1]["json"]["grant_type"] == "refresh_token"
 
-    @patch("cli.client.client.requests.Session")
+    @patch("cli.commands.client.client.requests.Session")
     def test_call_no_content(self, mock_session_cls: MagicMock) -> None:
         mock_session = MagicMock()
         mock_session.headers = {}
@@ -340,7 +340,7 @@ class TestExtractPath:
 
 
 class TestLoginFlow:
-    @patch("cli.client.client.requests.Session")
+    @patch("cli.commands.client.client.requests.Session")
     def test_login_with_extra_fields(self, mock_session_cls: MagicMock) -> None:
         mock_session = MagicMock()
         mock_session.headers = {}
@@ -378,7 +378,7 @@ class TestLoginFlow:
         assert body["client_id"] == "abc123"
         assert body["audience"] == "https://api.example.com"
 
-    @patch("cli.client.client.requests.Session")
+    @patch("cli.commands.client.client.requests.Session")
     def test_login_form_urlencoded(self, mock_session_cls: MagicMock) -> None:
         mock_session = MagicMock()
         mock_session.headers = {}
@@ -408,7 +408,7 @@ class TestLoginFlow:
         assert "data" in call_args[1]
         assert "json" not in call_args[1]
 
-    @patch("cli.client.client.requests.Session")
+    @patch("cli.commands.client.client.requests.Session")
     def test_login_nested_token_path(self, mock_session_cls: MagicMock) -> None:
         mock_session = MagicMock()
         mock_session.headers = {}

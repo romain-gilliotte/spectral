@@ -1,6 +1,6 @@
 """Tests for schema inference utilities."""
 
-from cli.analyze.schemas import (
+from cli.commands.analyze.schemas import (
     _detect_format,
     _infer_type,
     _infer_type_from_values,

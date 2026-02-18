@@ -43,41 +43,51 @@ api-discover/
 ├── cli/                    # Python CLI tool
 │   ├── __init__.py
 │   ├── main.py             # Entry point: commands (analyze, generate, capture, call, android)
-│   ├── capture/            # Capture: bundle parsing, inspect, MITM proxy
-│   │   ├── cmd.py          # CLI group: capture inspect, capture proxy, capture discover
-│   │   ├── inspect.py      # Inspect implementation: summary + per-trace detail views
-│   │   ├── proxy.py        # Generic MITM proxy engine (mitmproxy addons, run_proxy, run_discover)
-│   │   ├── loader.py       # Unzips and loads a capture bundle (+ write_bundle)
-│   │   └── types.py        # Data classes for traces, contexts, timeline (wraps Pydantic + binary)
-│   ├── analyze/            # Analysis engine
-│   │   ├── pipeline.py     # Orchestrator: build_spec() with parallel branches
-│   │   ├── correlator.py   # Time-window correlation: UI action → API calls
-│   │   ├── protocol.py     # Protocol detection (REST, GraphQL, WebSocket, gRPC, binary)
-│   │   ├── tools.py        # LLM tool loop (_call_with_tools), investigation tools, _extract_json
-│   │   ├── utils.py        # Shared utilities (_pattern_to_regex, _compact_url, _sanitize_headers)
-│   │   ├── schemas.py      # JSON schema inference, annotated schemas, format detection
-│   │   └── steps/          # Pipeline steps (Step[In,Out] architecture)
-│   │       ├── types.py            # Intermediate dataclasses (Correlation, EndpointGroup, etc.)
-│   │       ├── base.py             # Step, LLMStep, MechanicalStep, StepValidationError
-│   │       ├── detect_base_url.py  # LLMStep: identify business API base URL
-│   │       ├── group_endpoints.py  # LLMStep: group URLs into endpoint patterns
-│   │       ├── analyze_auth.py     # LLMStep: detect auth mechanism from all traces
-│   │       ├── enrich_and_context.py # LLMStep: batch enrichment + business context
-│   │       ├── extract_pairs.py    # MechanicalStep: traces → (method, url) pairs
-│   │       ├── filter_traces.py    # MechanicalStep: keep traces matching base URL
-│   │       ├── strip_prefix.py     # MechanicalStep: remove base URL path prefix
-│   │       ├── mechanical_extraction.py # MechanicalStep: groups → EndpointSpec[]
-│   │       ├── build_ws_specs.py   # MechanicalStep: WS connections → WS protocol
-│   │       └── assemble.py         # MechanicalStep: combine all parts → ApiSpec
-│   ├── generate/           # Output generators
-│   │   ├── openapi.py      # Enriched OpenAPI 3.1 output
-│   │   ├── mcp_server.py   # MCP server scaffold generation (FastMCP)
-│   │   ├── python_client.py# Python SDK with business-named methods
-│   │   ├── markdown_docs.py# Human-readable documentation (index + per-endpoint + auth)
-│   │   └── curl_scripts.py # Ready-to-use cURL examples (per-endpoint + all-in-one)
-│   └── formats/            # Shared format definitions
-│       ├── capture_bundle.py   # Capture bundle Pydantic models (17 models)
-│       └── api_spec.py         # Enriched API spec Pydantic models
+│   ├── commands/            # All command packages
+│   │   ├── capture/         # Capture: bundle parsing, inspect, MITM proxy
+│   │   │   ├── cmd.py       # CLI group: capture inspect, capture proxy, capture discover
+│   │   │   ├── inspect.py   # Inspect implementation: summary + per-trace detail views
+│   │   │   ├── proxy.py     # Generic MITM proxy engine (mitmproxy addons, run_proxy, run_discover)
+│   │   │   ├── loader.py    # Unzips and loads a capture bundle (+ write_bundle)
+│   │   │   └── types.py     # Data classes for traces, contexts, timeline (wraps Pydantic + binary)
+│   │   ├── analyze/         # Analysis engine
+│   │   │   ├── pipeline.py  # Orchestrator: build_spec() with parallel branches
+│   │   │   ├── correlator.py# Time-window correlation: UI action → API calls
+│   │   │   ├── protocol.py  # Protocol detection (REST, GraphQL, WebSocket, gRPC, binary)
+│   │   │   ├── tools.py     # LLM tool loop (_call_with_tools), investigation tools, _extract_json
+│   │   │   ├── utils.py     # Shared utilities (_pattern_to_regex, _compact_url, _sanitize_headers)
+│   │   │   ├── schemas.py   # JSON schema inference, annotated schemas, format detection
+│   │   │   └── steps/       # Pipeline steps (Step[In,Out] architecture)
+│   │   │       ├── types.py            # Intermediate dataclasses (Correlation, EndpointGroup, etc.)
+│   │   │       ├── base.py             # Step, LLMStep, MechanicalStep, StepValidationError
+│   │   │       ├── detect_base_url.py  # LLMStep: identify business API base URL
+│   │   │       ├── group_endpoints.py  # LLMStep: group URLs into endpoint patterns
+│   │   │       ├── analyze_auth.py     # LLMStep: detect auth mechanism from all traces
+│   │   │       ├── enrich_and_context.py # LLMStep: batch enrichment + business context
+│   │   │       ├── extract_pairs.py    # MechanicalStep: traces → (method, url) pairs
+│   │   │       ├── filter_traces.py    # MechanicalStep: keep traces matching base URL
+│   │   │       ├── strip_prefix.py     # MechanicalStep: remove base URL path prefix
+│   │   │       ├── mechanical_extraction.py # MechanicalStep: groups → EndpointSpec[]
+│   │   │       ├── build_ws_specs.py   # MechanicalStep: WS connections → WS protocol
+│   │   │       └── assemble.py         # MechanicalStep: combine all parts → ApiSpec
+│   │   ├── generate/        # Output generators
+│   │   │   ├── openapi.py      # Enriched OpenAPI 3.1 output
+│   │   │   ├── mcp_server.py   # MCP server scaffold generation (FastMCP)
+│   │   │   ├── python_client.py# Python SDK with business-named methods
+│   │   │   ├── markdown_docs.py# Human-readable documentation (index + per-endpoint + auth)
+│   │   │   └── curl_scripts.py # Ready-to-use cURL examples (per-endpoint + all-in-one)
+│   │   ├── android/         # Android APK tools (pull, patch, install, cert)
+│   │   │   ├── cmd.py       # CLI group: android list, pull, patch, install, cert
+│   │   │   ├── adb.py       # ADB wrapper: list, pull, install, push cert
+│   │   │   └── patch.py     # APK patching: network security config, signing
+│   │   └── client/          # API client for calling discovered endpoints
+│   │       ├── cmd.py       # CLI command: call
+│   │       └── client.py    # ApiClient: auth, requests, path extraction
+│   ├── formats/             # Shared format definitions
+│   │   ├── capture_bundle.py   # Capture bundle Pydantic models (17 models)
+│   │   └── api_spec.py         # Enriched API spec Pydantic models
+│   └── helpers/             # Shared utilities
+│       └── console.py       # Rich console instance
 ├── tests/
 │   ├── conftest.py         # Shared fixtures (sample_bundle, make_trace, make_context, etc.)
 │   ├── test_formats.py
@@ -101,8 +111,8 @@ api-discover/
 
 | Pattern | Contents | Python construct |
 |---------|----------|-----------------|
-| `formats/<name>.py` | Serialization models (external formats: capture bundle, API spec) | Pydantic `BaseModel` |
-| `<package>/types.py` | Internal types passed between modules | `@dataclass` |
+| `cli/formats/<name>.py` | Serialization models (external formats: capture bundle, API spec) | Pydantic `BaseModel` |
+| `cli/commands/<package>/types.py` | Internal types passed between modules | `@dataclass` |
 
 ## Technology choices
 
@@ -610,7 +620,7 @@ The `build_spec()` function in `pipeline.py` orchestrates a Step-based pipeline 
 
 **Assembly** — `MechanicalStep`: combine all outputs into `ApiSpec`
 
-### Step classes (`cli/analyze/steps/base.py`)
+### Step classes (`cli/commands/analyze/steps/base.py`)
 
 | Class | Behavior |
 |---|---|
@@ -635,37 +645,37 @@ All LLM steps use `_extract_json()` to robustly parse LLM JSON responses (handle
 
 ### Phase 1: Capture bundle format + Extension
 - [x] Pydantic models for capture bundle format (`cli/formats/capture_bundle.py`) — 17 models including PageContent
-- [x] Bundle loader/writer with ZIP serialization (`cli/capture/loader.py`) — binary-safe roundtrip
-- [x] In-memory data classes (`cli/capture/types.py`) — wraps metadata + binary payloads
+- [x] Bundle loader/writer with ZIP serialization (`cli/commands/capture/loader.py`) — binary-safe roundtrip
+- [x] In-memory data classes (`cli/commands/capture/types.py`) — wraps metadata + binary payloads
 - [x] Chrome extension: `background.js` — DevTools Protocol capture, state machine, timestamp conversion
 - [x] Chrome extension: `content.js` — DOM event capture, page content extraction, stable selector generation
 - [x] Chrome extension: popup UI — Start/Stop/Export buttons, live stats, status indicators
 - [x] Tests: model roundtrips, bundle read/write, binary safety, lookups
 
 ### Phase 2: Analysis engine
-- [x] Protocol detection (`cli/analyze/protocol.py`) — REST, GraphQL, gRPC, binary, WS sub-protocols
-- [x] Time-window correlation (`cli/analyze/correlator.py`) — UI action → API calls with configurable window
-- [x] Step-based pipeline (`cli/analyze/pipeline.py`) — orchestrator with parallel branches via asyncio.gather
-- [x] Step abstraction (`cli/analyze/steps/base.py`) — Step[In,Out], LLMStep (retry), MechanicalStep
+- [x] Protocol detection (`cli/commands/analyze/protocol.py`) — REST, GraphQL, gRPC, binary, WS sub-protocols
+- [x] Time-window correlation (`cli/commands/analyze/correlator.py`) — UI action → API calls with configurable window
+- [x] Step-based pipeline (`cli/commands/analyze/pipeline.py`) — orchestrator with parallel branches via asyncio.gather
+- [x] Step abstraction (`cli/commands/analyze/steps/base.py`) — Step[In,Out], LLMStep (retry), MechanicalStep
 - [x] LLM base URL detection (`steps/detect_base_url.py`) — with investigation tools
 - [x] LLM endpoint grouping (`steps/group_endpoints.py`) — with investigation tools + validation
 - [x] LLM batch enrichment + business context (`steps/enrich_and_context.py`) — single call for all endpoints
 - [x] LLM auth analysis (`steps/analyze_auth.py`) — on all unfiltered traces, with mechanical fallback
 - [x] Mechanical extraction (`steps/mechanical_extraction.py`) — schemas, params, UI triggers, trace matching
-- [x] JSON schema inference with format detection (`cli/analyze/schemas.py`) — date, email, UUID, URI
-- [x] Annotated schemas (`cli/analyze/schemas.py`) — schema + observed values per property
-- [x] Investigation tools (`cli/analyze/tools.py`) — decode_base64, decode_url, decode_jwt, tool loop
-- [x] Shared utilities (`cli/analyze/utils.py`) — _pattern_to_regex, _compact_url, _sanitize_headers
+- [x] JSON schema inference with format detection (`cli/commands/analyze/schemas.py`) — date, email, UUID, URI
+- [x] Annotated schemas (`cli/commands/analyze/schemas.py`) — schema + observed values per property
+- [x] Investigation tools (`cli/commands/analyze/tools.py`) — decode_base64, decode_url, decode_jwt, tool loop
+- [x] Shared utilities (`cli/commands/analyze/utils.py`) — _pattern_to_regex, _compact_url, _sanitize_headers
 - [x] Tests: pipeline, steps, schemas, tools, protocol, correlator, mechanical extraction
 - [ ] Real-world testing with actual API keys
 - [ ] Prompt tuning for better business_purpose / user_story quality
 
 ### Phase 4: Output generators
-- [x] OpenAPI 3.1 generator (`cli/generate/openapi.py`) — paths, params, request bodies, security schemes, tags
-- [x] Python client generator (`cli/generate/python_client.py`) — typed methods, auth, docstrings
-- [x] Markdown docs generator (`cli/generate/markdown_docs.py`) — index + per-endpoint + auth docs
-- [x] cURL scripts generator (`cli/generate/curl_scripts.py`) — per-endpoint + all-in-one script
-- [x] MCP server generator (`cli/generate/mcp_server.py`) — FastMCP scaffold with tools, README, requirements
+- [x] OpenAPI 3.1 generator (`cli/commands/generate/openapi.py`) — paths, params, request bodies, security schemes, tags
+- [x] Python client generator (`cli/commands/generate/python_client.py`) — typed methods, auth, docstrings
+- [x] Markdown docs generator (`cli/commands/generate/markdown_docs.py`) — index + per-endpoint + auth docs
+- [x] cURL scripts generator (`cli/commands/generate/curl_scripts.py`) — per-endpoint + all-in-one script
+- [x] MCP server generator (`cli/commands/generate/mcp_server.py`) — FastMCP scaffold with tools, README, requirements
 - [x] Tests: structure, content, file output for all 5 generators
 
 ### Phase 5: Polish
@@ -719,7 +729,7 @@ In the LLM-first pipeline, path parameters are inferred by the LLM during URL gr
 The mechanical `_pattern_to_regex()` helper converts these patterns to regexes for validation: `{param}` → `[^/]+`.
 
 ### Schema inference (mechanical)
-Given multiple JSON response bodies for the same endpoint, build annotated schemas (`cli/analyze/schemas.py`):
+Given multiple JSON response bodies for the same endpoint, build annotated schemas (`cli/commands/analyze/schemas.py`):
 - Union of all keys seen across samples
 - For each key: infer type from values (string, number, boolean, array, object)
 - Mark keys as optional if not present in all responses
