@@ -2,6 +2,7 @@
 
 import base64
 import json
+from typing import Any
 from unittest.mock import MagicMock
 
 import pytest
@@ -9,8 +10,8 @@ import pytest
 from cli.analyze.tools import (
     call_with_tools,
     execute_decode_base64,
-    _execute_decode_jwt,
-    _execute_decode_url,
+    execute_decode_jwt,
+    execute_decode_url,
     TOOL_EXECUTORS,
     INVESTIGATION_TOOLS,
 )
@@ -57,13 +58,13 @@ class TestDecodeBase64:
 
 class TestDecodeUrl:
     def test_simple(self):
-        assert _execute_decode_url("hello%20world") == "hello world"
+        assert execute_decode_url("hello%20world") == "hello world"
 
     def test_complex(self):
-        assert _execute_decode_url("%2Fapi%2Fdata%3Fq%3D1") == "/api/data?q=1"
+        assert execute_decode_url("%2Fapi%2Fdata%3Fq%3D1") == "/api/data?q=1"
 
     def test_already_decoded(self):
-        assert _execute_decode_url("already decoded") == "already decoded"
+        assert execute_decode_url("already decoded") == "already decoded"
 
 
 class TestDecodeJwt:
@@ -72,20 +73,20 @@ class TestDecodeJwt:
         payload = base64.urlsafe_b64encode(json.dumps({"sub": "1234", "name": "Test"}).encode()).decode().rstrip("=")
         token = f"{header}.{payload}.fakesignature"
 
-        result = _execute_decode_jwt(token)
+        result = execute_decode_jwt(token)
         decoded = json.loads(result)
         assert decoded["header"]["alg"] == "HS256"
         assert decoded["payload"]["sub"] == "1234"
 
     def test_invalid_jwt(self):
         with pytest.raises(ValueError, match="expected at least 2"):
-            _execute_decode_jwt("not-a-jwt")
+            execute_decode_jwt("not-a-jwt")
 
 
 # --- call_with_tools tests (async, mocked client) ---
 
 
-def _make_text_response(text: str):
+def _make_text_response(text: str) -> MagicMock:
     """Create a mock response with a single text block and end_turn stop."""
     block = MagicMock()
     block.type = "text"
@@ -96,7 +97,7 @@ def _make_text_response(text: str):
     return resp
 
 
-def _make_tool_use_response(tool_name: str, tool_input: dict, tool_use_id: str = "tool_01"):
+def _make_tool_use_response(tool_name: str, tool_input: dict[str, Any], tool_use_id: str = "tool_01") -> MagicMock:
     """Create a mock response with a tool_use block."""
     block = MagicMock()
     block.type = "tool_use"
@@ -115,7 +116,7 @@ class TestCallWithTools:
         """When the LLM responds without tool_use, return text directly."""
         call_count = [0]
 
-        async def mock_create(**kwargs):
+        async def mock_create(**kwargs: Any) -> MagicMock:
             call_count[0] += 1
             return _make_text_response('{"endpoints": []}')
 
@@ -138,7 +139,7 @@ class TestCallWithTools:
 
         call_count = [0]
 
-        async def mock_create(**kwargs):
+        async def mock_create(**kwargs: Any) -> MagicMock:
             call_count[0] += 1
             if call_count[0] == 1:
                 return tool_resp
@@ -162,7 +163,7 @@ class TestCallWithTools:
 
         call_count = [0]
 
-        async def mock_create(**kwargs):
+        async def mock_create(**kwargs: Any) -> MagicMock:
             call_count[0] += 1
             if call_count[0] == 1:
                 return tool_resp
@@ -187,7 +188,7 @@ class TestCallWithTools:
         """If the LLM keeps calling tools beyond max_iterations, raise ValueError."""
         tool_resp = _make_tool_use_response("decode_url", {"value": "%20"})
 
-        async def mock_create(**kwargs):
+        async def mock_create(**kwargs: Any) -> MagicMock:
             return tool_resp
 
         client = MagicMock()
@@ -208,7 +209,7 @@ class TestCallWithTools:
 
         call_count = [0]
 
-        async def mock_create(**kwargs):
+        async def mock_create(**kwargs: Any) -> MagicMock:
             call_count[0] += 1
             if call_count[0] == 1:
                 return tool_resp
@@ -232,7 +233,7 @@ class TestDetectBaseUrlStep:
     @pytest.mark.asyncio
     async def test_returns_base_url(self):
         """DetectBaseUrlStep should parse the LLM response and return the base_url string."""
-        async def mock_create(**kwargs):
+        async def mock_create(**kwargs: Any) -> MagicMock:
             return _make_text_response('{"base_url": "https://www.example.com/api"}')
 
         client = MagicMock()
@@ -247,7 +248,7 @@ class TestDetectBaseUrlStep:
     @pytest.mark.asyncio
     async def test_strips_trailing_slash(self):
         """Trailing slash should be stripped from the returned base URL."""
-        async def mock_create(**kwargs):
+        async def mock_create(**kwargs: Any) -> MagicMock:
             return _make_text_response('{"base_url": "https://api.example.com/"}')
 
         client = MagicMock()
@@ -260,7 +261,7 @@ class TestDetectBaseUrlStep:
     @pytest.mark.asyncio
     async def test_origin_only(self):
         """LLM may return just the origin without a path prefix."""
-        async def mock_create(**kwargs):
+        async def mock_create(**kwargs: Any) -> MagicMock:
             return _make_text_response('{"base_url": "https://api.example.com"}')
 
         client = MagicMock()
@@ -273,7 +274,7 @@ class TestDetectBaseUrlStep:
     @pytest.mark.asyncio
     async def test_invalid_response_raises(self):
         """If the LLM doesn't return {base_url: ...}, raise ValueError."""
-        async def mock_create(**kwargs):
+        async def mock_create(**kwargs: Any) -> MagicMock:
             return _make_text_response('{"something_else": "value"}')
 
         client = MagicMock()

@@ -33,10 +33,10 @@ class ApiClient:
             self._spec = ApiSpec.model_validate_json(Path(spec).read_text())
 
         self._session = requests.Session()
-        self._refresh_token_value: str | None = None
+        self.refresh_token_value: str | None = None
 
         # Resolve base URL
-        self._base_url = (
+        self.base_url = (
             base_url
             or os.environ.get("API_BASE_URL")
             or self._spec.protocols.rest.base_url
@@ -93,7 +93,7 @@ class ApiClient:
         response = self._do_call(endpoint, kwargs)
 
         # Auto-refresh on 401
-        if response.status_code == 401 and self._refresh_token_value and self._spec.auth.refresh_config:
+        if response.status_code == 401 and self.refresh_token_value and self._spec.auth.refresh_config:
             if self._refresh_token():
                 response = self._do_call(endpoint, kwargs)
 
@@ -130,7 +130,7 @@ class ApiClient:
         path = endpoint.path
         for name, value in path_params.items():
             path = path.replace("{" + name + "}", value)
-        url = f"{self._base_url}{path}"
+        url = f"{self.base_url}{path}"
 
         method = endpoint.method.upper()
         request_kwargs: dict[str, Any] = {"params": query_params or None}
@@ -165,7 +165,7 @@ class ApiClient:
         resp.raise_for_status()
 
         data = resp.json()
-        token = self._extract_path(data, config.token_response_path)
+        token = self.extract_path(data, config.token_response_path)
         if not token:
             raise ValueError(
                 f"Could not extract token from login response at path '{config.token_response_path}'"
@@ -174,17 +174,17 @@ class ApiClient:
 
         # Extract refresh token if configured
         if config.refresh_token_response_path:
-            rt = self._extract_path(data, config.refresh_token_response_path)
+            rt = self.extract_path(data, config.refresh_token_response_path)
             if rt:
-                self._refresh_token_value = str(rt)
+                self.refresh_token_value = str(rt)
 
     def _refresh_token(self) -> bool:
         """Refresh the access token via refresh_config. Returns True on success."""
         config = self._spec.auth.refresh_config
-        if config is None or not self._refresh_token_value:
+        if config is None or not self.refresh_token_value:
             return False
 
-        body: dict[str, str] = {config.token_field: self._refresh_token_value}
+        body: dict[str, str] = {config.token_field: self.refresh_token_value}
         body.update(config.extra_fields)
 
         url = self._resolve_url(config.url)
@@ -198,7 +198,7 @@ class ApiClient:
             return False
 
         data = resp.json()
-        token = self._extract_path(data, config.token_response_path)
+        token = self.extract_path(data, config.token_response_path)
         if not token:
             return False
 
@@ -218,10 +218,10 @@ class ApiClient:
         """Resolve a URL: absolute if starts with http, else relative to base_url."""
         if url.startswith("http://") or url.startswith("https://"):
             return url
-        return f"{self._base_url}{url}"
+        return f"{self.base_url}{url}"
 
     @staticmethod
-    def _extract_path(data: dict[str, Any], dot_path: str) -> Any:
+    def extract_path(data: dict[str, Any], dot_path: str) -> Any:
         """Traverse a dict with dot-notation: 'data.access_token' -> data["data"]["access_token"]."""
         if not dot_path:
             return None

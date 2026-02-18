@@ -1,20 +1,22 @@
 """Tests for the spec builder (mechanical utilities and pipeline)."""
 
 import json
+from typing import Any
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
 from cli.analyze.schemas import detect_format, extract_query_params, infer_json_schema
 from cli.analyze.steps import EndpointGroup
-from cli.analyze.steps.enrich_and_context import _apply_enrichment
+from cli.analyze.steps.enrich_and_context import _apply_enrichment  # pyright: ignore[reportPrivateUsage]
 from cli.analyze.steps.mechanical_extraction import (
-    _build_endpoint_mechanical,
-    _extract_rate_limit,
-    _find_traces_for_group,
-    _make_endpoint_id,
+    _build_endpoint_mechanical as _build_endpoint_mechanical,  # pyright: ignore[reportPrivateUsage]
+    _extract_rate_limit as _extract_rate_limit,  # pyright: ignore[reportPrivateUsage]
+    _find_traces_for_group as _find_traces_for_group,  # pyright: ignore[reportPrivateUsage]
+    _make_endpoint_id as _make_endpoint_id,  # pyright: ignore[reportPrivateUsage]
 )
 from cli.analyze.pipeline import build_spec
+from cli.capture.models import CaptureBundle
 from cli.formats.api_spec import EndpointSpec, ParameterSpec, RequestSpec, ResponseSpec
 from cli.formats.capture_bundle import Header
 from tests.conftest import make_trace
@@ -340,13 +342,13 @@ class TestApplyEnrichment:
 
 
 def _make_mock_create(
-    base_url_response=None,
-    groups_response=None,
-    auth_response=None,
-    enrich_response=None,
-    detail_response=None,
-    context_response=None,
-):
+    base_url_response: str | None = None,
+    groups_response: str | None = None,
+    auth_response: str | None = None,
+    enrich_response: str | None = None,
+    detail_response: str | None = None,
+    context_response: str | None = None,
+) -> Any:
     """Build a mock client.messages.create that routes by prompt content."""
 
     if base_url_response is None:
@@ -378,12 +380,12 @@ def _make_mock_create(
         })
     # detail_response and context_response kept for backward compat but not used in new pipeline
 
-    async def mock_create(**kwargs):
+    async def mock_create(**kwargs: Any) -> MagicMock:
         mock_response = MagicMock()
         mock_content = MagicMock()
         mock_content.type = "text"
         mock_response.stop_reason = "end_turn"
-        msg = kwargs.get("messages", [{}])[0].get("content", "")
+        msg: str = kwargs.get("messages", [{}])[0].get("content", "")
 
         if "base URL" in msg and "business API" in msg:
             mock_content.text = base_url_response
@@ -417,7 +419,7 @@ class TestBuildSpec:
     """Tests for the full pipeline with mocked LLM."""
 
     @pytest.mark.asyncio
-    async def test_full_build(self, sample_bundle):
+    async def test_full_build(self, sample_bundle: CaptureBundle) -> None:
         mock_client = AsyncMock()
         mock_client.messages.create = _make_mock_create()
 
@@ -437,7 +439,7 @@ class TestBuildSpec:
         assert spec.protocols.rest.base_url == "https://api.example.com"
 
     @pytest.mark.asyncio
-    async def test_websocket_specs_built(self, sample_bundle):
+    async def test_websocket_specs_built(self, sample_bundle: CaptureBundle) -> None:
         mock_client = AsyncMock()
         mock_client.messages.create = _make_mock_create()
 
@@ -450,7 +452,7 @@ class TestBuildSpec:
         assert len(ws.messages) == 2
 
     @pytest.mark.asyncio
-    async def test_traces_filtered_by_base_url(self, sample_bundle):
+    async def test_traces_filtered_by_base_url(self, sample_bundle: CaptureBundle) -> None:
         """Traces not matching the detected base URL should be excluded."""
         from tests.conftest import make_trace as mt
         cdn_trace = mt("t_cdn", "GET", "https://cdn.example.com/style.css", 200, 999500)
@@ -466,14 +468,14 @@ class TestBuildSpec:
 
         spec = await build_spec(sample_bundle, client=mock_client, model="test-model")
 
-        all_refs = []
+        all_refs: list[str] = []
         for ep in spec.protocols.rest.endpoints:
             all_refs.extend(ep.source_trace_refs)
         assert "t_cdn" not in all_refs
         assert spec.protocols.rest.base_url == "https://api.example.com"
 
     @pytest.mark.asyncio
-    async def test_api_name_from_enrichment(self, sample_bundle):
+    async def test_api_name_from_enrichment(self, sample_bundle: CaptureBundle) -> None:
         """When the LLM returns an api_name, it should be used as spec.name."""
         mock_client = AsyncMock()
         mock_client.messages.create = _make_mock_create(
@@ -493,7 +495,7 @@ class TestBuildSpec:
         assert spec.name == "Acme User Management API"
 
     @pytest.mark.asyncio
-    async def test_api_name_fallback_to_app_name(self, sample_bundle):
+    async def test_api_name_fallback_to_app_name(self, sample_bundle: CaptureBundle) -> None:
         """When no api_name is returned, fall back to bundle app name."""
         mock_client = AsyncMock()
         mock_client.messages.create = _make_mock_create(
@@ -512,7 +514,7 @@ class TestBuildSpec:
         assert spec.name == "Test App API"
 
     @pytest.mark.asyncio
-    async def test_ws_enrichment_applied(self, sample_bundle):
+    async def test_ws_enrichment_applied(self, sample_bundle: CaptureBundle) -> None:
         """When the LLM returns websocket_purposes, they should be applied."""
         mock_client = AsyncMock()
         mock_client.messages.create = _make_mock_create(

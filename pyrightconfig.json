@@ -1,7 +1,7 @@
 {
   "typeCheckingMode": "strict",
   "pythonVersion": "3.11",
-  "include": ["cli"],
+  "include": ["cli", "tests"],
   "venvPath": ".",
   "venv": ".venv"
 }

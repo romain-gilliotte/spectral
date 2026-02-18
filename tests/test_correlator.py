@@ -1,14 +1,18 @@
 """Tests for time-window correlator."""
 
 from cli.analyze.correlator import correlate, find_uncorrelated_traces
-from cli.capture.models import CaptureBundle
+from cli.capture.models import CaptureBundle, Context, Trace, WsConnection
 from cli.formats.capture_bundle import (
     AppInfo, BrowserInfo, CaptureManifest, CaptureStats, Timeline,
 )
 from tests.conftest import make_context, make_trace, make_ws_message, make_ws_connection
 
 
-def _make_bundle(traces=None, contexts=None, ws_connections=None):
+def _make_bundle(
+    traces: list[Trace] | None = None,
+    contexts: list[Context] | None = None,
+    ws_connections: list[WsConnection] | None = None,
+) -> CaptureBundle:
     """Helper to make a minimal bundle for testing correlator."""
     return CaptureBundle(
         manifest=CaptureManifest(

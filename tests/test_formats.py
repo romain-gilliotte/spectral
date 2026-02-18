@@ -41,7 +41,7 @@ class TestCaptureBundle:
         assert h.name == "Content-Type"
         assert h.value == "application/json"
 
-    def test_manifest_roundtrip(self, sample_manifest):
+    def test_manifest_roundtrip(self, sample_manifest: CaptureManifest):
         json_str = sample_manifest.model_dump_json()
         loaded = CaptureManifest.model_validate_json(json_str)
         assert loaded.capture_id == sample_manifest.capture_id

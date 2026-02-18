@@ -130,12 +130,12 @@ def execute_decode_base64(value: str) -> str:
         return f"<binary: {raw.hex()}>"
 
 
-def _execute_decode_url(value: str) -> str:
+def execute_decode_url(value: str) -> str:
     """URL-decode a percent-encoded string."""
     return unquote(value)
 
 
-def _execute_decode_jwt(token: str) -> str:
+def execute_decode_jwt(token: str) -> str:
     """Decode a JWT header + payload (no signature verification)."""
     parts = token.split(".")
     if len(parts) < 2:
@@ -150,8 +150,8 @@ def _execute_decode_jwt(token: str) -> str:
 
 TOOL_EXECUTORS: dict[str, Callable[[dict[str, Any]], str]] = {
     "decode_base64": lambda inp: execute_decode_base64(inp["value"]),
-    "decode_url": lambda inp: _execute_decode_url(inp["value"]),
-    "decode_jwt": lambda inp: _execute_decode_jwt(inp["token"]),
+    "decode_url": lambda inp: execute_decode_url(inp["value"]),
+    "decode_jwt": lambda inp: execute_decode_jwt(inp["token"]),
 }
 
 

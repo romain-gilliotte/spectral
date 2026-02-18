@@ -1,5 +1,7 @@
 """Tests for the CLI commands."""
 
+from __future__ import annotations
+
 import json
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -7,10 +9,11 @@ from unittest.mock import AsyncMock, MagicMock, patch
 from click.testing import CliRunner
 
 from cli.capture.loader import write_bundle
+from cli.capture.models import CaptureBundle
 from cli.main import cli
 
 
-def _make_mock_anthropic_module():
+def _make_mock_anthropic_module() -> MagicMock:
     """Create a mock anthropic module with AsyncAnthropic client."""
 
     # Standard LLM responses for the pipeline
@@ -38,12 +41,15 @@ def _make_mock_anthropic_module():
 
     base_url_response = json.dumps({"base_url": "https://api.example.com"})
 
-    async def mock_create(**kwargs):
+    async def mock_create(**kwargs: object) -> MagicMock:
         mock_response = MagicMock()
         mock_content = MagicMock()
         mock_content.type = "text"
         mock_response.stop_reason = "end_turn"
-        msg = kwargs.get("messages", [{}])[0].get("content", "")
+        messages_raw = kwargs.get("messages")
+        messages: list[dict[str, str]] = messages_raw if isinstance(messages_raw, list) else []  # pyright: ignore[reportUnknownVariableType]
+        first_msg: dict[str, str] = messages[0] if len(messages) > 0 else {}  # pyright: ignore[reportUnknownArgumentType, reportUnknownMemberType]
+        msg: str = str(first_msg.get("content", ""))
         if "base URL" in msg and "business API" in msg:
             mock_content.text = base_url_response
         elif "Group these observed URLs" in msg:
@@ -67,7 +73,7 @@ def _make_mock_anthropic_module():
 
 
 class TestAnalyzeCommand:
-    def test_analyze_basic(self, sample_bundle, tmp_path):
+    def test_analyze_basic(self, sample_bundle: CaptureBundle, tmp_path: Path) -> None:
         """Test the analyze command with mocked LLM."""
         bundle_path = tmp_path / "capture.zip"
         write_bundle(sample_bundle, bundle_path)
@@ -89,7 +95,7 @@ class TestAnalyzeCommand:
         assert "api_spec_version" in spec
         assert spec["name"] == "Test App API"
 
-    def test_analyze_produces_endpoints(self, sample_bundle, tmp_path):
+    def test_analyze_produces_endpoints(self, sample_bundle: CaptureBundle, tmp_path: Path) -> None:
         bundle_path = tmp_path / "capture.zip"
         write_bundle(sample_bundle, bundle_path)
 
@@ -110,10 +116,9 @@ class TestAnalyzeCommand:
 
 
 class TestGenerateCommand:
-    def _create_spec_file(self, sample_bundle, tmp_path) -> Path:
+    def _create_spec_file(self, sample_bundle: CaptureBundle, tmp_path: Path) -> Path:
         """Helper to create a spec file from a sample bundle using mocked LLM."""
         import asyncio
-        from unittest.mock import MagicMock
         from cli.analyze.pipeline import build_spec
 
         mock_client = AsyncMock()
@@ -133,12 +138,15 @@ class TestGenerateCommand:
             },
         })
 
-        async def mock_create(**kwargs):
+        async def mock_create(**kwargs: object) -> MagicMock:
             mock_response = MagicMock()
             mock_content = MagicMock()
             mock_content.type = "text"
             mock_response.stop_reason = "end_turn"
-            msg = kwargs.get("messages", [{}])[0].get("content", "")
+            messages_raw = kwargs.get("messages")
+            messages: list[dict[str, str]] = messages_raw if isinstance(messages_raw, list) else []  # pyright: ignore[reportUnknownVariableType]
+            first_msg: dict[str, str] = messages[0] if len(messages) > 0 else {}  # pyright: ignore[reportUnknownArgumentType, reportUnknownMemberType]
+            msg: str = str(first_msg.get("content", ""))
             if "base URL" in msg and "business API" in msg:
                 mock_content.text = json.dumps({"base_url": "https://api.example.com"})
             elif "Group these observed URLs" in msg:
@@ -159,7 +167,7 @@ class TestGenerateCommand:
         spec_path.write_text(spec.model_dump_json(indent=2, by_alias=True))
         return spec_path
 
-    def test_generate_openapi(self, sample_bundle, tmp_path):
+    def test_generate_openapi(self, sample_bundle: CaptureBundle, tmp_path: Path) -> None:
         spec_path = self._create_spec_file(sample_bundle, tmp_path)
         output_path = tmp_path / "openapi.yaml"
 
@@ -173,7 +181,7 @@ class TestGenerateCommand:
         assert result.exit_code == 0, result.output
         assert output_path.exists()
 
-    def test_generate_python_client(self, sample_bundle, tmp_path):
+    def test_generate_python_client(self, sample_bundle: CaptureBundle, tmp_path: Path) -> None:
         spec_path = self._create_spec_file(sample_bundle, tmp_path)
         output_path = tmp_path / "client.py"
 
@@ -187,7 +195,7 @@ class TestGenerateCommand:
         assert result.exit_code == 0, result.output
         assert output_path.exists()
 
-    def test_generate_markdown_docs(self, sample_bundle, tmp_path):
+    def test_generate_markdown_docs(self, sample_bundle: CaptureBundle, tmp_path: Path) -> None:
         spec_path = self._create_spec_file(sample_bundle, tmp_path)
         output_path = tmp_path / "docs"
 
@@ -201,7 +209,7 @@ class TestGenerateCommand:
         assert result.exit_code == 0, result.output
         assert (output_path / "index.md").exists()
 
-    def test_generate_curl_scripts(self, sample_bundle, tmp_path):
+    def test_generate_curl_scripts(self, sample_bundle: CaptureBundle, tmp_path: Path) -> None:
         spec_path = self._create_spec_file(sample_bundle, tmp_path)
         output_path = tmp_path / "scripts"
 
@@ -215,7 +223,7 @@ class TestGenerateCommand:
         assert result.exit_code == 0, result.output
         assert (output_path / "all_requests.sh").exists()
 
-    def test_generate_mcp_server(self, sample_bundle, tmp_path):
+    def test_generate_mcp_server(self, sample_bundle: CaptureBundle, tmp_path: Path) -> None:
         spec_path = self._create_spec_file(sample_bundle, tmp_path)
         output_path = tmp_path / "mcp-server"
 
@@ -231,7 +239,7 @@ class TestGenerateCommand:
 
 
 class TestInspectCommand:
-    def test_inspect_summary(self, sample_bundle, tmp_path):
+    def test_inspect_summary(self, sample_bundle: CaptureBundle, tmp_path: Path) -> None:
         bundle_path = tmp_path / "capture.zip"
         write_bundle(sample_bundle, bundle_path)
 
@@ -242,7 +250,7 @@ class TestInspectCommand:
         assert "Test App" in result.output
         assert "test-capture-001" in result.output
 
-    def test_inspect_trace(self, sample_bundle, tmp_path):
+    def test_inspect_trace(self, sample_bundle: CaptureBundle, tmp_path: Path) -> None:
         bundle_path = tmp_path / "capture.zip"
         write_bundle(sample_bundle, bundle_path)
 
@@ -253,7 +261,7 @@ class TestInspectCommand:
         assert "t_0001" in result.output
         assert "GET" in result.output
 
-    def test_inspect_trace_not_found(self, sample_bundle, tmp_path):
+    def test_inspect_trace_not_found(self, sample_bundle: CaptureBundle, tmp_path: Path) -> None:
         bundle_path = tmp_path / "capture.zip"
         write_bundle(sample_bundle, bundle_path)
 
@@ -265,7 +273,7 @@ class TestInspectCommand:
 
 
 class TestCallCommand:
-    def _create_spec_file(self, tmp_path) -> Path:
+    def _create_spec_file(self, tmp_path: Path) -> Path:
         """Create a minimal spec file for call command testing."""
         from cli.formats.api_spec import (
             ApiSpec,
@@ -313,7 +321,7 @@ class TestCallCommand:
         spec_path.write_text(spec.model_dump_json(indent=2, by_alias=True))
         return spec_path
 
-    def test_call_list(self, tmp_path):
+    def test_call_list(self, tmp_path: Path) -> None:
         spec_path = self._create_spec_file(tmp_path)
         runner = CliRunner()
         result = runner.invoke(cli, ["call", str(spec_path), "--list", "--token", "tok"])
@@ -321,7 +329,7 @@ class TestCallCommand:
         assert "get_users" in result.output
         assert "get_user" in result.output
 
-    def test_call_list_no_args(self, tmp_path):
+    def test_call_list_no_args(self, tmp_path: Path) -> None:
         """When no endpoint is specified, should list endpoints."""
         spec_path = self._create_spec_file(tmp_path)
         runner = CliRunner()
@@ -330,7 +338,7 @@ class TestCallCommand:
         assert "get_users" in result.output
 
     @patch("cli.client.requests.Session")
-    def test_call_endpoint(self, mock_session_cls, tmp_path):
+    def test_call_endpoint(self, mock_session_cls: MagicMock, tmp_path: Path) -> None:
         mock_session = MagicMock()
         mock_session.headers = {}
         mock_resp = MagicMock()
@@ -348,7 +356,7 @@ class TestCallCommand:
         ])
         assert result.exit_code == 0
 
-    def test_call_invalid_param_format(self, tmp_path):
+    def test_call_invalid_param_format(self, tmp_path: Path) -> None:
         spec_path = self._create_spec_file(tmp_path)
         runner = CliRunner()
         result = runner.invoke(cli, [
@@ -358,7 +366,7 @@ class TestCallCommand:
 
 
 class TestPipelineCommand:
-    def test_pipeline(self, sample_bundle, tmp_path):
+    def test_pipeline(self, sample_bundle: CaptureBundle, tmp_path: Path) -> None:
         bundle_path = tmp_path / "capture.zip"
         write_bundle(sample_bundle, bundle_path)
 

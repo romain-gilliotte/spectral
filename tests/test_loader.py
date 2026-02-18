@@ -1,6 +1,6 @@
 """Tests for capture bundle loader/writer."""
 
-
+from pathlib import Path
 
 from cli.capture.loader import (
     load_bundle,
@@ -12,7 +12,7 @@ from cli.capture.models import CaptureBundle
 
 
 class TestBundleRoundtrip:
-    def test_write_and_load_bytes(self, sample_bundle):
+    def test_write_and_load_bytes(self, sample_bundle: CaptureBundle) -> None:
         """Test writing a bundle to bytes and loading it back."""
         data = write_bundle_bytes(sample_bundle)
         loaded = load_bundle_bytes(data)
@@ -24,7 +24,7 @@ class TestBundleRoundtrip:
         assert len(loaded.contexts) == len(sample_bundle.contexts)
         assert len(loaded.timeline.events) == len(sample_bundle.timeline.events)
 
-    def test_write_and_load_file(self, sample_bundle, tmp_path):
+    def test_write_and_load_file(self, sample_bundle: CaptureBundle, tmp_path: Path) -> None:
         """Test writing a bundle to disk and loading it back."""
         path = tmp_path / "test_capture.zip"
         write_bundle(sample_bundle, path)
@@ -35,7 +35,7 @@ class TestBundleRoundtrip:
         assert loaded.manifest.capture_id == sample_bundle.manifest.capture_id
         assert len(loaded.traces) == len(sample_bundle.traces)
 
-    def test_trace_bodies_preserved(self, sample_bundle):
+    def test_trace_bodies_preserved(self, sample_bundle: CaptureBundle) -> None:
         """Test that request/response bodies survive roundtrip."""
         data = write_bundle_bytes(sample_bundle)
         loaded = load_bundle_bytes(data)
@@ -44,7 +44,7 @@ class TestBundleRoundtrip:
             assert loaded_trace.request_body == orig.request_body
             assert loaded_trace.response_body == orig.response_body
 
-    def test_ws_messages_preserved(self, sample_bundle):
+    def test_ws_messages_preserved(self, sample_bundle: CaptureBundle) -> None:
         """Test that WebSocket messages survive roundtrip."""
         data = write_bundle_bytes(sample_bundle)
         loaded = load_bundle_bytes(data)
@@ -56,7 +56,7 @@ class TestBundleRoundtrip:
         assert len(ws.messages) == 2
         assert ws.messages[0].payload == b'{"type":"subscribe","id":"1"}'
 
-    def test_context_preserved(self, sample_bundle):
+    def test_context_preserved(self, sample_bundle: CaptureBundle) -> None:
         """Test that contexts survive roundtrip."""
         data = write_bundle_bytes(sample_bundle)
         loaded = load_bundle_bytes(data)
@@ -65,7 +65,7 @@ class TestBundleRoundtrip:
         assert loaded.contexts[0].meta.action == "click"
         assert loaded.contexts[0].meta.element.text == "Users"
 
-    def test_timeline_preserved(self, sample_bundle):
+    def test_timeline_preserved(self, sample_bundle: CaptureBundle) -> None:
         """Test that timeline survives roundtrip."""
         data = write_bundle_bytes(sample_bundle)
         loaded = load_bundle_bytes(data)
@@ -130,26 +130,26 @@ class TestBundleRoundtrip:
 
 
 class TestBundleLookups:
-    def test_get_trace(self, sample_bundle):
+    def test_get_trace(self, sample_bundle: CaptureBundle) -> None:
         trace = sample_bundle.get_trace("t_0001")
         assert trace is not None
         assert trace.meta.request.method == "GET"
 
-    def test_get_trace_not_found(self, sample_bundle):
+    def test_get_trace_not_found(self, sample_bundle: CaptureBundle) -> None:
         assert sample_bundle.get_trace("nonexistent") is None
 
-    def test_get_context(self, sample_bundle):
+    def test_get_context(self, sample_bundle: CaptureBundle) -> None:
         ctx = sample_bundle.get_context("c_0001")
         assert ctx is not None
         assert ctx.meta.action == "click"
 
-    def test_get_context_not_found(self, sample_bundle):
+    def test_get_context_not_found(self, sample_bundle: CaptureBundle) -> None:
         assert sample_bundle.get_context("nonexistent") is None
 
-    def test_get_ws_connection(self, sample_bundle):
+    def test_get_ws_connection(self, sample_bundle: CaptureBundle) -> None:
         ws = sample_bundle.get_ws_connection("ws_0001")
         assert ws is not None
         assert ws.meta.url == "wss://realtime.example.com/ws"
 
-    def test_get_ws_connection_not_found(self, sample_bundle):
+    def test_get_ws_connection_not_found(self, sample_bundle: CaptureBundle) -> None:
         assert sample_bundle.get_ws_connection("nonexistent") is None

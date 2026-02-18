@@ -1,5 +1,6 @@
 """Tests for output generators."""
 
+from pathlib import Path
 
 import yaml
 
@@ -190,7 +191,7 @@ class TestOpenApiGenerator:
         assert "200" in get_pet["responses"]
         assert "404" in get_pet["responses"]
 
-    def test_write_to_file(self, tmp_path):
+    def test_write_to_file(self, tmp_path: Path) -> None:
         spec = _make_sample_spec()
         out = tmp_path / "openapi.yaml"
         generate_openapi(spec, out)
@@ -238,7 +239,7 @@ class TestPythonClientGenerator:
         assert "name: str" in code
         assert "json_body" in code
 
-    def test_write_to_file(self, tmp_path):
+    def test_write_to_file(self, tmp_path: Path) -> None:
         spec = _make_sample_spec()
         out = tmp_path / "client.py"
         generate_python_client(spec, out)
@@ -296,7 +297,7 @@ class TestMarkdownDocsGenerator:
         assert "# Authentication" in doc
         assert "bearer_token" in doc
 
-    def test_write_to_directory(self, tmp_path):
+    def test_write_to_directory(self, tmp_path: Path) -> None:
         spec = _make_sample_spec()
         out = tmp_path / "docs"
         generate_markdown_docs(spec, out)
@@ -341,7 +342,7 @@ class TestCurlScriptsGenerator:
         assert "get_pets" in script
         assert "post_pets" in script
 
-    def test_write_to_directory(self, tmp_path):
+    def test_write_to_directory(self, tmp_path: Path) -> None:
         spec = _make_sample_spec()
         out = tmp_path / "scripts"
         generate_curl_scripts(spec, out)
@@ -381,7 +382,7 @@ class TestMcpServerGenerator:
         assert "Bearer" in code
         assert "AUTH_TOKEN" in code
 
-    def test_write_to_directory(self, tmp_path):
+    def test_write_to_directory(self, tmp_path: Path) -> None:
         spec = _make_sample_spec()
         out = tmp_path / "mcp-server"
         generate_mcp_server(spec, out)
@@ -390,7 +391,7 @@ class TestMcpServerGenerator:
         assert (out / "requirements.txt").exists()
         assert (out / "README.md").exists()
 
-    def test_requirements(self, tmp_path):
+    def test_requirements(self, tmp_path: Path) -> None:
         spec = _make_sample_spec()
         out = tmp_path / "mcp-server"
         generate_mcp_server(spec, out)
@@ -399,7 +400,7 @@ class TestMcpServerGenerator:
         assert "mcp" in reqs
         assert "requests" in reqs
 
-    def test_readme_lists_tools(self, tmp_path):
+    def test_readme_lists_tools(self, tmp_path: Path) -> None:
         spec = _make_sample_spec()
         out = tmp_path / "mcp-server"
         generate_mcp_server(spec, out)

@@ -196,7 +196,7 @@ def sample_contexts() -> list[Context]:
 
 
 @pytest.fixture
-def sample_bundle(sample_manifest, sample_traces, sample_contexts) -> CaptureBundle:
+def sample_bundle(sample_manifest: CaptureManifest, sample_traces: list[Trace], sample_contexts: list[Context]) -> CaptureBundle:
     """Create a complete sample capture bundle."""
     ws_msg1 = make_ws_message("ws_0001_m001", "ws_0001", 1001500, "send", b'{"type":"subscribe","id":"1"}')
     ws_msg2 = make_ws_message("ws_0001_m002", "ws_0001", 1001600, "receive", b'{"type":"next","id":"1","payload":{"data":123}}')

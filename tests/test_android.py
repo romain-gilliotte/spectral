@@ -26,7 +26,7 @@ from cli.android.adb import (
 from cli.android.patch import (
     NETWORK_SECURITY_CONFIG,
     PatchError,
-    _patch_manifest,
+    _patch_manifest,  # pyright: ignore[reportPrivateUsage]
     patch_apk_dir,
     sign_apk,
 )
@@ -39,12 +39,12 @@ from cli.main import cli
 
 
 class TestCheckAdb:
-    def test_adb_not_found(self):
+    def test_adb_not_found(self) -> None:
         with patch("shutil.which", return_value=None):
             with pytest.raises(AdbError, match="adb not found"):
                 check_adb()
 
-    def test_adb_found_success(self):
+    def test_adb_found_success(self) -> None:
         with patch("shutil.which", return_value="/usr/bin/adb"):
             with patch("subprocess.run") as mock_run:
                 mock_run.return_value = subprocess.CompletedProcess(
@@ -52,7 +52,7 @@ class TestCheckAdb:
                 )
                 check_adb()  # Should not raise
 
-    def test_adb_found_but_fails(self):
+    def test_adb_found_but_fails(self) -> None:
         with patch("shutil.which", return_value="/usr/bin/adb"):
             with patch("subprocess.run") as mock_run:
                 mock_run.return_value = subprocess.CompletedProcess(
@@ -63,7 +63,7 @@ class TestCheckAdb:
 
 
 class TestListPackages:
-    def test_list_packages_basic(self):
+    def test_list_packages_basic(self) -> None:
         output = "package:com.example.app\npackage:com.example.other\n"
         with patch("subprocess.run") as mock_run:
             mock_run.return_value = subprocess.CompletedProcess(
@@ -72,7 +72,7 @@ class TestListPackages:
             pkgs = list_packages()
             assert pkgs == ["com.example.app", "com.example.other"]
 
-    def test_list_packages_with_filter(self):
+    def test_list_packages_with_filter(self) -> None:
         output = "package:com.example.app\n"
         with patch("subprocess.run") as mock_run:
             mock_run.return_value = subprocess.CompletedProcess(
@@ -84,7 +84,7 @@ class TestListPackages:
             assert "com.example" in call_args
             assert pkgs == ["com.example.app"]
 
-    def test_list_packages_error(self):
+    def test_list_packages_error(self) -> None:
         with patch("subprocess.run") as mock_run:
             mock_run.return_value = subprocess.CompletedProcess(
                 args=[], returncode=1, stdout="", stderr="error: no devices"
@@ -94,7 +94,7 @@ class TestListPackages:
 
 
 class TestGetApkPaths:
-    def test_single_apk(self):
+    def test_single_apk(self) -> None:
         output = "package:/data/app/com.example.app-1/base.apk\n"
         with patch("subprocess.run") as mock_run:
             mock_run.return_value = subprocess.CompletedProcess(
@@ -103,7 +103,7 @@ class TestGetApkPaths:
             paths = get_apk_paths("com.example.app")
             assert paths == ["/data/app/com.example.app-1/base.apk"]
 
-    def test_split_apks(self):
+    def test_split_apks(self) -> None:
         output = (
             "package:/data/app/com.example.app-1/base.apk\n"
             "package:/data/app/com.example.app-1/split_config.arm64_v8a.apk\n"
@@ -115,7 +115,7 @@ class TestGetApkPaths:
             paths = get_apk_paths("com.example.app")
             assert len(paths) == 2
 
-    def test_package_not_found(self):
+    def test_package_not_found(self) -> None:
         with patch("subprocess.run") as mock_run:
             mock_run.return_value = subprocess.CompletedProcess(
                 args=[], returncode=1, stdout="", stderr=""
@@ -125,7 +125,7 @@ class TestGetApkPaths:
 
 
 class TestPullApk:
-    def test_pull_success(self, tmp_path):
+    def test_pull_success(self, tmp_path: Path) -> None:
         local_path = tmp_path / "app.apk"
         local_path.write_bytes(b"fake-apk")  # Simulate the pull result
 
@@ -136,7 +136,7 @@ class TestPullApk:
             result = pull_apk("/data/app/base.apk", local_path)
             assert result == local_path
 
-    def test_pull_failure(self, tmp_path):
+    def test_pull_failure(self, tmp_path: Path) -> None:
         local_path = tmp_path / "app.apk"
         with patch("subprocess.run") as mock_run:
             mock_run.return_value = subprocess.CompletedProcess(
@@ -147,7 +147,7 @@ class TestPullApk:
 
 
 class TestSetProxy:
-    def test_set_proxy_success(self):
+    def test_set_proxy_success(self) -> None:
         with patch("subprocess.run") as mock_run:
             mock_run.return_value = subprocess.CompletedProcess(
                 args=[], returncode=0, stdout="", stderr=""
@@ -157,7 +157,7 @@ class TestSetProxy:
             assert "settings" in cmd
             assert "192.168.1.10:8080" in cmd
 
-    def test_set_proxy_failure(self):
+    def test_set_proxy_failure(self) -> None:
         with patch("subprocess.run") as mock_run:
             mock_run.return_value = subprocess.CompletedProcess(
                 args=[], returncode=1, stdout="", stderr="permission denied"
@@ -167,7 +167,7 @@ class TestSetProxy:
 
 
 class TestClearProxy:
-    def test_clear_proxy_runs_both_commands(self):
+    def test_clear_proxy_runs_both_commands(self) -> None:
         with patch("subprocess.run") as mock_run:
             mock_run.return_value = subprocess.CompletedProcess(
                 args=[], returncode=0, stdout="", stderr=""
@@ -182,7 +182,7 @@ class TestClearProxy:
 
 
 class TestLaunchApp:
-    def test_launch_success(self):
+    def test_launch_success(self) -> None:
         with patch("subprocess.run") as mock_run:
             mock_run.return_value = subprocess.CompletedProcess(
                 args=[], returncode=0, stdout="Events injected: 1\n", stderr=""
@@ -192,7 +192,7 @@ class TestLaunchApp:
             assert "monkey" in cmd
             assert "com.example.app" in cmd
 
-    def test_launch_failure(self):
+    def test_launch_failure(self) -> None:
         with patch("subprocess.run") as mock_run:
             mock_run.return_value = subprocess.CompletedProcess(
                 args=[], returncode=1, stdout="", stderr="No activities found"
@@ -202,7 +202,7 @@ class TestLaunchApp:
 
 
 class TestGetHostLanIp:
-    def test_returns_lan_ip(self):
+    def test_returns_lan_ip(self) -> None:
         import socket as socket_mod
         mock_socket = MagicMock()
         mock_socket.getsockname.return_value = ("192.168.1.42", 12345)
@@ -210,7 +210,7 @@ class TestGetHostLanIp:
             ip = get_host_lan_ip()
             assert ip == "192.168.1.42"
 
-    def test_raises_on_failure(self):
+    def test_raises_on_failure(self) -> None:
         import socket as socket_mod
         mock_socket = MagicMock()
         mock_socket.connect.side_effect = OSError("Network unreachable")
@@ -223,7 +223,7 @@ class TestGetHostLanIp:
 
 
 class TestPatchManifest:
-    def test_adds_network_security_config(self, tmp_path):
+    def test_adds_network_security_config(self, tmp_path: Path) -> None:
         manifest_content = textwrap.dedent("""\
             <?xml version="1.0" encoding="utf-8"?>
             <manifest xmlns:android="http://schemas.android.com/apk/res/android"
@@ -236,13 +236,13 @@ class TestPatchManifest:
         manifest_path = tmp_path / "AndroidManifest.xml"
         manifest_path.write_text(manifest_content)
 
-        _patch_manifest(manifest_path)
+        _patch_manifest(manifest_path)  # pyright: ignore[reportPrivateUsage]
 
         result = manifest_path.read_text()
         assert "networkSecurityConfig" in result
         assert "@xml/network_security_config" in result
 
-    def test_existing_nsc_gets_overwritten(self, tmp_path):
+    def test_existing_nsc_gets_overwritten(self, tmp_path: Path) -> None:
         manifest_content = textwrap.dedent("""\
             <?xml version="1.0" encoding="utf-8"?>
             <manifest xmlns:android="http://schemas.android.com/apk/res/android"
@@ -256,21 +256,21 @@ class TestPatchManifest:
         manifest_path = tmp_path / "AndroidManifest.xml"
         manifest_path.write_text(manifest_content)
 
-        _patch_manifest(manifest_path)
+        _patch_manifest(manifest_path)  # pyright: ignore[reportPrivateUsage]
 
         result = manifest_path.read_text()
         assert "@xml/network_security_config" in result
         assert "@xml/old_config" not in result
 
-    def test_no_application_element_raises(self, tmp_path):
+    def test_no_application_element_raises(self, tmp_path: Path) -> None:
         manifest_content = '<?xml version="1.0"?><manifest></manifest>'
         manifest_path = tmp_path / "AndroidManifest.xml"
         manifest_path.write_text(manifest_content)
 
         with pytest.raises(PatchError, match="No <application> element"):
-            _patch_manifest(manifest_path)
+            _patch_manifest(manifest_path)  # pyright: ignore[reportPrivateUsage]
 
-    def test_network_security_config_content(self):
+    def test_network_security_config_content(self) -> None:
         """Verify the injected XML trusts both system and user CAs."""
         assert "system" in NETWORK_SECURITY_CONFIG
         assert "user" in NETWORK_SECURITY_CONFIG
@@ -281,14 +281,14 @@ class TestPatchManifest:
 
 
 def _make_mock_flow(
-    method="GET",
-    url="https://api.example.com/data",
-    status=200,
-    req_body=b"",
-    resp_body=b'{"ok": true}',
-    req_headers=None,
-    resp_headers=None,
-):
+    method: str = "GET",
+    url: str = "https://api.example.com/data",
+    status: int = 200,
+    req_body: bytes = b"",
+    resp_body: bytes = b'{"ok": true}',
+    req_headers: dict[str, str] | None = None,
+    resp_headers: dict[str, str] | None = None,
+) -> MagicMock:
     """Create a mock mitmproxy HTTPFlow."""
     flow = MagicMock()
     flow.request.method = method
@@ -317,7 +317,7 @@ def _make_mock_flow(
 
 
 class TestFlowToTrace:
-    def test_basic_conversion(self):
+    def test_basic_conversion(self) -> None:
         flow = _make_mock_flow()
         trace = flow_to_trace(flow, "t_0001")
 
@@ -326,9 +326,9 @@ class TestFlowToTrace:
         assert trace.meta.request.url == "https://api.example.com/data"
         assert trace.meta.response.status == 200
         assert trace.response_body == b'{"ok": true}'
-        assert trace.meta.timing.total_ms == pytest.approx(150.0, abs=1.0)
+        assert trace.meta.timing.total_ms == pytest.approx(150.0, abs=1.0)  # pyright: ignore[reportUnknownMemberType]
 
-    def test_post_with_body(self):
+    def test_post_with_body(self) -> None:
         flow = _make_mock_flow(
             method="POST",
             req_body=b'{"name": "test"}',
@@ -341,7 +341,7 @@ class TestFlowToTrace:
         assert trace.meta.request.body_file == "t_0002_request.bin"
         assert trace.meta.request.body_size == len(b'{"name": "test"}')
 
-    def test_no_response_body(self):
+    def test_no_response_body(self) -> None:
         flow = _make_mock_flow(status=204, resp_body=b"")
         trace = flow_to_trace(flow, "t_0003")
 
@@ -349,7 +349,7 @@ class TestFlowToTrace:
         assert trace.response_body == b""
         assert trace.meta.response.body_file is None
 
-    def test_headers_mapped(self):
+    def test_headers_mapped(self) -> None:
         flow = _make_mock_flow(
             req_headers={"Authorization": "Bearer tok123", "Accept": "application/json"},
             resp_headers={"Content-Type": "application/json", "X-Request-Id": "abc"},
@@ -359,14 +359,14 @@ class TestFlowToTrace:
         assert len(trace.meta.request.headers) == 2
         assert len(trace.meta.response.headers) == 2
 
-    def test_initiator_is_proxy(self):
+    def test_initiator_is_proxy(self) -> None:
         flow = _make_mock_flow()
         trace = flow_to_trace(flow, "t_0005")
         assert trace.meta.initiator.type == "proxy"
 
 
 class TestCaptureAddon:
-    def test_response_adds_trace(self):
+    def test_response_adds_trace(self) -> None:
         addon = CaptureAddon()
         flow = _make_mock_flow()
         addon.response(flow)
@@ -375,7 +375,7 @@ class TestCaptureAddon:
         assert addon.traces[0].meta.id == "t_0001"
         assert "api.example.com" in addon.domains_seen
 
-    def test_multiple_responses_increment_counter(self):
+    def test_multiple_responses_increment_counter(self) -> None:
         addon = CaptureAddon()
         for _ in range(3):
             addon.response(_make_mock_flow())
@@ -383,7 +383,7 @@ class TestCaptureAddon:
         assert len(addon.traces) == 3
         assert [t.meta.id for t in addon.traces] == ["t_0001", "t_0002", "t_0003"]
 
-    def test_websocket_flow_skipped_in_response(self):
+    def test_websocket_flow_skipped_in_response(self) -> None:
         addon = CaptureAddon()
         flow = _make_mock_flow()
         flow.websocket = MagicMock()  # Mark as WS flow
@@ -391,7 +391,7 @@ class TestCaptureAddon:
 
         assert len(addon.traces) == 0
 
-    def test_build_bundle(self):
+    def test_build_bundle(self) -> None:
         addon = CaptureAddon()
         addon.response(_make_mock_flow())
         addon.response(_make_mock_flow(url="https://api.example.com/users"))
@@ -409,7 +409,7 @@ class TestCaptureAddon:
         assert len(bundle.contexts) == 0
         assert len(bundle.timeline.events) == 2
 
-    def test_build_bundle_roundtrip(self):
+    def test_build_bundle_roundtrip(self) -> None:
         """Verify that the bundle produced by the addon can be written and loaded."""
         addon = CaptureAddon()
         addon.response(_make_mock_flow())
@@ -427,7 +427,7 @@ class TestCaptureAddon:
 
 
 class TestWsFlowToConnection:
-    def test_basic_ws_connection(self):
+    def test_basic_ws_connection(self) -> None:
         flow = MagicMock()
         flow.request.pretty_url = "wss://ws.example.com/socket"
         flow.request.timestamp_start = 1700000000.0
@@ -440,7 +440,7 @@ class TestWsFlowToConnection:
         assert conn.meta.protocols == ["graphql-ws"]
         assert conn.meta.message_count == 0
 
-    def test_ws_with_messages(self):
+    def test_ws_with_messages(self) -> None:
         from cli.capture.models import WsMessage
         from cli.formats.capture_bundle import WsMessageMeta
 
@@ -471,10 +471,10 @@ class TestWsFlowToConnection:
 
 
 class TestPullApks:
-    def test_single_apk_pulls_as_file(self, tmp_path):
+    def test_single_apk_pulls_as_file(self, tmp_path: Path) -> None:
         output = tmp_path / "app.apk"
 
-        def fake_run(cmd, **kwargs):
+        def fake_run(cmd: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
             # get_apk_paths call
             if "pm" in cmd and "path" in cmd:
                 return subprocess.CompletedProcess(
@@ -497,7 +497,7 @@ class TestPullApks:
         assert result_path == output
         assert result_path.is_file()
 
-    def test_split_apks_pulls_as_directory(self, tmp_path):
+    def test_split_apks_pulls_as_directory(self, tmp_path: Path) -> None:
         output = tmp_path / "com.example"
 
         remote_paths = [
@@ -506,7 +506,7 @@ class TestPullApks:
             "package:/data/app/com.example-1/split_config.fr.apk",
         ]
 
-        def fake_run(cmd, **kwargs):
+        def fake_run(cmd: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
             if "pm" in cmd and "path" in cmd:
                 return subprocess.CompletedProcess(
                     args=cmd, returncode=0,
@@ -529,10 +529,10 @@ class TestPullApks:
         assert (result_path / "split_config.arm64_v8a.apk").exists()
         assert (result_path / "split_config.fr.apk").exists()
 
-    def test_split_apks_preserves_device_filenames(self, tmp_path):
+    def test_split_apks_preserves_device_filenames(self, tmp_path: Path) -> None:
         output = tmp_path / "com.example"
 
-        def fake_run(cmd, **kwargs):
+        def fake_run(cmd: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
             if "pm" in cmd and "path" in cmd:
                 return subprocess.CompletedProcess(
                     args=cmd, returncode=0,
@@ -555,11 +555,11 @@ class TestPullApks:
         filenames = {f.name for f in result_path.glob("*.apk")}
         assert filenames == {"base.apk", "split_config.xxhdpi.apk"}
 
-    def test_partial_failure_cleans_up(self, tmp_path):
+    def test_partial_failure_cleans_up(self, tmp_path: Path) -> None:
         output = tmp_path / "com.example"
         call_count = 0
 
-        def fake_run(cmd, **kwargs):
+        def fake_run(cmd: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
             nonlocal call_count
             if "pm" in cmd and "path" in cmd:
                 return subprocess.CompletedProcess(
@@ -598,7 +598,7 @@ class TestPullApks:
 
 
 class TestInstallApk:
-    def test_single_file_uses_adb_install(self, tmp_path):
+    def test_single_file_uses_adb_install(self, tmp_path: Path) -> None:
         apk = tmp_path / "app.apk"
         apk.write_bytes(b"fake")
 
@@ -612,7 +612,7 @@ class TestInstallApk:
             assert cmd[:3] == ["adb", "install", "-r"]
             assert str(apk) in cmd
 
-    def test_directory_uses_adb_install_multiple(self, tmp_path):
+    def test_directory_uses_adb_install_multiple(self, tmp_path: Path) -> None:
         apk_dir = tmp_path / "splits"
         apk_dir.mkdir()
         (apk_dir / "base.apk").write_bytes(b"base")
@@ -630,14 +630,14 @@ class TestInstallApk:
             apk_args = cmd[3:]
             assert len(apk_args) == 3
 
-    def test_empty_directory_raises(self, tmp_path):
+    def test_empty_directory_raises(self, tmp_path: Path) -> None:
         empty_dir = tmp_path / "empty"
         empty_dir.mkdir()
 
         with pytest.raises(AdbError, match="No .apk files found"):
             install_apk(empty_dir)
 
-    def test_install_failure_raises(self, tmp_path):
+    def test_install_failure_raises(self, tmp_path: Path) -> None:
         apk = tmp_path / "app.apk"
         apk.write_bytes(b"fake")
 
@@ -653,7 +653,7 @@ class TestInstallApk:
 
 
 class TestSignApk:
-    def test_sign_apk_calls_signing_tool(self, tmp_path):
+    def test_sign_apk_calls_signing_tool(self, tmp_path: Path) -> None:
         input_apk = tmp_path / "input.apk"
         input_apk.write_bytes(b"fake-apk")
         output_apk = tmp_path / "output.apk"
@@ -671,7 +671,7 @@ class TestSignApk:
 
 
 class TestPatchApkDir:
-    def test_patches_base_and_resigns_splits(self, tmp_path):
+    def test_patches_base_and_resigns_splits(self, tmp_path: Path) -> None:
         input_dir = tmp_path / "input"
         input_dir.mkdir()
         (input_dir / "base.apk").write_bytes(b"base-data")
@@ -683,13 +683,12 @@ class TestPatchApkDir:
             with patch("cli.android.patch._ensure_debug_keystore"):
                 with patch("cli.android.patch.patch_apk") as mock_patch:
                     with patch("cli.android.patch.sign_apk") as mock_sign:
-                        # patch_apk creates the output file
-                        def fake_patch(apk, out, keystore):
+                        def fake_patch(apk: Path, out: Path, keystore: Path) -> Path:
                             out.parent.mkdir(parents=True, exist_ok=True)
                             out.write_bytes(b"patched")
                             return out
 
-                        def fake_sign(apk, out, ks):
+                        def fake_sign(apk: Path, out: Path, ks: Path) -> Path:
                             out.write_bytes(b"signed")
                             return out
 
@@ -711,7 +710,7 @@ class TestPatchApkDir:
         signed_names = {call[0][0].name for call in mock_sign.call_args_list}
         assert signed_names == {"split_config.arm64_v8a.apk", "split_config.fr.apk"}
 
-    def test_uses_first_apk_when_no_base(self, tmp_path):
+    def test_uses_first_apk_when_no_base(self, tmp_path: Path) -> None:
         input_dir = tmp_path / "input"
         input_dir.mkdir()
         # No base.apk, only splits
@@ -723,13 +722,17 @@ class TestPatchApkDir:
             with patch("cli.android.patch._ensure_debug_keystore"):
                 with patch("cli.android.patch.patch_apk") as mock_patch:
                     with patch("cli.android.patch.sign_apk") as mock_sign:
-                        mock_patch.side_effect = lambda apk, out, keystore: (
-                            out.parent.mkdir(parents=True, exist_ok=True) or
-                            out.write_bytes(b"patched") or out
-                        )
-                        mock_sign.side_effect = lambda apk, out, ks: (
-                            out.write_bytes(b"signed") or out
-                        )
+                        def fake_patch_fn(apk: Path, out: Path, keystore: Path) -> Path:
+                            out.parent.mkdir(parents=True, exist_ok=True)
+                            out.write_bytes(b"patched")
+                            return out
+
+                        def fake_sign_fn(apk: Path, out: Path, ks: Path) -> Path:
+                            out.write_bytes(b"signed")
+                            return out
+
+                        mock_patch.side_effect = fake_patch_fn
+                        mock_sign.side_effect = fake_sign_fn
 
                         patch_apk_dir(input_dir, output_dir)
 
@@ -740,7 +743,7 @@ class TestPatchApkDir:
         assert mock_sign.call_count == 1
         assert mock_sign.call_args[0][0].name == "split.apk"
 
-    def test_empty_dir_raises(self, tmp_path):
+    def test_empty_dir_raises(self, tmp_path: Path) -> None:
         input_dir = tmp_path / "input"
         input_dir.mkdir()
         output_dir = tmp_path / "output"
@@ -748,7 +751,7 @@ class TestPatchApkDir:
         with pytest.raises(PatchError, match="No .apk files found"):
             patch_apk_dir(input_dir, output_dir)
 
-    def test_all_apks_share_keystore(self, tmp_path):
+    def test_all_apks_share_keystore(self, tmp_path: Path) -> None:
         """All APKs should be signed with the same keystore."""
         input_dir = tmp_path / "input"
         input_dir.mkdir()
@@ -756,19 +759,19 @@ class TestPatchApkDir:
         (input_dir / "split.apk").write_bytes(b"split")
         output_dir = tmp_path / "output"
 
-        keystores_used = []
+        keystores_used: list[Path] = []
 
         with patch("cli.android.patch._ensure_tools"):
             with patch("cli.android.patch._ensure_debug_keystore"):
                 with patch("cli.android.patch.patch_apk") as mock_patch:
                     with patch("cli.android.patch.sign_apk") as mock_sign:
-                        def capture_patch(apk, out, keystore):
+                        def capture_patch(apk: Path, out: Path, keystore: Path) -> Path:
                             keystores_used.append(keystore)
                             out.parent.mkdir(parents=True, exist_ok=True)
                             out.write_bytes(b"patched")
                             return out
 
-                        def capture_sign(apk, out, ks):
+                        def capture_sign(apk: Path, out: Path, ks: Path) -> Path:
                             keystores_used.append(ks)
                             out.write_bytes(b"signed")
                             return out
@@ -787,7 +790,7 @@ class TestPatchApkDir:
 
 
 class TestAndroidCLI:
-    def test_android_group_help(self):
+    def test_android_group_help(self) -> None:
         runner = CliRunner()
         result = runner.invoke(cli, ["android", "--help"])
         assert result.exit_code == 0
@@ -796,25 +799,25 @@ class TestAndroidCLI:
         assert "install" in result.output
         assert "capture" in result.output
 
-    def test_pull_help(self):
+    def test_pull_help(self) -> None:
         runner = CliRunner()
         result = runner.invoke(cli, ["android", "pull", "--help"])
         assert result.exit_code == 0
         assert "PACKAGE" in result.output
 
-    def test_patch_help(self):
+    def test_patch_help(self) -> None:
         runner = CliRunner()
         result = runner.invoke(cli, ["android", "patch", "--help"])
         assert result.exit_code == 0
         assert "APK_PATH" in result.output
 
-    def test_install_help(self):
+    def test_install_help(self) -> None:
         runner = CliRunner()
         result = runner.invoke(cli, ["android", "install", "--help"])
         assert result.exit_code == 0
         assert "APK_PATH" in result.output
 
-    def test_capture_help(self):
+    def test_capture_help(self) -> None:
         runner = CliRunner()
         result = runner.invoke(cli, ["android", "capture", "--help"])
         assert result.exit_code == 0
@@ -827,7 +830,7 @@ class TestAndroidCLI:
 
 
 class TestManifestCompat:
-    def test_existing_manifests_still_parse(self):
+    def test_existing_manifests_still_parse(self) -> None:
         """Chrome extension bundles without capture_method should still work."""
         from cli.formats.capture_bundle import (
             AppInfo,
@@ -848,7 +851,7 @@ class TestManifestCompat:
         assert manifest.browser is not None
         assert manifest.extension_version == "0.1.0"
 
-    def test_android_manifest_no_browser(self):
+    def test_android_manifest_no_browser(self) -> None:
         from cli.formats.capture_bundle import (
             AppInfo,
             CaptureManifest,
@@ -869,7 +872,7 @@ class TestManifestCompat:
         assert manifest.extension_version is None
         assert manifest.capture_method == "android_proxy"
 
-    def test_manifest_json_roundtrip_without_browser(self):
+    def test_manifest_json_roundtrip_without_browser(self) -> None:
         from cli.formats.capture_bundle import (
             AppInfo,
             CaptureManifest,

@@ -89,7 +89,7 @@ class TestLLMStep:
                 if output == "bad":
                     raise StepValidationError("output is bad")
 
-            async def _retry(self, input, error):
+            async def _retry(self, input: str, error: StepValidationError) -> str:
                 return await self._execute(input)
 
         step = RetryableStep(client=None, model="test")
