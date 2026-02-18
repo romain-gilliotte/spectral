@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from cli.analyze.steps.base import MechanicalStep
 from cli.analyze.steps.types import MethodUrlPair
-from cli.capture.models import CaptureBundle
+from cli.capture.types import CaptureBundle
 
 
 class ExtractPairsStep(MechanicalStep[CaptureBundle, list[MethodUrlPair]]):

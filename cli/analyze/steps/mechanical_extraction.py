@@ -8,12 +8,11 @@ import re
 from typing import Any, cast
 from urllib.parse import urlparse
 
-from cli.analyze.correlator import Correlation
 from cli.analyze.schemas import extract_query_params, infer_schema
 from cli.analyze.steps.base import MechanicalStep
-from cli.analyze.steps.types import EndpointGroup, GroupedTraceData
+from cli.analyze.steps.types import Correlation, EndpointGroup, GroupedTraceData
 from cli.analyze.utils import get_header, pattern_to_regex
-from cli.capture.models import Trace
+from cli.capture.types import Trace
 from cli.formats.api_spec import (
     EndpointSpec,
     ParameterSpec,

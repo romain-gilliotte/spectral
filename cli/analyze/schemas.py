@@ -7,7 +7,7 @@ import re
 from typing import Any
 from urllib.parse import parse_qs, urlparse
 
-from cli.capture.models import Trace
+from cli.capture.types import Trace
 
 
 def _infer_type(value: Any) -> str:

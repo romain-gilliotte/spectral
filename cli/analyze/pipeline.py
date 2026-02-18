@@ -31,7 +31,7 @@ from cli.analyze.steps.types import (
     SpecComponents,
     TracesWithBaseUrl,
 )
-from cli.capture.models import CaptureBundle
+from cli.capture.types import CaptureBundle
 from cli.formats.api_spec import ApiSpec, BusinessContext
 
 

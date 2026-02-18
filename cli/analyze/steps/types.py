@@ -9,14 +9,25 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
-from cli.analyze.correlator import Correlation
-from cli.capture.models import Trace, WsConnection
+from cli.capture.types import Context, Trace, WsConnection, WsMessage
 from cli.formats.api_spec import (
     AuthInfo,
     BusinessContext,
     EndpointSpec,
     WebSocketProtocol,
 )
+
+
+# -- Correlation (UI context ↔ API traces) ----------------------------------
+
+
+@dataclass
+class Correlation:
+    """A correlation between a UI context and API traces/messages."""
+
+    context: Context
+    traces: list[Trace] = field(default_factory=lambda: list[Trace]())
+    ws_messages: list[WsMessage] = field(default_factory=lambda: list[WsMessage]())
 
 
 # -- Pairs extracted from raw traces ----------------------------------------

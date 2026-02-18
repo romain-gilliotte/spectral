@@ -6,7 +6,7 @@ from io import BytesIO
 from pathlib import Path
 import zipfile
 
-from cli.capture.models import CaptureBundle, Context, Trace, WsConnection, WsMessage
+from cli.capture.types import CaptureBundle, Context, Trace, WsConnection, WsMessage
 from cli.formats.capture_bundle import (
     CaptureManifest,
     ContextMeta,

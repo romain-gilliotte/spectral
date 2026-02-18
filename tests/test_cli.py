@@ -9,7 +9,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 from click.testing import CliRunner
 
 from cli.capture.loader import write_bundle
-from cli.capture.models import CaptureBundle
+from cli.capture.types import CaptureBundle
 from cli.main import cli
 
 

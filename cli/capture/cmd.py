@@ -7,7 +7,7 @@ import json
 import click
 from rich.table import Table
 
-from cli.capture.models import CaptureBundle
+from cli.capture.types import CaptureBundle
 from cli.console import console
 
 

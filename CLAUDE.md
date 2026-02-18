@@ -45,7 +45,7 @@ api-discover/
 │   ├── main.py             # Entry point: commands (analyze, generate, inspect, call)
 │   ├── capture/            # Capture bundle parsing
 │   │   ├── loader.py       # Unzips and loads a capture bundle (+ write_bundle)
-│   │   └── models.py       # Data classes for traces, contexts, timeline (wraps Pydantic + binary)
+│   │   └── types.py        # Data classes for traces, contexts, timeline (wraps Pydantic + binary)
 │   ├── analyze/            # Analysis engine
 │   │   ├── pipeline.py     # Orchestrator: build_spec() with parallel branches
 │   │   ├── correlator.py   # Time-window correlation: UI action → API calls
@@ -54,6 +54,7 @@ api-discover/
 │   │   ├── utils.py        # Shared utilities (_pattern_to_regex, _compact_url, _sanitize_headers)
 │   │   ├── schemas.py      # JSON schema inference, annotated schemas, format detection
 │   │   └── steps/          # Pipeline steps (Step[In,Out] architecture)
+│   │       ├── types.py            # Intermediate dataclasses (Correlation, EndpointGroup, etc.)
 │   │       ├── base.py             # Step, LLMStep, MechanicalStep, StepValidationError
 │   │       ├── detect_base_url.py  # LLMStep: identify business API base URL
 │   │       ├── group_endpoints.py  # LLMStep: group URLs into endpoint patterns
@@ -90,6 +91,13 @@ api-discover/
 ├── pyproject.toml
 └── README.md
 ```
+
+## Data model convention
+
+| Pattern | Contents | Python construct |
+|---------|----------|-----------------|
+| `formats/<name>.py` | Serialization models (external formats: capture bundle, API spec) | Pydantic `BaseModel` |
+| `<package>/types.py` | Internal types passed between modules | `@dataclass` |
 
 ## Technology choices
 
@@ -613,7 +621,7 @@ All LLM steps use `_extract_json()` to robustly parse LLM JSON responses (handle
 ### Phase 1: Capture bundle format + Extension
 - [x] Pydantic models for capture bundle format (`cli/formats/capture_bundle.py`) — 17 models including PageContent
 - [x] Bundle loader/writer with ZIP serialization (`cli/capture/loader.py`) — binary-safe roundtrip
-- [x] In-memory data classes (`cli/capture/models.py`) — wraps metadata + binary payloads
+- [x] In-memory data classes (`cli/capture/types.py`) — wraps metadata + binary payloads
 - [x] Chrome extension: `background.js` — DevTools Protocol capture, state machine, timestamp conversion
 - [x] Chrome extension: `content.js` — DOM event capture, page content extraction, stable selector generation
 - [x] Chrome extension: popup UI — Start/Stop/Export buttons, live stats, status indicators

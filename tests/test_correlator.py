@@ -1,7 +1,7 @@
 """Tests for time-window correlator."""
 
 from cli.analyze.correlator import correlate, find_uncorrelated_traces
-from cli.capture.models import CaptureBundle, Context, Trace, WsConnection
+from cli.capture.types import CaptureBundle, Context, Trace, WsConnection
 from cli.formats.capture_bundle import (
     AppInfo,
     BrowserInfo,

@@ -6,7 +6,7 @@ import json
 
 import pytest
 
-from cli.capture.models import CaptureBundle, Context, Trace, WsConnection, WsMessage
+from cli.capture.types import CaptureBundle, Context, Trace, WsConnection, WsMessage
 from cli.formats.capture_bundle import (
     AppInfo,
     BrowserInfo,

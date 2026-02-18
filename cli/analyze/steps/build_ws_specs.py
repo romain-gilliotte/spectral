@@ -8,7 +8,7 @@ from typing import Any
 from cli.analyze.protocol import detect_ws_protocol
 from cli.analyze.schemas import infer_schema
 from cli.analyze.steps.base import MechanicalStep
-from cli.capture.models import WsConnection
+from cli.capture.types import WsConnection
 from cli.formats.api_spec import WebSocketProtocol, WsConnectionSpec, WsMessageSpec
 
 

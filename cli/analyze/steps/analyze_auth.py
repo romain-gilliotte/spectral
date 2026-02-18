@@ -15,7 +15,7 @@ from cli.analyze.utils import (
     sanitize_headers,
     truncate_json,
 )
-from cli.capture.models import Trace
+from cli.capture.types import Trace
 from cli.formats.api_spec import (
     AuthInfo,
     LoginEndpointConfig,

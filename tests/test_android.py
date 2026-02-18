@@ -447,7 +447,7 @@ class TestWsFlowToConnection:
         assert conn.meta.message_count == 0
 
     def test_ws_with_messages(self) -> None:
-        from cli.capture.models import WsMessage
+        from cli.capture.types import WsMessage
         from cli.formats.capture_bundle import WsMessageMeta
 
         flow = MagicMock()

@@ -18,7 +18,7 @@ from cli.analyze.steps.mechanical_extraction import (
     _find_traces_for_group as _find_traces_for_group,  # pyright: ignore[reportPrivateUsage]
     _make_endpoint_id as _make_endpoint_id,  # pyright: ignore[reportPrivateUsage]
 )
-from cli.capture.models import CaptureBundle
+from cli.capture.types import CaptureBundle
 from cli.formats.api_spec import EndpointSpec, ParameterSpec, RequestSpec, ResponseSpec
 from cli.formats.capture_bundle import Header
 from tests.conftest import make_trace

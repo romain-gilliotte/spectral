@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from cli.analyze.steps.base import MechanicalStep
 from cli.analyze.steps.types import TracesWithBaseUrl
-from cli.capture.models import Trace
+from cli.capture.types import Trace
 
 
 class FilterTracesStep(MechanicalStep[TracesWithBaseUrl, list[Trace]]):

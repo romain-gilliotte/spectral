@@ -148,7 +148,7 @@ class TestDetectWsProtocol:
         assert detect_ws_protocol(ws) == "plain-json"
 
     def test_binary_protocol(self):
-        from cli.capture.models import WsMessage
+        from cli.capture.types import WsMessage
         from cli.formats.capture_bundle import WsMessageMeta
 
         msg = WsMessage(

@@ -8,7 +8,7 @@ from cli.capture.loader import (
     write_bundle,
     write_bundle_bytes,
 )
-from cli.capture.models import CaptureBundle
+from cli.capture.types import CaptureBundle
 
 
 class TestBundleRoundtrip:

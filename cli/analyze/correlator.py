@@ -1,19 +1,9 @@
 """Time-window correlation: UI action -> API calls."""
 
-from dataclasses import dataclass, field
-
-from cli.capture.models import CaptureBundle, Context, Trace, WsMessage
+from cli.analyze.steps.types import Correlation
+from cli.capture.types import CaptureBundle, Trace, WsMessage
 
 DEFAULT_WINDOW_MS = 2000
-
-
-@dataclass
-class Correlation:
-    """A correlation between a UI context and API traces/messages."""
-
-    context: Context
-    traces: list[Trace] = field(default_factory=lambda: list[Trace]())
-    ws_messages: list[WsMessage] = field(default_factory=lambda: list[WsMessage]())
 
 
 def correlate(

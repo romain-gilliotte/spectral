@@ -16,7 +16,7 @@ if TYPE_CHECKING:
     from mitmproxy.tls import ClientHelloData
 
 from cli.capture.loader import write_bundle
-from cli.capture.models import CaptureBundle, Trace, WsConnection, WsMessage
+from cli.capture.types import CaptureBundle, Trace, WsConnection, WsMessage
 from cli.formats.capture_bundle import (
     AppInfo,
     CaptureManifest,

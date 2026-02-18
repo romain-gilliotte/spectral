@@ -6,7 +6,7 @@ import json
 import re
 from typing import Any
 
-from cli.capture.models import Trace, WsConnection
+from cli.capture.types import Trace, WsConnection
 from cli.formats.capture_bundle import Header
 
 
