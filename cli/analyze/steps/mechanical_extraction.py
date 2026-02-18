@@ -10,13 +10,7 @@ from typing import Any, cast
 from urllib.parse import urlparse
 
 from cli.analyze.correlator import Correlation
-from cli.analyze.schemas import (
-    detect_format,
-    extract_query_params,
-    infer_json_schema,
-    infer_type_from_values,
-    merge_schemas,
-)
+from cli.analyze.schemas import extract_query_params, infer_schema
 from cli.analyze.steps import EndpointGroup
 from cli.analyze.steps.base import MechanicalStep
 from cli.analyze.utils import (
@@ -162,32 +156,31 @@ def _build_request_spec(traces: list[Trace], path_pattern: str) -> RequestSpec:
                 pass
 
     if body_schemas:
-        merged = merge_schemas(body_schemas)
-        for key, info in merged.items():
-            fmt = detect_format(info["values"]) if info["type"] == "string" else None
+        schema = infer_schema(body_schemas)
+        required_set = set(schema.get("required", []))
+        for key, prop in schema["properties"].items():
             parameters.append(
                 ParameterSpec(
                     name=key,
                     location="body",
-                    type=str(info["type"]),
-                    format=fmt,
-                    required=bool(info["required"]),
-                    example=str(info["example"]) if info["example"] is not None else None,
-                    observed_values=[str(v) for v in info["values"][:5]],
+                    type=str(prop["type"]),
+                    format=prop.get("format"),
+                    required=key in required_set,
+                    example=str(prop["observed"][0]) if prop.get("observed") else None,
+                    observed_values=[str(v) for v in prop.get("observed", [])[:5]],
                 )
             )
 
     query_params = extract_query_params(traces)
-    for name, values in query_params.items():
-        qtype = infer_type_from_values(values)
-        qfmt = detect_format(values) if qtype == "string" else None
+    for name, info in query_params.items():
+        values = info["values"]
         parameters.append(
             ParameterSpec(
                 name=name,
                 location="query",
-                type=qtype,
-                format=qfmt,
-                required=len(values) == len(traces),
+                type=info["type"],
+                format=info["format"],
+                required=info["required"],
                 example=values[0] if values else None,
                 observed_values=list(set(values))[:5],
             )
@@ -221,7 +214,9 @@ def _build_response_specs(traces: list[Trace]) -> list[ResponseSpec]:
                     pass
 
         if body_samples:
-            schema = infer_json_schema(body_samples)
+            schema = infer_schema(body_samples)
+            for prop in schema.get("properties", {}).values():
+                prop.pop("observed", None)
 
         specs.append(
             ResponseSpec(

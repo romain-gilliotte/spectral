@@ -6,7 +6,7 @@ import json
 from typing import Any
 
 from cli.analyze.protocol import detect_ws_protocol
-from cli.analyze.schemas import infer_json_schema
+from cli.analyze.schemas import infer_schema
 from cli.analyze.steps.base import MechanicalStep
 from cli.capture.models import WsConnection
 from cli.formats.api_spec import (
@@ -35,7 +35,9 @@ class BuildWsSpecsStep(MechanicalStep[list[WsConnection], WebSocketProtocol]):
                         data = json.loads(msg.payload)
                         payload_example = data
                         if isinstance(data, dict):
-                            payload_schema = infer_json_schema([data])
+                            payload_schema = infer_schema([data])
+                            for prop in payload_schema.get("properties", {}).values():
+                                prop.pop("observed", None)
                     except (json.JSONDecodeError, UnicodeDecodeError):
                         pass
 

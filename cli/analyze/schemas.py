@@ -10,7 +10,7 @@ from urllib.parse import parse_qs, urlparse
 from cli.capture.models import Trace
 
 
-def infer_type(value: Any) -> str:
+def _infer_type(value: Any) -> str:
     """Infer JSON schema type from a Python value."""
     if isinstance(value, bool):
         return "boolean"
@@ -27,7 +27,7 @@ def infer_type(value: Any) -> str:
     return "string"
 
 
-def infer_type_from_values(values: list[str]) -> str:
+def _infer_type_from_values(values: list[str]) -> str:
     """Infer type from a list of string values."""
     if all(v.isdigit() for v in values if v):
         return "integer"
@@ -46,7 +46,7 @@ def _is_float(s: str) -> bool:
         return False
 
 
-def detect_format(values: list[Any]) -> str | None:
+def _detect_format(values: list[Any]) -> str | None:
     """Detect common string formats."""
     str_values = [v for v in values if isinstance(v, str)]
     if not str_values:
@@ -70,59 +70,12 @@ def detect_format(values: list[Any]) -> str | None:
     return None
 
 
-def infer_json_schema(samples: list[dict[str, Any]]) -> dict[str, Any]:
-    """Infer a JSON schema from multiple object samples."""
-    total = len(samples)
-    all_keys: dict[str, list[Any]] = defaultdict(list)
-    for sample in samples:
-        for key, value in sample.items():
-            all_keys[key].append(value)
+def infer_schema(samples: list[dict[str, Any]]) -> dict[str, Any]:
+    """Infer a JSON schema from multiple object samples, annotated with observed values.
 
-    properties: dict[str, Any] = {}
-    required: list[str] = []
-    for key, values in all_keys.items():
-        prop_type = infer_type(values[0])
-        properties[key] = {"type": prop_type}
-
-        if prop_type == "string" and values:
-            fmt = detect_format(values)
-            if fmt:
-                properties[key]["format"] = fmt
-
-        if len(values) == total:
-            required.append(key)
-
-    schema: dict[str, Any] = {"type": "object", "properties": properties}
-    if required:
-        schema["required"] = required
-    return schema
-
-
-def merge_schemas(samples: list[dict[str, Any]]) -> dict[str, dict[str, Any]]:
-    """Merge multiple JSON object samples into parameter info."""
-    all_keys: dict[str, list[Any]] = defaultdict(list)
-    total = len(samples)
-    for sample in samples:
-        for key, value in sample.items():
-            all_keys[key].append(value)
-
-    result: dict[str, dict[str, Any]] = {}
-    for key, values in all_keys.items():
-        result[key] = {
-            "type": infer_type(values[0]),
-            "required": len(values) == total,
-            "example": values[0],
-            "values": values,
-        }
-    return result
-
-
-def build_annotated_schema(samples: list[dict[str, Any]]) -> dict[str, Any]:
-    """Build a JSON schema annotated with observed values for each property.
-
-    Like infer_json_schema but adds an "observed" key per property containing
-    up to 5 distinct observed values. This gives the LLM concrete examples to
-    reason about parameter semantics (e.g. enum detection, format inference).
+    Each property carries its type, optional format, and an "observed" list of up
+    to 5 distinct values seen across samples. Properties present in all samples
+    are marked required.
 
     Returns a dict like:
     {
@@ -143,11 +96,11 @@ def build_annotated_schema(samples: list[dict[str, Any]]) -> dict[str, Any]:
     properties: dict[str, Any] = {}
     required: list[str] = []
     for key, values in all_keys.items():
-        prop_type = infer_type(values[0])
+        prop_type = _infer_type(values[0])
         prop: dict[str, Any] = {"type": prop_type}
 
         if prop_type == "string" and values:
-            fmt = detect_format(values)
+            fmt = _detect_format(values)
             if fmt:
                 prop["format"] = fmt
 
@@ -179,12 +132,31 @@ def build_annotated_schema(samples: list[dict[str, Any]]) -> dict[str, Any]:
     return schema
 
 
-def extract_query_params(traces: list[Trace]) -> dict[str, list[str]]:
-    """Extract query parameters from trace URLs."""
-    params: dict[str, list[str]] = defaultdict(list)
+def extract_query_params(traces: list[Trace]) -> dict[str, dict[str, Any]]:
+    """Extract query parameters from trace URLs with type, format, and required info.
+
+    Returns a dict keyed by parameter name, each value containing:
+    - values: list of observed string values
+    - type: inferred type (string, integer, number, boolean)
+    - format: detected format (date, email, uuid, uri) or None
+    - required: True if the param appears in every trace
+    """
+    raw_params: dict[str, list[str]] = defaultdict(list)
     for trace in traces:
         parsed = urlparse(trace.meta.request.url)
         qs = parse_qs(parsed.query)
         for key, values in qs.items():
-            params[key].extend(values)
-    return dict(params)
+            raw_params[key].extend(values)
+
+    total = len(traces)
+    result: dict[str, dict[str, Any]] = {}
+    for name, values in raw_params.items():
+        qtype = _infer_type_from_values(values)
+        qfmt = _detect_format(values) if qtype == "string" else None
+        result[name] = {
+            "values": values,
+            "type": qtype,
+            "format": qfmt,
+            "required": len(values) == total,
+        }
+    return result

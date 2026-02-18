@@ -64,7 +64,7 @@ Schemas and observed values are merged into a single compact representation. Eac
 - Direct signal for enum detection: `role` has only 2 distinct values → likely an enum
 - Step 4 (LLM) receives structured data, not raw bodies to parse
 
-### `build_annotated_schema` (to implement)
+### `infer_schema`
 
 1. Collects all keys across all JSON samples (union)
 2. For each key:
@@ -101,7 +101,7 @@ flowchart LR
 
 **Path parameters**: extracted from `{param_name}` in the pattern string via regex `\{(\w+)\}`.
 
-**Body parameters**: JSON request bodies are parsed, all dict samples are merged via `build_annotated_schema`.
+**Body parameters**: JSON request bodies are parsed, all dict samples are merged via `infer_schema`.
 
 **Query parameters**: `urllib.parse.parse_qs` on each trace URL. Type is inferred from observed string values (all digits → integer, etc.).
 
@@ -110,7 +110,7 @@ flowchart LR
 `_build_response_specs` groups traces by HTTP status code, then for each status:
 - Takes content-type from first trace
 - JSON-parses all response bodies → collects dict samples
-- Builds annotated schema via `build_annotated_schema`
+- Builds annotated schema via `infer_schema`
 
 ---
 
