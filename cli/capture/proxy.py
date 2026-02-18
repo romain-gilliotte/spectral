@@ -8,8 +8,6 @@ import signal
 from typing import TYPE_CHECKING
 import uuid
 
-import click
-
 if TYPE_CHECKING:
     from mitmproxy.http import Headers as mitmproxy_Headers, HTTPFlow
     from mitmproxy.tls import ClientHelloData
@@ -135,7 +133,6 @@ class DiscoveryAddon:
         sni = data.context.client.sni
         if sni:
             self.domains[sni] = self.domains.get(sni, 0) + 1
-            click.echo(f"  {sni}  ({self.domains[sni]})")
         data.ignore_connection = True
 
     def request(self, flow: HTTPFlow) -> None:
@@ -143,7 +140,6 @@ class DiscoveryAddon:
         host = flow.request.host
         if host:
             self.domains[host] = self.domains.get(host, 0) + 1
-            click.echo(f"  {host}  ({self.domains[host]})")
 
 
 class CaptureAddon:
@@ -171,11 +167,6 @@ class CaptureAddon:
         self.traces.append(trace)
         self.domains_seen.add(flow.request.host)
 
-        status = flow.response.status_code if flow.response else "?"
-        click.echo(
-            f"  {trace_id}  {flow.request.method:<6} {status}  {flow.request.pretty_url}"
-        )
-
     def websocket_start(self, flow: HTTPFlow) -> None:
         """Called when a WebSocket connection is established."""
         self._ws_counter += 1
@@ -185,8 +176,6 @@ class CaptureAddon:
         self._ws_messages[ws_id] = []
         self._ws_flows[ws_id] = flow
         self.domains_seen.add(flow.request.host)
-
-        click.echo(f"  {ws_id}  WS OPEN  {flow.request.pretty_url}")
 
     def websocket_message(self, flow: HTTPFlow) -> None:
         """Called for each WebSocket message."""
@@ -225,9 +214,6 @@ class CaptureAddon:
         )
         self._ws_messages[ws_id].append(ws_msg)
 
-        arrow = ">>>" if direction == "send" else "<<<"
-        click.echo(f"  {msg_id}  WS {arrow}  {len(payload)}B {opcode}")
-
     def websocket_end(self, flow: HTTPFlow) -> None:
         """Called when a WebSocket connection closes."""
         ws_id = self._flow_ws_ids.get(flow.id)
@@ -237,8 +223,6 @@ class CaptureAddon:
         messages = self._ws_messages.get(ws_id, [])
         conn = ws_flow_to_connection(flow, ws_id, messages)
         self.ws_connections.append(conn)
-
-        click.echo(f"  {ws_id}  WS CLOSE ({len(messages)} messages)")
 
     def build_bundle(
         self, app_name: str, start_time: float, end_time: float
@@ -303,16 +287,62 @@ class CaptureAddon:
         )
 
 
+def _run_mitmproxy(
+    port: int,
+    addons: list[object],
+    allow_hosts: list[str] | None = None,
+) -> tuple[float, float]:
+    """Shared mitmproxy boilerplate: create loop, DumpMaster, run in daemon thread.
+
+    Returns (start_time, end_time) as epoch seconds.
+    """
+    import asyncio
+    import threading
+    import time
+
+    from mitmproxy.options import Options
+    from mitmproxy.tools.dump import DumpMaster
+
+    loop = asyncio.new_event_loop()
+    opts = Options(listen_port=port, mode=["regular"])
+    if allow_hosts:
+        opts.update(allow_hosts=allow_hosts)  # pyright: ignore[reportUnknownMemberType]
+    master = DumpMaster(opts, loop=loop)
+    for addon in addons:
+        master.addons.add(addon)  # pyright: ignore[reportUnknownMemberType]
+
+    proxy_thread = threading.Thread(
+        target=loop.run_until_complete,
+        args=(master.run(),),
+        daemon=True,
+    )
+    proxy_thread.start()
+
+    start_time = time.time()
+
+    def _shutdown() -> None:
+        loop.call_soon_threadsafe(master.shutdown)
+        proxy_thread.join(timeout=10)
+
+    signal.signal(signal.SIGINT, lambda *_: _shutdown())  # pyright: ignore[reportUnknownLambdaType, reportUnknownArgumentType]
+
+    while proxy_thread.is_alive():
+        proxy_thread.join(timeout=1)
+
+    end_time = time.time()
+    return start_time, end_time
+
+
 def run_proxy(
     port: int,
-    output_path: Path | None,
+    output_path: Path,
     app_name: str,
     allow_hosts: list[str] | None = None,
-) -> CaptureStats | None:
+) -> CaptureStats:
     """Start a MITM proxy, capture traffic, and write a bundle on stop.
 
-    This is the generic proxy engine — no device-specific setup.
-    The proxy runs until the user presses Ctrl+C.
+    Always captures — when allow_hosts is None, MITMs all domains.
+    When provided, MITMs only matching hosts.
 
     Args:
         port: Proxy listen port.
@@ -322,79 +352,36 @@ def run_proxy(
             Other traffic passes through without MITM.
 
     Returns:
-        CaptureStats on success, None if cancelled.
+        CaptureStats on success.
     """
     _ensure_mitmproxy()
 
-    import asyncio
-    import threading
-    import time
+    addon = CaptureAddon()
+    start_time, end_time = _run_mitmproxy(port, [addon], allow_hosts=allow_hosts)
 
-    from mitmproxy.options import Options
-    from mitmproxy.tools.dump import DumpMaster
-
-    discovery_mode = not allow_hosts
-
-    if discovery_mode:
-        discovery_addon = DiscoveryAddon()
-        addon = None
-    else:
-        discovery_addon = None
-        addon = CaptureAddon()
-
-    loop = asyncio.new_event_loop()
-    opts = Options(listen_port=port, mode=["regular"])
-    if allow_hosts:
-        opts.update(allow_hosts=allow_hosts)  # pyright: ignore[reportUnknownMemberType]
-    master = DumpMaster(opts, loop=loop)
-    master.addons.add(discovery_addon if discovery_mode else addon)  # pyright: ignore[reportUnknownMemberType]
-
-    proxy_thread = threading.Thread(
-        target=loop.run_until_complete,
-        args=(master.run(),),
-        daemon=True,
-    )
-    proxy_thread.start()
-
-    def _shutdown():
-        loop.call_soon_threadsafe(master.shutdown)
-        proxy_thread.join(timeout=10)
-
-    if discovery_mode:
-        click.echo("\n  Discovery mode — no MITM, just logging domains.")
-        click.echo("  Re-run with -d <domain> to capture traffic.\n")
-        click.echo("  Listening... press Ctrl+C to stop.\n")
-    else:
-        click.echo("\n  Capturing... press Ctrl+C to stop.\n")
-
-    start_time = time.time()
-
-    signal.signal(signal.SIGINT, lambda *_: _shutdown())  # pyright: ignore[reportUnknownLambdaType, reportUnknownArgumentType]
-
-    while proxy_thread.is_alive():
-        proxy_thread.join(timeout=1)
-
-    end_time = time.time()
-
-    if discovery_mode:
-        assert discovery_addon is not None
-        domains = discovery_addon.domains
-        if domains:
-            click.echo(f"\n  Discovered {len(domains)} domain(s):\n")
-            for domain, count in sorted(domains.items(), key=lambda x: -x[1]):
-                click.echo(f"    {count:4d}  {domain}")
-            click.echo("\n  Re-run with -d to capture specific domains, e.g.:")
-            top = sorted(domains.items(), key=lambda x: -x[1])[0][0]
-            click.echo(f"    spectral capture proxy -d '{top}'\n")
-        else:
-            click.echo("\n  No domains discovered.\n")
-        return None
-
-    assert addon is not None
-    assert output_path is not None
     bundle = addon.build_bundle(app_name, start_time, end_time)
 
     output_path.parent.mkdir(parents=True, exist_ok=True)
     write_bundle(bundle, output_path)
 
     return bundle.manifest.stats
+
+
+def run_discover(port: int) -> dict[str, int]:
+    """Start a proxy in discovery mode: log domains without MITM.
+
+    All TLS connections pass through untouched. The addon records
+    SNI hostnames (and plain HTTP hosts) with request counts.
+
+    Args:
+        port: Proxy listen port.
+
+    Returns:
+        Dict of domain → request count.
+    """
+    _ensure_mitmproxy()
+
+    addon = DiscoveryAddon()
+    _run_mitmproxy(port, [addon])
+
+    return addon.domains

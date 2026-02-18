@@ -54,33 +54,56 @@ def inspect(capture_path: str, trace_id: str | None) -> None:
 def proxy(port: int, output: str | None, domains: tuple[str, ...]) -> None:
     """Start a MITM proxy to capture traffic.
 
-    Without -d, runs in discovery mode: logs domains without MITM.
-    With -d, captures matching traffic and writes a bundle.
+    Without -d, intercepts all domains. With -d, only matching domains.
     """
     from cli.capture.proxy import run_proxy
 
     allow_hosts = list(domains) if domains else None
-    discovery_mode = not allow_hosts
+    output_path = Path(output or "capture.zip")
+    app_name = output_path.stem if output else "app"
 
-    if discovery_mode:
-        console.print(f"[bold]Starting domain discovery on port {port}[/bold]")
-        console.print("  No -d specified — passthrough mode, logging domains only.")
-        output_path = Path(output) if output else None
-        app_name = "app"
-    else:
-        output_path = Path(output or "capture.zip")
-        app_name = output_path.stem if output else "app"
-        console.print(f"[bold]Starting MITM proxy on port {port}[/bold]")
-        console.print(f"  Output:  {output_path}")
+    console.print(f"[bold]Starting MITM proxy on port {port}[/bold]")
+    if allow_hosts:
         console.print(f"  Domains: {', '.join(allow_hosts)}")
+    else:
+        console.print("  Intercepting all domains")
+    console.print(f"  Output:  {output_path}")
+
+    click.echo("\n  Capturing... press Ctrl+C to stop.\n")
 
     stats = run_proxy(port, output_path, app_name, allow_hosts=allow_hosts)
-    if stats:
-        console.print()
-        console.print(f"[green]Capture bundle written to {output_path}[/green]")
-        console.print(
-            f"  {stats.trace_count} HTTP traces, {stats.ws_connection_count} WS connections, {stats.ws_message_count} WS messages"
-        )
+    console.print()
+    console.print(f"[green]Capture bundle written to {output_path}[/green]")
+    console.print(
+        f"  {stats.trace_count} HTTP traces, {stats.ws_connection_count} WS connections, {stats.ws_message_count} WS messages"
+    )
+
+
+@capture.command()
+@click.option("-p", "--port", default=8080, help="Proxy listen port")
+def discover(port: int) -> None:
+    """Discover domains without intercepting traffic.
+
+    Runs a passthrough proxy that logs TLS SNI hostnames and plain
+    HTTP hosts. No MITM — all connections pass through untouched.
+    """
+    from cli.capture.proxy import run_discover
+
+    console.print(f"[bold]Starting domain discovery on port {port}[/bold]")
+    console.print("  No MITM — logging domains only.")
+    click.echo("\n  Listening... press Ctrl+C to stop.\n")
+
+    domains = run_discover(port)
+
+    if domains:
+        console.print(f"\n  Discovered {len(domains)} domain(s):\n")
+        for domain, count in sorted(domains.items(), key=lambda x: -x[1]):
+            console.print(f"    {count:4d}  {domain}")
+        top = sorted(domains.items(), key=lambda x: -x[1])[0][0]
+        console.print("\n  Re-run with -d to capture specific domains, e.g.:")
+        console.print(f"    spectral capture proxy -d '{top}'\n")
+    else:
+        console.print("\n  No domains discovered.\n")
 
 
 def _inspect_summary(bundle: CaptureBundle) -> None:

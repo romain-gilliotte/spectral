@@ -505,8 +505,9 @@ api-discover generate edf-api.json --type curl-scripts  -o scripts/
 # Capture: inspect bundles, run MITM proxy
 spectral capture inspect capture_20260213.zip                    # summary stats
 spectral capture inspect capture_20260213.zip --trace t_0001     # details of one trace
-spectral capture proxy -d "api\.example\.com" -o capture.zip     # MITM proxy capture
-spectral capture proxy                                           # discovery mode (log domains)
+spectral capture proxy -o capture.zip                            # MITM all domains
+spectral capture proxy -d "api\.example\.com" -o capture.zip     # MITM matching domains only
+spectral capture discover                                        # log domains without MITM
 
 # Android: APK tools
 spectral android list spotify

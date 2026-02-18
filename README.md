@@ -40,10 +40,9 @@ uv run spectral android pull com.spotify.music
 uv run spectral android patch com.spotify.music.apk
 uv run spectral android install com.spotify.music-patched.apk
 uv run spectral android cert
+uv run spectral capture discover
 uv run spectral capture proxy -d "api\.spotify\.com" -o spotify.zip
 ```
-
-Run `spectral capture proxy` without `-d` first for discovery mode (logs domains without intercepting).
 
 ## CLI reference
 
@@ -52,7 +51,8 @@ Run `spectral capture proxy` without `-d` first for discovery mode (logs domains
 | Command | Description |
 |---|---|
 | `capture inspect <bundle> [--trace ID]` | Inspect a capture bundle |
-| `capture proxy [-d domain...] [-p port] [-o path]` | MITM proxy capture |
+| `capture proxy [-d domain...] [-p port] [-o path]` | MITM proxy capture (all domains by default) |
+| `capture discover [-p port]` | Discover domains without intercepting |
 
 ### Android
 

@@ -7,7 +7,7 @@ from unittest.mock import MagicMock
 import pytest
 
 from cli.capture.loader import load_bundle_bytes, write_bundle_bytes
-from cli.capture.proxy import CaptureAddon, flow_to_trace, ws_flow_to_connection
+from cli.capture.proxy import CaptureAddon, DiscoveryAddon, flow_to_trace, ws_flow_to_connection
 from cli.capture.types import WsMessage
 from cli.formats.capture_bundle import WsMessageMeta
 
@@ -199,6 +199,53 @@ class TestWsFlowToConnection:
 
         assert conn.meta.message_count == 1
         assert len(conn.messages) == 1
+
+
+class TestDiscoveryAddon:
+    def test_tls_clienthello_logs_domain(self) -> None:
+        addon = DiscoveryAddon()
+        data = MagicMock()
+        data.context.client.sni = "api.example.com"
+        data.ignore_connection = False
+
+        addon.tls_clienthello(data)
+
+        assert addon.domains == {"api.example.com": 1}
+        assert data.ignore_connection is True
+
+    def test_multiple_domains_counted(self) -> None:
+        addon = DiscoveryAddon()
+
+        for _ in range(3):
+            data = MagicMock()
+            data.context.client.sni = "api.example.com"
+            addon.tls_clienthello(data)
+
+        data2 = MagicMock()
+        data2.context.client.sni = "cdn.example.com"
+        addon.tls_clienthello(data2)
+
+        assert addon.domains["api.example.com"] == 3
+        assert addon.domains["cdn.example.com"] == 1
+
+    def test_plain_http_request_logged(self) -> None:
+        addon = DiscoveryAddon()
+        flow = MagicMock()
+        flow.request.host = "http.example.com"
+
+        addon.request(flow)
+
+        assert addon.domains == {"http.example.com": 1}
+
+    def test_empty_sni_skipped(self) -> None:
+        addon = DiscoveryAddon()
+        data = MagicMock()
+        data.context.client.sni = ""
+
+        addon.tls_clienthello(data)
+
+        assert addon.domains == {}
+        assert data.ignore_connection is True
 
 
 class TestManifestCompat:

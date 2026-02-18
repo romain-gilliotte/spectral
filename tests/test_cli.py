@@ -10,6 +10,7 @@ from click.testing import CliRunner
 
 from cli.capture.loader import write_bundle
 from cli.capture.types import CaptureBundle
+from cli.formats.capture_bundle import CaptureStats
 from cli.main import cli
 
 
@@ -385,6 +386,64 @@ class TestInspectCommand:
 
         assert result.exit_code == 0
         assert "not found" in result.output
+
+
+class TestProxyCommand:
+    @patch("cli.capture.proxy.run_proxy")
+    def test_proxy_default_intercepts_all(self, mock_run: MagicMock) -> None:
+        mock_run.return_value = CaptureStats(trace_count=5, ws_connection_count=1, ws_message_count=10)
+        runner = CliRunner()
+        result = runner.invoke(cli, ["capture", "proxy"])
+
+        assert result.exit_code == 0
+        assert "Intercepting all domains" in result.output
+        mock_run.assert_called_once()
+        _, kwargs = mock_run.call_args
+        assert kwargs.get("allow_hosts") is None
+
+    @patch("cli.capture.proxy.run_proxy")
+    def test_proxy_with_domains(self, mock_run: MagicMock) -> None:
+        mock_run.return_value = CaptureStats(trace_count=3)
+        runner = CliRunner()
+        result = runner.invoke(cli, ["capture", "proxy", "-d", "api\\.example\\.com"])
+
+        assert result.exit_code == 0
+        assert "api\\.example\\.com" in result.output
+        mock_run.assert_called_once()
+        _, kwargs = mock_run.call_args
+        assert kwargs.get("allow_hosts") == ["api\\.example\\.com"]
+
+
+class TestDiscoverCommand:
+    @patch("cli.capture.proxy.run_discover")
+    def test_discover_shows_domains(self, mock_discover: MagicMock) -> None:
+        mock_discover.return_value = {"api.example.com": 15, "cdn.example.com": 3}
+        runner = CliRunner()
+        result = runner.invoke(cli, ["capture", "discover"])
+
+        assert result.exit_code == 0
+        assert "api.example.com" in result.output
+        assert "cdn.example.com" in result.output
+        assert "Discovered 2 domain(s)" in result.output
+        mock_discover.assert_called_once_with(8080)
+
+    @patch("cli.capture.proxy.run_discover")
+    def test_discover_empty(self, mock_discover: MagicMock) -> None:
+        mock_discover.return_value = {}
+        runner = CliRunner()
+        result = runner.invoke(cli, ["capture", "discover"])
+
+        assert result.exit_code == 0
+        assert "No domains discovered" in result.output
+
+    @patch("cli.capture.proxy.run_discover")
+    def test_discover_custom_port(self, mock_discover: MagicMock) -> None:
+        mock_discover.return_value = {}
+        runner = CliRunner()
+        result = runner.invoke(cli, ["capture", "discover", "-p", "9090"])
+
+        assert result.exit_code == 0
+        mock_discover.assert_called_once_with(9090)
 
 
 class TestCallCommand:
