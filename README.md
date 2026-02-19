@@ -32,9 +32,7 @@ uv run spectral analyze capture.zip -o spec
 1. Load `extension/` as unpacked in `chrome://extensions`
 2. Start capture, browse the app, stop capture, export bundle
 
-### MITM proxy
-
-### On your machine
+### MITM proxy on your machine
 
 The MITM proxy works with any application or CLI that respects `HTTP_PROXY` / `HTTPS_PROXY`:
 
@@ -47,7 +45,7 @@ The proxy intercepts HTTPS by generating certificates on the fly. For this to wo
 
 Use `capture discover` to log domains first without intercepting, then `capture proxy -d` to target specific domains.
 
-#### Android
+### MITM proxy for android apps
 
 Requires `adb` (Android SDK Platform Tools) and `java` (for APK signing) on the host machine.
 
