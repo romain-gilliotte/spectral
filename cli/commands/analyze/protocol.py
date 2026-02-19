@@ -81,9 +81,10 @@ def detect_ws_protocol(ws_conn: WsConnection) -> str:
 def _is_graphql_item(data: dict[str, Any]) -> bool:
     """Check if a single JSON object looks like a GraphQL request.
 
-    Matches two shapes:
+    Matches three shapes:
     - Normal query: ``{"query": "query { ... }", ...}``
-    - Persisted query: ``{"extensions": {"persistedQuery": {...}}, ...}``
+    - Persisted query (hash): ``{"extensions": {"persistedQuery": {...}}, ...}``
+    - Named operation (no query text): ``{"operation": "FetchUsers", "variables": {...}}``
     """
     query_val = data.get("query")
     if isinstance(query_val, str) and re.search(
@@ -92,6 +93,13 @@ def _is_graphql_item(data: dict[str, Any]) -> bool:
         return True
     extensions = data.get("extensions")
     if isinstance(extensions, dict) and "persistedQuery" in extensions:
+        return True
+    # Named operation without query text (e.g. Reddit): server-side registered
+    # queries identified by name only.
+    if (
+        isinstance(data.get("operationName"), str)
+        or isinstance(data.get("operation"), str)
+    ) and isinstance(data.get("variables"), dict):
         return True
     return False
 

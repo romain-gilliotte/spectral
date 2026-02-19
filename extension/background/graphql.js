@@ -81,6 +81,23 @@ export function injectTypename(query) {
 }
 
 /**
+ * Check if a single JSON object looks like a GraphQL request.
+ *
+ * Matches three shapes (mirrors _is_graphql_item in Python protocol.py):
+ * - Normal query: {"query": "query { ... }", ...}
+ * - Persisted query (hash): {"extensions": {"persistedQuery": {...}}, ...}
+ * - Named operation (no query text): {"operation": "FetchUsers", "variables": {...}}
+ */
+function isGraphQLItem(item) {
+  if (!item || typeof item !== 'object') return false;
+  if (typeof item.query === 'string') return true;
+  if (item.extensions && item.extensions.persistedQuery) return true;
+  if ((typeof item.operationName === 'string' || typeof item.operation === 'string')
+      && item.variables && typeof item.variables === 'object') return true;
+  return false;
+}
+
+/**
  * Check if a GraphQL request item is a persisted query (has extensions.persistedQuery
  * but no query string). These are sent by Apollo clients using Automatic Persisted
  * Queries (APQ) — the client sends a hash instead of the full query.
@@ -153,6 +170,16 @@ export async function handleFetchRequestPaused(params, debuggeeId) {
     try {
       body = JSON.parse(request.postData);
     } catch {
+      await chrome.debugger.sendCommand(debuggeeId, 'Fetch.continueRequest', { requestId });
+      return;
+    }
+
+    // Quick check: is this actually a GraphQL request?
+    // Since we intercept all URLs (not just *graphql*), skip non-GraphQL POSTs fast.
+    const isGql = Array.isArray(body)
+      ? body.some(item => isGraphQLItem(item))
+      : isGraphQLItem(body);
+    if (!isGql) {
       await chrome.debugger.sendCommand(debuggeeId, 'Fetch.continueRequest', { requestId });
       return;
     }

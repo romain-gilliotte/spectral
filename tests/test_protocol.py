@@ -147,6 +147,40 @@ class TestDetectTraceProtocol:
         )
         assert detect_trace_protocol(trace) == "graphql"
 
+    def test_graphql_named_operation(self):
+        """A named operation without query text (Reddit-style) is GraphQL."""
+        body = json.dumps({
+            "operation": "UserCommunityAchievements",
+            "variables": {"username": "testuser", "subredditId": "t5_abc"},
+        }).encode()
+        trace = make_trace(
+            "t_0001",
+            "POST",
+            "https://www.reddit.com/svc/shreddit/graphql",
+            200,
+            1000,
+            request_body=body,
+            request_headers=[Header(name="Content-Type", value="application/json")],
+        )
+        assert detect_trace_protocol(trace) == "graphql"
+
+    def test_graphql_operation_name_with_variables(self):
+        """operationName + variables (without query) is GraphQL."""
+        body = json.dumps({
+            "operationName": "GetPlaylist",
+            "variables": {"id": "123"},
+        }).encode()
+        trace = make_trace(
+            "t_0001",
+            "POST",
+            "https://api.example.com/gql",
+            200,
+            1000,
+            request_body=body,
+            request_headers=[Header(name="Content-Type", value="application/json")],
+        )
+        assert detect_trace_protocol(trace) == "graphql"
+
     def test_non_graphql_json_body(self):
         body = json.dumps({"name": "test", "value": 42}).encode()
         trace = make_trace(
