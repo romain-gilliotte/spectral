@@ -37,6 +37,20 @@
       </div>
     </div>
 
+    <div class="settings">
+      <div class="settings-header">GraphQL interception</div>
+      <label class="setting-row">
+        <input type="checkbox" id="setting-typename" checked>
+        <span class="setting-label">Inject <code>__typename</code></span>
+        <a class="setting-link" href="https://graphql.org/learn/queries/#meta-fields" target="_blank" rel="noopener">docs &#8599;</a>
+      </label>
+      <label class="setting-row">
+        <input type="checkbox" id="setting-apq" checked>
+        <span class="setting-label">Block persisted queries</span>
+        <a class="setting-link" href="https://www.apollographql.com/docs/apollo-server/performance/apq/" target="_blank" rel="noopener">docs &#8599;</a>
+      </label>
+    </div>
+
     <div class="actions">
       <button id="btn-start" class="btn btn-primary">
         <span class="btn-icon">&#9658;</span>

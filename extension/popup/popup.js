@@ -22,6 +22,9 @@ const statWs = document.getElementById('stat-ws');
 const statContexts = document.getElementById('stat-contexts');
 const statDuration = document.getElementById('stat-duration');
 
+const settingTypename = document.getElementById('setting-typename');
+const settingApq = document.getElementById('setting-apq');
+
 // ============================================================================
 // State
 // ============================================================================
@@ -264,6 +267,12 @@ async function initialize() {
       type: 'GET_STATUS',
     });
 
+    // Apply persisted settings to checkboxes
+    if (response.settings) {
+      settingTypename.checked = response.settings.injectTypename;
+      settingApq.checked = response.settings.injectApqError;
+    }
+
     if (response.state === 'capturing') {
       // Already capturing
       startStatusPolling();
@@ -287,6 +296,20 @@ async function initialize() {
 btnStart.addEventListener('click', startCapture);
 btnStop.addEventListener('click', stopCapture);
 btnExport.addEventListener('click', exportCapture);
+
+settingTypename.addEventListener('change', () => {
+  chrome.runtime.sendMessage({
+    type: 'UPDATE_SETTINGS',
+    settings: { injectTypename: settingTypename.checked },
+  });
+});
+
+settingApq.addEventListener('change', () => {
+  chrome.runtime.sendMessage({
+    type: 'UPDATE_SETTINGS',
+    settings: { injectApqError: settingApq.checked },
+  });
+});
 
 // Initialize on popup open
 initialize();

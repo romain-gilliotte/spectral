@@ -202,6 +202,61 @@ h1 {
   background: #1e88e5;
 }
 
+/* Settings */
+.settings {
+  margin-bottom: 16px;
+  padding: 10px 12px;
+  background: #fafafa;
+  border-radius: 8px;
+}
+
+.settings-header {
+  font-size: 10px;
+  font-weight: 600;
+  color: #999;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-bottom: 8px;
+}
+
+.setting-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 0;
+  cursor: pointer;
+  font-size: 13px;
+  color: #333;
+}
+
+.setting-row input[type="checkbox"] {
+  margin: 0;
+  cursor: pointer;
+}
+
+.setting-label {
+  flex: 1;
+}
+
+.setting-label code {
+  background: #eee;
+  padding: 1px 4px;
+  border-radius: 3px;
+  font-family: 'SF Mono', Menlo, Monaco, monospace;
+  font-size: 12px;
+}
+
+.setting-link {
+  font-size: 11px;
+  color: #aaa;
+  text-decoration: none;
+}
+
+.setting-link:hover {
+  color: #666;
+  text-decoration: underline;
+}
+
 .hidden {
   display: none !important;
 }

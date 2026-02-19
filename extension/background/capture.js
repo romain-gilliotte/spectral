@@ -112,10 +112,14 @@ export async function startCapture(tabId) {
       maxPostDataSize: 65536, // 64KB max POST data
     });
 
-    // Enable Fetch domain to intercept and modify GraphQL requests
-    // (inject __typename into selection sets for accurate type inference)
+    // Enable Fetch domain to intercept POST requests for GraphQL handling
+    // (persisted query rejection + __typename injection).
+    // We intercept all URLs because GraphQL endpoints don't always have
+    // "graphql" in their path (e.g. Spotify uses /pathfinder/v1/query).
+    // The handler filters out non-GraphQL requests quickly (non-POST,
+    // non-JSON, no query/persistedQuery field).
     await chrome.debugger.sendCommand({ tabId }, 'Fetch.enable', {
-      patterns: [{ urlPattern: '*graphql*', requestStage: 'Request' }],
+      patterns: [{ urlPattern: '*', requestStage: 'Request' }],
     });
 
     captureState.captureStartTime = now();

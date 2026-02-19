@@ -7,7 +7,7 @@
  * State machine: IDLE → ATTACHING → CAPTURING → EXPORTING → IDLE
  */
 
-import { captureState, State, resetState } from './state.js';
+import { captureState, State, resetState, loadSettings, saveSettings } from './state.js';
 import {
   handleRequestWillBeSent,
   handleResponseReceived,
@@ -142,7 +142,15 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
             state: captureState.state,
             tabId: captureState.captureTabId,
             stats: captureState.state === State.CAPTURING ? getStats() : null,
+            settings: { ...captureState.settings },
           });
+          break;
+        }
+
+        case 'UPDATE_SETTINGS': {
+          Object.assign(captureState.settings, message.settings);
+          await saveSettings();
+          sendResponse({ success: true });
           break;
         }
 
@@ -170,5 +178,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   return true;
 });
 
-// Log startup
-console.log('API Discover background service worker started');
+// Load persisted settings and log startup
+loadSettings().then(() => {
+  console.log('API Discover background service worker started');
+});

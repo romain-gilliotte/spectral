@@ -17,6 +17,12 @@ export const captureState = {
   captureTabId: null,
   captureStartTime: null,
 
+  // Settings (persisted across sessions via chrome.storage.local)
+  settings: {
+    injectTypename: true,
+    injectApqError: true,
+  },
+
   // Captured data
   traces: [],
   contexts: [],
@@ -65,4 +71,30 @@ export function resetState() {
   captureState.wsMessageCounters = new Map();
   captureState.appInfo = null;
   captureState.timeOffset = null;
+}
+
+/**
+ * Load settings from chrome.storage.local into captureState.settings.
+ * Missing keys fall back to the defaults already in captureState.
+ */
+export async function loadSettings() {
+  try {
+    const result = await chrome.storage.local.get('settings');
+    if (result.settings) {
+      Object.assign(captureState.settings, result.settings);
+    }
+  } catch {
+    // Storage unavailable — keep defaults
+  }
+}
+
+/**
+ * Persist the current settings to chrome.storage.local.
+ */
+export async function saveSettings() {
+  try {
+    await chrome.storage.local.set({ settings: { ...captureState.settings } });
+  } catch {
+    // Storage unavailable — ignore
+  }
 }
