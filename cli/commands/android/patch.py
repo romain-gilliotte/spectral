@@ -227,6 +227,10 @@ def _fix_resources(work_dir: Path) -> None:
 
     - _generated_res_locale_config.xml: uses android:defaultLocale (API 34+)
       which older aapt2 versions don't know. Strip the unsupported attribute.
+    - AndroidManifest.xml: <meta-data android:resource="@null"/> elements lose
+      the resource value during apktool decompile/recompile, producing binary
+      XML that Android rejects with INSTALL_PARSE_FAILED_MANIFEST_MALFORMED.
+      Remove these elements since @null means "no resource" anyway.
     """
     locale_config = work_dir / "res" / "xml" / "_generated_res_locale_config.xml"
     if locale_config.exists():
@@ -234,6 +238,17 @@ def _fix_resources(work_dir: Path) -> None:
         if "android:defaultLocale" in content:
             fixed = re.sub(r'\s+android:defaultLocale="[^"]*"', "", content)
             locale_config.write_text(fixed)
+
+    manifest = work_dir / "AndroidManifest.xml"
+    if manifest.exists():
+        content = manifest.read_text()
+        if 'android:resource="@null"' in content:
+            fixed = re.sub(
+                r'\s*<meta-data[^>]*android:resource="@null"[^/]*/>\s*',
+                "\n",
+                content,
+            )
+            manifest.write_text(fixed)
 
 
 def _ensure_debug_keystore(keystore_path: Path) -> None:
