@@ -1,4 +1,4 @@
-# api-discover — Project Specification
+# Spectral — Project Specification
 
 ## Style preferences
 
@@ -8,25 +8,24 @@
 
 - Package manager is **uv**. Use `uv run` to execute commands (no need to activate the venv):
   - `uv run pytest tests/` — run tests
-  - `uv run api-discover analyze ...` — run the CLI
+  - `uv run spectral analyze ...` — run the CLI
   - `uv add <package>` — add a dependency (updates `pyproject.toml` + `uv.lock`)
   - `uv add --dev <package>` — add a dev dependency
 - `.env` file at project root holds `ANTHROPIC_API_KEY` (loaded by the CLI via `python-dotenv`). Do NOT commit `.env`.
 
 ## What this project is
 
-A three-stage pipeline that automatically discovers and documents web application APIs:
+A two-stage pipeline that automatically discovers and documents web application APIs:
 
-1. **Capture** — A Chrome Extension passively records network traffic + UI actions while the user browses normally
-2. **Analyze** — A CLI tool correlates UI actions ↔ API calls using an LLM to produce a semantically-rich API spec
-3. **Generate** — The CLI generates tooling from that spec: OpenAPI, MCP servers, Python clients, docs, etc.
+1. **Capture** — A Chrome Extension or MITM proxy records network traffic + UI actions while the user browses normally
+2. **Analyze** — A CLI tool correlates UI actions ↔ API calls using an LLM to produce an OpenAPI 3.1 spec enriched with business semantics
 
 The key innovation is the **correlation of UI actions with network traffic** to understand the *business meaning* of each API call, not just its technical shape. No existing tool does this.
 
 ## Project structure
 
 ```
-api-discover/
+spectral/
 ├── extension/              # Chrome Extension (Manifest V3)
 │   ├── manifest.json
 │   ├── background.js       # Network capture via chrome.debugger (DevTools Protocol)
@@ -42,7 +41,7 @@ api-discover/
 │       └── icon128.png
 ├── cli/                    # Python CLI tool
 │   ├── __init__.py
-│   ├── main.py             # Entry point: commands (analyze, generate, capture, call, android)
+│   ├── main.py             # Entry point: commands (analyze, capture, android)
 │   ├── commands/            # All command packages
 │   │   ├── capture/         # Capture: bundle parsing, inspect, MITM proxy
 │   │   │   ├── cmd.py       # CLI group: capture inspect, capture proxy, capture discover
@@ -51,7 +50,8 @@ api-discover/
 │   │   │   ├── loader.py    # Unzips and loads a capture bundle (+ write_bundle)
 │   │   │   └── types.py     # Data classes for traces, contexts, timeline (wraps Pydantic + binary)
 │   │   ├── analyze/         # Analysis engine
-│   │   │   ├── pipeline.py  # Orchestrator: build_spec() with parallel branches
+│   │   │   ├── cmd.py       # CLI command: analyze <bundle> -o <output> [--model] [--debug] [--skip-enrich]
+│   │   │   ├── pipeline.py  # Orchestrator: build_spec() with parallel branches → OpenAPI 3.1
 │   │   │   ├── correlator.py# Time-window correlation: UI action → API calls
 │   │   │   ├── protocol.py  # Protocol detection (REST, GraphQL, WebSocket, gRPC, binary)
 │   │   │   ├── tools.py     # LLM tool loop (_call_with_tools), investigation tools, _extract_json
@@ -68,26 +68,18 @@ api-discover/
 │   │   │       ├── filter_traces.py    # MechanicalStep: keep traces matching base URL
 │   │   │       ├── strip_prefix.py     # MechanicalStep: remove base URL path prefix
 │   │   │       ├── mechanical_extraction.py # MechanicalStep: groups → EndpointSpec[]
-│   │   │       ├── build_ws_specs.py   # MechanicalStep: WS connections → WS protocol
-│   │   │       └── assemble.py         # MechanicalStep: combine all parts → ApiSpec
-│   │   ├── generate/        # Output generators
-│   │   │   ├── openapi.py      # Enriched OpenAPI 3.1 output
-│   │   │   ├── mcp_server.py   # MCP server scaffold generation (FastMCP)
-│   │   │   ├── python_client.py# Python SDK with business-named methods
-│   │   │   ├── markdown_docs.py# Human-readable documentation (index + per-endpoint + auth)
-│   │   │   └── curl_scripts.py # Ready-to-use cURL examples (per-endpoint + all-in-one)
-│   │   ├── android/         # Android APK tools (pull, patch, install, cert)
-│   │   │   ├── cmd.py       # CLI group: android list, pull, patch, install, cert
-│   │   │   ├── adb.py       # ADB wrapper: list, pull, install, push cert
-│   │   │   └── patch.py     # APK patching: network security config, signing
-│   │   └── client/          # API client for calling discovered endpoints
-│   │       ├── cmd.py       # CLI command: call
-│   │       └── client.py    # ApiClient: auth, requests, path extraction
+│   │   │       └── assemble.py         # MechanicalStep: combine all parts → OpenAPI 3.1 dict
+│   │   └── android/         # Android APK tools (pull, patch, install, cert)
+│   │       ├── cmd.py       # CLI group: android list, pull, patch, install, cert
+│   │       ├── adb.py       # ADB wrapper: list, pull, install, push cert
+│   │       └── patch.py     # APK patching: network security config, signing
 │   ├── formats/             # Shared format definitions
-│   │   ├── capture_bundle.py   # Capture bundle Pydantic models (17 models)
-│   │   └── api_spec.py         # Enriched API spec Pydantic models
+│   │   └── capture_bundle.py   # Capture bundle Pydantic models (17 models)
 │   └── helpers/             # Shared utilities
-│       └── console.py       # Rich console instance
+│       ├── console.py       # Rich console instance
+│       ├── naming.py        # safe_name(), to_identifier()
+│       ├── subprocess.py    # run_subprocess() helper
+│       └── http.py          # HTTP helpers
 ├── tests/
 │   ├── conftest.py         # Shared fixtures (sample_bundle, make_trace, make_context, etc.)
 │   ├── test_formats.py
@@ -98,8 +90,7 @@ api-discover/
 │   ├── test_schemas.py      # Annotated schemas, type inference, format detection
 │   ├── test_steps.py        # Step base classes (Step, LLMStep, MechanicalStep)
 │   ├── test_llm_tools.py    # Tool executors, _call_with_tools, DetectBaseUrlStep
-│   ├── test_generators.py
-│   ├── test_client.py
+│   ├── test_helpers.py      # Naming, subprocess, HTTP helpers
 │   ├── test_cli.py
 │   ├── test_android.py      # ADB, patch, android CLI (list, pull, patch, install, cert)
 │   └── test_capture_proxy.py # MITM proxy engine, flow conversion, manifest compat
@@ -119,7 +110,7 @@ api-discover/
 - **Extension**: Vanilla JS, Chrome Manifest V3, Chrome DevTools Protocol (via `chrome.debugger`), JSZip for bundle export
 - **CLI**: Python 3.11+, Click for CLI, Pydantic for data models
 - **LLM**: Anthropic API (Claude Sonnet) for semantic analysis
-- **Packaging**: pyproject.toml with `[project.scripts]` entry point for `api-discover`
+- **Packaging**: pyproject.toml with `[project.scripts]` entry point for `spectral`
 
 ---
 
@@ -341,137 +332,21 @@ This flat timeline makes correlation trivial: to find which API calls relate to 
 
 ---
 
-## FORMAT 2: Enriched API Specification (.json)
+## FORMAT 2: OpenAPI 3.1 Output (.yaml)
 
-This is the output of `api-discover analyze`. It's what makes the project unique: a spec that contains not just technical API shape, but business meaning, user stories, and workflow context inferred by the LLM.
+The output of `spectral analyze` is a standard **OpenAPI 3.1** spec enriched with LLM-inferred business semantics. Business meaning is embedded in standard OpenAPI fields (`summary`, `description`, response `description`) and `x-` extensions where needed (e.g. `x-rate-limit`).
 
-```json
-{
-  "api_spec_version": "1.0.0",
-  "name": "EDF Customer Portal API",
-  "discovery_date": "2026-02-13T15:30:00Z",
-  "source_captures": ["capture_20260213_153000.zip"],
-
-  "auth": {
-    "type": "bearer_token",
-    "obtain_flow": "oauth2_authorization_code",
-    "business_process": "Two-factor authentication with SMS verification",
-    "user_journey": [
-      "Enter email/password on login page",
-      "Receive SMS verification code",
-      "Enter SMS code",
-      "Access granted — token valid ~24h"
-    ],
-    "token_header": "Authorization",
-    "token_prefix": "Bearer",
-    "refresh_endpoint": "/api/auth/refresh",
-    "discovery_notes": "Token appears in all subsequent requests. 401 triggers redirect to /login."
-  },
-
-  "protocols": {
-    "rest": {
-      "base_url": "https://api.edf.fr",
-      "endpoints": [
-        {
-          "id": "get_monthly_consumption",
-          "path": "/api/consumption/monthly",
-          "method": "POST",
-          "business_purpose": "Retrieve customer's monthly electricity consumption data",
-          "user_story": "As a customer, I want to view my monthly energy usage to understand my consumption patterns",
-          "ui_triggers": [
-            {
-              "action": "click",
-              "element_selector": "nav[data-tab='consumption']",
-              "element_text": "Ma consommation",
-              "page_url": "/dashboard",
-              "user_explanation": "User clicks on 'Ma consommation' tab in main navigation"
-            }
-          ],
-          "request": {
-            "content_type": "application/json",
-            "parameters": [
-              {
-                "name": "period",
-                "location": "body",
-                "type": "string",
-                "format": "YYYY-MM",
-                "required": true,
-                "business_meaning": "Billing period for consumption lookup",
-                "example": "2024-01",
-                "constraints": "Cannot be future date, max 24 months history",
-                "observed_values": ["2024-01", "2024-02", "2024-03"]
-              }
-            ]
-          },
-          "responses": [
-            {
-              "status": 200,
-              "content_type": "application/json",
-              "business_meaning": "Successfully retrieved consumption data",
-              "example_scenario": "Customer viewing January 2024 consumption",
-              "schema": {
-                "type": "object",
-                "properties": {
-                  "period": { "type": "string" },
-                  "consumption_kwh": { "type": "number" },
-                  "cost_euros": { "type": "number" },
-                  "comparison_previous_year": { "type": "number" }
-                }
-              },
-              "example_body": { "period": "2024-01", "consumption_kwh": 342.5, "cost_euros": 58.20, "comparison_previous_year": -12.3 }
-            },
-            {
-              "status": 403,
-              "business_meaning": "Customer contract expired or suspended",
-              "user_impact": "Cannot view consumption data",
-              "resolution": "Contact customer service to reactivate account"
-            }
-          ],
-          "rate_limit": null,
-          "requires_auth": true,
-          "correlation_confidence": 0.95,
-          "discovery_notes": "Always called after successful authentication, requires active contract",
-          "observed_count": 5,
-          "source_trace_refs": ["t_0001", "t_0023", "t_0045", "t_0067", "t_0078"]
-        }
-      ]
-    },
-    "websocket": {
-      "connections": [
-        {
-          "id": "realtime_updates",
-          "url": "wss://realtime.edf.fr/socket",
-          "subprotocol": "graphql-ws",
-          "business_purpose": "Real-time consumption data streaming",
-          "messages": [
-            {
-              "direction": "send",
-              "label": "subscribe_consumption",
-              "business_purpose": "Subscribe to live consumption updates",
-              "payload_schema": { "type": "object", "properties": { "type": { "const": "subscribe" }, "id": { "type": "string" } } },
-              "example_payload": { "type": "subscribe", "id": "1", "payload": { "query": "subscription { consumption { kwh } }" } }
-            }
-          ]
-        }
-      ]
-    }
-  }
-}
-```
+The pipeline builds the spec through internal dataclasses (`cli/commands/analyze/steps/types.py`): `EndpointSpec`, `RequestSpec`, `ResponseSpec`, `AuthInfo`. The `AssembleStep` converts these into the final OpenAPI dict, mapping `observed` values to `examples`, schemas to `content`, and auth info to `securitySchemes`.
 
 ### What the LLM infers (Stage 2 — analyze)
 
-The LLM is called during `api-discover analyze` to produce these fields that a purely mechanical tool could not:
+The LLM is called during `spectral analyze` to produce these fields that a purely mechanical tool could not:
 
-- `business_purpose` — what the endpoint does in business terms
-- `user_story` — "As a [persona], I want to [action] so that [goal]"
-- `ui_triggers[].user_explanation` — natural language description of what the user did
-- `parameters[].business_meaning` — what a parameter means in domain terms
-- `parameters[].constraints` — inferred constraints from observed values
-- `responses[].business_meaning` — what a response means
-- `responses[].resolution` — how to fix an error, in user terms
+- Operation `summary` — what the endpoint does in business terms
+- Response `description` — what each status code means in domain terms
+- Schema property `description` — what a parameter/field means
 - `auth.user_journey` — the authentication flow described for humans
-- `correlation_confidence` — how confident the LLM is in the UI↔API correlation
+- `auth.business_process` — how users obtain credentials
 
 Everything else is mechanical (headers, schemas, status codes, URLs, timing).
 
@@ -480,16 +355,11 @@ Everything else is mechanical (headers, schemas, status codes, URLs, timing).
 ## CLI commands
 
 ```bash
-# Stage 2: Analyze a capture bundle → enriched API spec (requires ANTHROPIC_API_KEY)
-api-discover analyze capture_20260213.zip -o edf-api.json
-api-discover analyze capture_20260213.zip -o edf-api.json --model claude-sonnet-4-5-20250929
-
-# Stage 3: Generate outputs from enriched spec
-api-discover generate edf-api.json --type openapi    -o edf-openapi.yaml
-api-discover generate edf-api.json --type mcp-server -o edf-mcp-server/
-api-discover generate edf-api.json --type python-client -o edf_client.py
-api-discover generate edf-api.json --type markdown-docs -o docs/
-api-discover generate edf-api.json --type curl-scripts  -o scripts/
+# Analyze a capture bundle → OpenAPI 3.1 spec (requires ANTHROPIC_API_KEY)
+spectral analyze capture_20260213.zip -o edf-api.yaml
+spectral analyze capture_20260213.zip -o edf-api.yaml --model claude-sonnet-4-5-20250929
+spectral analyze capture_20260213.zip -o edf-api.yaml --skip-enrich  # skip LLM enrichment
+spectral analyze capture_20260213.zip -o edf-api.yaml --debug        # save LLM prompts to debug/
 
 # Capture: inspect bundles, run MITM proxy
 spectral capture inspect capture_20260213.zip                    # summary stats
@@ -581,7 +451,7 @@ When storing a trace, the extension finds the most recent context(s) within a 2-
 
 ## Analysis pipeline (Step-based architecture)
 
-The `build_spec()` function in `pipeline.py` orchestrates a Step-based pipeline with three parallel branches. Each step is a typed `Step[In, Out]` with `run()` method, optional validation, and retry for LLM steps. See `_documentation/00-overview.md` for the full pipeline diagram.
+The `build_spec()` function in `pipeline.py` orchestrates a Step-based pipeline. Each step is a typed `Step[In, Out]` with `run()` method, optional validation, and retry for LLM steps.
 
 **Main branch** (sequential):
 1. **Extract pairs** — `MechanicalStep`: collect `(method, url)` pairs from all traces
@@ -589,14 +459,14 @@ The `build_spec()` function in `pipeline.py` orchestrates a Step-based pipeline 
 3. **Filter traces** — `MechanicalStep`: keep only traces matching the base URL
 4. **Group endpoints** — `LLMStep`: group URLs into endpoint patterns with `{param}` syntax (with investigation tools)
 5. **Strip prefix** — `MechanicalStep`: remove base URL path prefix from patterns
-6. **Mechanical extraction** — `MechanicalStep`: build `EndpointSpec[]` with schemas, params, UI triggers
-7. **Enrich endpoints** — `LLMStep`: N parallel per-endpoint LLM calls for business semantics
+6. **Mechanical extraction** — `MechanicalStep`: build `EndpointSpec[]` with schemas, params
+7. **Detect auth & rate limit** — mechanical per-endpoint detection from trace headers
 
-**Parallel branches** (run via `asyncio.gather` alongside step 7):
-- **Auth analysis** — `LLMStep`: detect auth mechanism from ALL unfiltered traces (summary-based, no tools)
-- **WebSocket specs** — `MechanicalStep`: extract WS protocol specs from captured connections
+**Parallel branches** (run via `asyncio.gather` after step 7):
+- **Enrich endpoints** — `LLMStep`: N parallel per-endpoint LLM calls for business semantics
+- **Auth analysis** — `LLMStep`: detect auth mechanism from ALL unfiltered traces (with mechanical fallback)
 
-**Assembly** — `MechanicalStep`: combine all outputs into `ApiSpec`
+**Assembly** — `MechanicalStep`: combine all outputs into OpenAPI 3.1 dict
 
 ### Step classes (`cli/commands/analyze/steps/base.py`)
 
@@ -613,9 +483,25 @@ The `build_spec()` function in `pipeline.py` orchestrates a Step-based pipeline 
 | Detect base URL | `detect_base_url.py` | decode_base64, decode_url, decode_jwt | Valid URL (scheme + host) |
 | Group endpoints | `group_endpoints.py` | decode_base64, decode_url, decode_jwt | Coverage, pattern match, no duplicates |
 | Enrich endpoints | `enrich_and_context.py` | none | Best-effort (no validation) |
-| Auth analysis | `analyze_auth.py` | none | Best-effort (fallback to mechanical) |
+| Auth analysis | `analyze_auth.py` | none | Best-effort (fallback to `detect_auth_mechanical`) |
 
 All LLM steps use `_extract_json()` to robustly parse LLM JSON responses (handles markdown blocks, nested objects).
+
+### Internal data flow
+
+Pipeline steps exchange typed dataclasses defined in `cli/commands/analyze/steps/types.py`. Key types:
+
+| Type | Purpose |
+|---|---|
+| `MethodUrlPair` | An observed (method, url) pair from a single trace |
+| `EndpointGroup` | An LLM-identified endpoint group (method, pattern, urls) |
+| `EndpointSpec` | Full endpoint with request/response schemas, rate_limit, requires_auth, description |
+| `RequestSpec` | Path/query/body annotated schemas |
+| `ResponseSpec` | Status, schema, business_meaning, example_body |
+| `AuthInfo` | Detected auth type, obtain_flow, login/refresh config, user_journey |
+| `SpecComponents` | All pieces needed for the assembly step |
+
+The `AssembleStep` converts `SpecComponents` into a plain `dict[str, Any]` (OpenAPI 3.1).
 
 ---
 
@@ -633,37 +519,37 @@ All LLM steps use `_extract_json()` to robustly parse LLM JSON responses (handle
 ### Phase 2: Analysis engine
 - [x] Protocol detection (`cli/commands/analyze/protocol.py`) — REST, GraphQL, gRPC, binary, WS sub-protocols
 - [x] Time-window correlation (`cli/commands/analyze/correlator.py`) — UI action → API calls with configurable window
-- [x] Step-based pipeline (`cli/commands/analyze/pipeline.py`) — orchestrator with parallel branches via asyncio.gather
+- [x] Step-based pipeline (`cli/commands/analyze/pipeline.py`) — orchestrator with parallel branches → OpenAPI 3.1
 - [x] Step abstraction (`cli/commands/analyze/steps/base.py`) — Step[In,Out], LLMStep (retry), MechanicalStep
 - [x] LLM base URL detection (`steps/detect_base_url.py`) — with investigation tools
 - [x] LLM endpoint grouping (`steps/group_endpoints.py`) — with investigation tools + validation
 - [x] LLM per-endpoint enrichment (`steps/enrich_and_context.py`) — parallel per-endpoint calls via asyncio.gather
 - [x] LLM auth analysis (`steps/analyze_auth.py`) — on all unfiltered traces, with mechanical fallback
-- [x] Mechanical extraction (`steps/mechanical_extraction.py`) — schemas, params, UI triggers, trace matching
+- [x] Mechanical extraction (`steps/mechanical_extraction.py`) — schemas, params, trace matching
+- [x] OpenAPI 3.1 assembly (`steps/assemble.py`) — security schemes, parameters, request bodies, responses
 - [x] JSON schema inference with format detection (`cli/commands/analyze/schemas.py`) — date, email, UUID, URI
 - [x] Annotated schemas (`cli/commands/analyze/schemas.py`) — schema + observed values per property
 - [x] Investigation tools (`cli/commands/analyze/tools.py`) — decode_base64, decode_url, decode_jwt, tool loop
 - [x] Shared utilities (`cli/commands/analyze/utils.py`) — _pattern_to_regex, _compact_url, _sanitize_headers
 - [x] Tests: pipeline, steps, schemas, tools, protocol, correlator, mechanical extraction
 - [ ] Real-world testing with actual API keys
-- [ ] Prompt tuning for better business_purpose / user_story quality
+- [ ] Prompt tuning for better enrichment quality
 
-### Phase 4: Output generators
-- [x] OpenAPI 3.1 generator (`cli/commands/generate/openapi.py`) — paths, params, request bodies, security schemes, tags
-- [x] Python client generator (`cli/commands/generate/python_client.py`) — typed methods, auth, docstrings
-- [x] Markdown docs generator (`cli/commands/generate/markdown_docs.py`) — index + per-endpoint + auth docs
-- [x] cURL scripts generator (`cli/commands/generate/curl_scripts.py`) — per-endpoint + all-in-one script
-- [x] MCP server generator (`cli/commands/generate/mcp_server.py`) — FastMCP scaffold with tools, README, requirements
-- [x] Tests: structure, content, file output for all 5 generators
+### Phase 3: Capture tools
+- [x] MITM proxy engine (`cli/commands/capture/proxy.py`) — mitmproxy addons, flow conversion, bundle output
+- [x] Bundle inspect command (`cli/commands/capture/inspect.py`) — summary + per-trace detail views
+- [x] Domain discovery mode — log domains without intercepting
+- [x] Android APK tools (`cli/commands/android/`) — list, pull, patch, install, cert
+- [x] Tests: proxy engine, flow conversion, manifest compat, android
 
-### Phase 5: Polish
-- [x] `api-discover inspect` command — summary + per-trace detail view
-- [x] Full CLI (`cli/main.py`) — commands: `analyze`, `generate`, `inspect`, `call`
+### Phase 4: Polish
+- [x] Full CLI (`cli/main.py`) — commands: `analyze`, `capture`, `android`
+- [x] Shared helpers (`cli/helpers/`) — naming, subprocess, http, console
 - [ ] Bundle merging (combine multiple capture sessions for the same app)
 - [ ] Privacy controls: exclude domains, redact headers/cookies
 
 ### Test coverage
-207 tests across 11 test files, all passing:
+257 tests across 12 test files, all passing:
 - `tests/test_formats.py` — Pydantic model roundtrips and defaults
 - `tests/test_loader.py` — Bundle read/write, binary safety, lookups
 - `tests/test_protocol.py` — Protocol detection for HTTP and WebSocket
@@ -672,9 +558,10 @@ All LLM steps use `_extract_json()` to robustly parse LLM JSON responses (handle
 - `tests/test_schemas.py` — Annotated schemas, type inference, format detection, schema merging
 - `tests/test_steps.py` — Step base classes: execution, validation, retry logic
 - `tests/test_llm_tools.py` — Tool executors, _call_with_tools loop, DetectBaseUrlStep
-- `tests/test_generators.py` — All 5 generators (structure, content, file output)
-- `tests/test_client.py` — ApiClient: init, auth, calls, login flow, path extraction
+- `tests/test_helpers.py` — Naming, subprocess, HTTP helpers
 - `tests/test_cli.py` — All CLI commands via Click test runner
+- `tests/test_android.py` — ADB, patch, android CLI (list, pull, patch, install, cert)
+- `tests/test_capture_proxy.py` — MITM proxy engine, flow conversion, manifest compat
 
 ---
 
@@ -697,7 +584,7 @@ The analysis pipeline is LLM-first (not mechanical-first with LLM enrichment):
 4. N parallel per-endpoint LLM calls enrich each endpoint with focused business semantics
 5. Per-step validation catches LLM mistakes (coverage, pattern mismatches) and retries once
 
-Auth analysis runs in parallel on ALL unfiltered traces (external auth providers would be filtered out by base URL detection). Three branches converge at assembly via `asyncio.gather`.
+Auth analysis runs in parallel with enrichment on ALL unfiltered traces (external auth providers would be filtered out by base URL detection). Both branches converge at assembly via `asyncio.gather`.
 
 Per-endpoint enrichment trades a single large prompt for N small focused prompts. Each call reasons about one endpoint with full context, producing higher-quality enrichment. Failures are isolated — one endpoint failing doesn't affect others. All calls run concurrently via `asyncio.gather`.
 
@@ -728,6 +615,9 @@ pydantic       # Data models and validation
 anthropic      # Anthropic API client for LLM calls
 pyyaml         # YAML output for OpenAPI
 rich           # Pretty terminal output
+python-dotenv  # .env file loading
+requests       # HTTP requests
+mitmproxy      # MITM proxy for capture
 ```
 
 ### Dev
@@ -735,6 +625,8 @@ rich           # Pretty terminal output
 pytest         # Test framework
 pytest-cov     # Coverage reporting
 pytest-asyncio # Async test support (asyncio_mode = "auto")
+pyright        # Type checking
+ruff           # Linting (isort)
 ```
 
 ## Environment variables
