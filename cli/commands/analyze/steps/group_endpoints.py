@@ -9,10 +9,9 @@ from cli.commands.analyze.steps.types import EndpointGroup, MethodUrlPair
 from cli.commands.analyze.tools import (
     INVESTIGATION_TOOLS,
     TOOL_EXECUTORS,
-    call_with_tools,
-    extract_json,
 )
 from cli.commands.analyze.utils import compact_url
+import cli.helpers.llm as llm
 
 
 class GroupEndpointsStep(LLMStep[list[MethodUrlPair], list[EndpointGroup]]):
@@ -61,8 +60,7 @@ Respond with a JSON array:
   {{"method": "GET", "pattern": "/api/users/{{user_id}}/orders", "urls": ["https://example.com/api/users/123/orders", "https://example.com/api/users/456/orders"]}}
 ]"""
 
-        text = await call_with_tools(
-            self.client,
+        text = await llm.call_with_tools(
             self.model,
             [{"role": "user", "content": prompt}],
             INVESTIGATION_TOOLS,
@@ -71,7 +69,7 @@ Respond with a JSON array:
             call_name="analyze_endpoints",
         )
 
-        result = extract_json(text)
+        result = llm.extract_json(text)
         if not isinstance(result, list):
             raise ValueError("Expected a JSON array from analyze_endpoints")
 

@@ -7,6 +7,15 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 
 from cli.commands.analyze.pipeline import build_spec
+import cli.helpers.llm as llm
+
+
+@pytest.fixture(autouse=True)
+def reset_llm_globals():
+    """Reset module globals before/after each test."""
+    llm.reset()
+    yield
+    llm.reset()
 from cli.commands.analyze.schemas import infer_schema
 from cli.commands.analyze.steps.assemble import (
     _observed_to_examples as _observed_to_examples,  # pyright: ignore[reportPrivateUsage]
@@ -367,6 +376,7 @@ class TestApplyEnrichment:
                 },
             },
         )
+        assert endpoint.request.path_schema is not None
         assert (
             endpoint.request.path_schema["properties"]["user_id"]["description"]
             == "Unique identifier for the user"
@@ -397,6 +407,7 @@ class TestApplyEnrichment:
                 },
             },
         )
+        assert endpoint.request.query_schema is not None
         assert (
             endpoint.request.query_schema["properties"]["q"]["description"]
             == "Search query text"
@@ -427,6 +438,7 @@ class TestApplyEnrichment:
                 },
             },
         )
+        assert endpoint.request.body_schema is not None
         assert (
             endpoint.request.body_schema["properties"]["period"]["description"]
             == "Billing period in YYYY-MM format"
@@ -461,6 +473,7 @@ class TestApplyEnrichment:
                 },
             },
         )
+        assert endpoint.request.body_schema is not None
         assert (
             endpoint.request.body_schema["properties"]["address"]["properties"]["city"][
                 "description"
@@ -528,6 +541,7 @@ class TestApplyEnrichment:
                 },
             },
         )
+        assert endpoint.responses[0].schema_ is not None
         assert (
             endpoint.responses[0].schema_["properties"]["name"]["description"]
             == "Full name of the user"
@@ -575,7 +589,9 @@ class TestApplyEnrichment:
                 },
             },
         )
-        items_props = endpoint.responses[0].schema_["properties"]["elements"]["items"][
+        resp_schema = endpoint.responses[0].schema_
+        assert resp_schema is not None
+        items_props: dict[str, Any] = resp_schema["properties"]["elements"]["items"][
             "properties"
         ]
         assert items_props["type"]["description"] == "Category of the cost element"
@@ -669,10 +685,10 @@ class TestBuildSpec:
     async def test_full_build(self, sample_bundle: CaptureBundle) -> None:
         mock_client = AsyncMock()
         mock_client.messages.create = _make_mock_create()
+        llm.init(client=mock_client)
 
         openapi = await build_spec(
             sample_bundle,
-            client=mock_client,
             model="test-model",
             source_filename="test.zip",
         )
@@ -706,8 +722,9 @@ class TestBuildSpec:
             ),
             auth_response=json.dumps({"type": "none"}),
         )
+        llm.init(client=mock_client)
 
-        openapi = await build_spec(sample_bundle, client=mock_client, model="test-model")
+        openapi = await build_spec(sample_bundle, model="test-model")
 
         assert openapi["servers"][0]["url"] == "https://api.example.com"
         # CDN trace should not appear in the output
@@ -718,9 +735,10 @@ class TestBuildSpec:
         """Endpoints with Authorization header should have security set."""
         mock_client = AsyncMock()
         mock_client.messages.create = _make_mock_create()
+        llm.init(client=mock_client)
 
         openapi = await build_spec(
-            sample_bundle, client=mock_client, model="test-model"
+            sample_bundle, model="test-model"
         )
 
         # At least one endpoint should have security (sample traces have Authorization)
@@ -737,9 +755,10 @@ class TestBuildSpec:
         """Output should be a valid OpenAPI 3.1 structure."""
         mock_client = AsyncMock()
         mock_client.messages.create = _make_mock_create()
+        llm.init(client=mock_client)
 
         openapi = await build_spec(
-            sample_bundle, client=mock_client, model="test-model"
+            sample_bundle, model="test-model"
         )
 
         assert "openapi" in openapi
@@ -806,7 +825,7 @@ class TestObservedToExamples:
         assert result["properties"]["count"]["type"] == "integer"
 
     def test_empty_observed_list_no_examples(self):
-        schema = {
+        schema: dict[str, Any] = {
             "type": "string",
             "observed": [],
         }

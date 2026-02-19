@@ -165,7 +165,7 @@ def _infer_property(values: list[Any]) -> dict[str, Any]:
 
     if prop_type == "object":
         # Recurse into nested objects
-        dict_values = [v for v in non_null if isinstance(v, dict)]
+        dict_values: list[dict[str, Any]] = [v for v in non_null if isinstance(v, dict)]
         if dict_values:
             nested = _infer_object_schema(dict_values)
             prop["properties"] = nested["properties"]
@@ -191,13 +191,13 @@ def _infer_array_items(array_values: list[Any]) -> dict[str, Any] | None:
     all_elements: list[Any] = []
     for v in array_values:
         if isinstance(v, list):
-            all_elements.extend(v)
+            all_elements.extend(v)  # pyright: ignore[reportUnknownArgumentType]
 
     if not all_elements:
         return None
 
     # If all elements are objects, recurse
-    dict_elements = [e for e in all_elements if isinstance(e, dict)]
+    dict_elements: list[dict[str, Any]] = [e for e in all_elements if isinstance(e, dict)]
     if dict_elements and len(dict_elements) == len(all_elements):
         return _infer_object_schema(dict_elements)
 

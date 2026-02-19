@@ -7,7 +7,12 @@ from unittest.mock import MagicMock
 import pytest
 
 from cli.commands.capture.loader import load_bundle_bytes, write_bundle_bytes
-from cli.commands.capture.proxy import CaptureAddon, DiscoveryAddon, flow_to_trace, ws_flow_to_connection
+from cli.commands.capture.proxy import (
+    CaptureAddon,
+    DiscoveryAddon,
+    flow_to_trace,
+    ws_flow_to_connection,
+)
 from cli.commands.capture.types import WsMessage
 from cli.formats.capture_bundle import WsMessageMeta
 

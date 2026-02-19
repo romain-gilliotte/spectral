@@ -69,7 +69,7 @@ class TestLLMStep:
             async def _execute(self, input: str) -> str:
                 return f"echo: {input}"
 
-        step = EchoStep(client=None, model="test")
+        step = EchoStep(model="test")
         assert await step.run("hello") == "echo: hello"
 
     @pytest.mark.asyncio
@@ -92,7 +92,7 @@ class TestLLMStep:
             async def _retry(self, input: str, error: StepValidationError) -> str:
                 return await self._execute(input)
 
-        step = RetryableStep(client=None, model="test")
+        step = RetryableStep(model="test")
         result = await step.run("input")
         assert result == "good"
         assert call_count[0] == 2
@@ -109,7 +109,7 @@ class TestLLMStep:
             def _validate_output(self, output: str) -> None:
                 raise StepValidationError("always bad")
 
-        step = AlwaysFailStep(client=None, model="test")
+        step = AlwaysFailStep(model="test")
         with pytest.raises(StepValidationError, match="always bad"):
             await step.run("input")
 

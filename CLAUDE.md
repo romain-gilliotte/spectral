@@ -12,6 +12,10 @@
   - `uv add <package>` — add a dependency (updates `pyproject.toml` + `uv.lock`)
   - `uv add --dev <package>` — add a dev dependency
 - `.env` file at project root holds `ANTHROPIC_API_KEY` (loaded by the CLI via `python-dotenv`). Do NOT commit `.env`.
+- **Before finishing any code change**, run the full verification suite and fix any new errors:
+  - `uv run pytest tests/ -x -q` — all tests must pass
+  - `uv run ruff check` — zero lint errors (use `--fix` for auto-fixable import sorting)
+  - `uv run pyright` — zero new type errors (pre-existing errors in `schemas.py`, `assemble.py`, `test_schemas.py`, `test_spec_builder.py` are known)
 
 ## What this project is
 

@@ -6,21 +6,18 @@ import json
 from typing import Any, cast
 
 from cli.commands.analyze.steps.base import LLMStep
-from cli.commands.analyze.tools import (
-    extract_json,
-    save_debug,
+from cli.commands.analyze.steps.types import (
+    AuthInfo,
+    LoginEndpointConfig,
+    RefreshEndpointConfig,
 )
 from cli.commands.analyze.utils import (
     get_header,
     sanitize_headers,
     truncate_json,
 )
-from cli.commands.analyze.steps.types import (
-    AuthInfo,
-    LoginEndpointConfig,
-    RefreshEndpointConfig,
-)
 from cli.commands.capture.types import Trace
+import cli.helpers.llm as llm
 
 
 class AnalyzeAuthStep(LLMStep[list[Trace], AuthInfo]):
@@ -65,14 +62,15 @@ Look for these patterns:
 
 Respond in JSON."""
 
-        response: Any = await self.client.messages.create(
+        response: Any = await llm.create(
+            label="analyze_auth",
             model=self.model,
             max_tokens=2048,
             messages=[{"role": "user", "content": prompt}],
         )
 
-        save_debug(self.debug_dir, "analyze_auth", prompt, response.content[0].text)
-        data = extract_json(response.content[0].text)
+        llm.save_debug(self.debug_dir, "analyze_auth", prompt, response.content[0].text)
+        data = llm.extract_json(response.content[0].text)
         if not isinstance(data, dict):
             return AuthInfo()
 

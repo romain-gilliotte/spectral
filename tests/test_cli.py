@@ -6,8 +6,8 @@ import json
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
-import yaml
 from click.testing import CliRunner
+import yaml
 
 from cli.commands.capture.loader import write_bundle
 from cli.commands.capture.types import CaptureBundle

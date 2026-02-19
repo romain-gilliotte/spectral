@@ -9,10 +9,9 @@ from cli.commands.analyze.steps.types import MethodUrlPair
 from cli.commands.analyze.tools import (
     INVESTIGATION_TOOLS,
     TOOL_EXECUTORS,
-    call_with_tools,
-    extract_json,
 )
 from cli.commands.analyze.utils import compact_url
+import cli.helpers.llm as llm
 
 
 class DetectBaseUrlStep(LLMStep[list[MethodUrlPair], str]):
@@ -50,8 +49,7 @@ Observed requests:
 Respond with a JSON object:
 {{"base_url": "https://..."}}"""
 
-        text = await call_with_tools(
-            self.client,
+        text = await llm.call_with_tools(
             self.model,
             [{"role": "user", "content": prompt}],
             INVESTIGATION_TOOLS,
@@ -60,7 +58,7 @@ Respond with a JSON object:
             call_name="detect_api_base_url",
         )
 
-        result = extract_json(text)
+        result = llm.extract_json(text)
         if isinstance(result, dict) and "base_url" in result:
             base_url: Any = result["base_url"]
             return str(base_url).rstrip("/")

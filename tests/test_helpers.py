@@ -12,7 +12,6 @@ from cli.helpers.http import get_header
 from cli.helpers.naming import python_type, safe_name, to_class_name, to_identifier
 from cli.helpers.subprocess import run_cmd
 
-
 # ── naming ────────────────────────────────────────────────────────
 
 

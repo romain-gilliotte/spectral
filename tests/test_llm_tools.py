@@ -12,11 +12,19 @@ from cli.commands.analyze.steps.types import MethodUrlPair
 from cli.commands.analyze.tools import (
     INVESTIGATION_TOOLS,
     TOOL_EXECUTORS,
-    call_with_tools,
     execute_decode_base64,
     execute_decode_jwt,
     execute_decode_url,
 )
+import cli.helpers.llm as llm
+
+
+@pytest.fixture(autouse=True)
+def reset_llm_globals():
+    """Reset module globals before/after each test."""
+    llm.reset()
+    yield
+    llm.reset()
 
 # --- Executor unit tests (sync, no mocks) ---
 
@@ -136,9 +144,9 @@ class TestCallWithTools:
 
         client = MagicMock()
         client.messages.create = mock_create
+        llm.init(client=client)
 
-        result = await call_with_tools(
-            client,
+        result = await llm.call_with_tools(
             "model",
             [{"role": "user", "content": "hi"}],
             INVESTIGATION_TOOLS,
@@ -166,9 +174,9 @@ class TestCallWithTools:
 
         client = MagicMock()
         client.messages.create = mock_create
+        llm.init(client=client)
 
-        result = await call_with_tools(
-            client,
+        result = await llm.call_with_tools(
             "model",
             [{"role": "user", "content": "analyze"}],
             INVESTIGATION_TOOLS,
@@ -200,9 +208,9 @@ class TestCallWithTools:
 
         client = MagicMock()
         client.messages.create = mock_create
+        llm.init(client=client)
 
-        result = await call_with_tools(
-            client,
+        result = await llm.call_with_tools(
             "model",
             [{"role": "user", "content": "go"}],
             INVESTIGATION_TOOLS,
@@ -220,10 +228,10 @@ class TestCallWithTools:
 
         client = MagicMock()
         client.messages.create = mock_create
+        llm.init(client=client)
 
         with pytest.raises(ValueError, match="exceeded 3 iterations"):
-            await call_with_tools(
-                client,
+            await llm.call_with_tools(
                 "model",
                 [{"role": "user", "content": "go"}],
                 INVESTIGATION_TOOLS,
@@ -251,9 +259,9 @@ class TestCallWithTools:
 
         client = MagicMock()
         client.messages.create = mock_create
+        llm.init(client=client)
 
-        result = await call_with_tools(
-            client,
+        result = await llm.call_with_tools(
             "model",
             [{"role": "user", "content": "go"}],
             INVESTIGATION_TOOLS,
@@ -272,8 +280,9 @@ class TestDetectBaseUrlStep:
 
         client = MagicMock()
         client.messages.create = mock_create
+        llm.init(client=client)
 
-        step = DetectBaseUrlStep(client, "model")
+        step = DetectBaseUrlStep("model")
         result = await step.run(
             [
                 MethodUrlPair("GET", "https://www.example.com/api/users"),
@@ -291,8 +300,9 @@ class TestDetectBaseUrlStep:
 
         client = MagicMock()
         client.messages.create = mock_create
+        llm.init(client=client)
 
-        step = DetectBaseUrlStep(client, "model")
+        step = DetectBaseUrlStep("model")
         result = await step.run([MethodUrlPair("GET", "https://api.example.com/v1")])
         assert result == "https://api.example.com"
 
@@ -305,8 +315,9 @@ class TestDetectBaseUrlStep:
 
         client = MagicMock()
         client.messages.create = mock_create
+        llm.init(client=client)
 
-        step = DetectBaseUrlStep(client, "model")
+        step = DetectBaseUrlStep("model")
         result = await step.run([MethodUrlPair("GET", "https://api.example.com/users")])
         assert result == "https://api.example.com"
 
@@ -319,7 +330,8 @@ class TestDetectBaseUrlStep:
 
         client = MagicMock()
         client.messages.create = mock_create
+        llm.init(client=client)
 
-        step = DetectBaseUrlStep(client, "model")
+        step = DetectBaseUrlStep("model")
         with pytest.raises(ValueError, match="Expected"):
             await step.run([MethodUrlPair("GET", "https://example.com/api")])

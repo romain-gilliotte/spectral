@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, cast
 
 from cli.commands.analyze.steps.base import MechanicalStep
 from cli.commands.analyze.steps.mechanical_extraction import (
@@ -203,7 +203,7 @@ def _observed_to_examples(schema: dict[str, Any]) -> dict[str, Any]:
             k: _observed_to_examples(v) for k, v in out["properties"].items()
         }
     if "items" in out and isinstance(out["items"], dict):
-        out["items"] = _observed_to_examples(out["items"])
+        out["items"] = _observed_to_examples(cast(dict[str, Any], out["items"]))
     return out
 
 

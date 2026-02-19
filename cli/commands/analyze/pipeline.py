@@ -45,7 +45,6 @@ from cli.commands.capture.types import CaptureBundle, Trace
 
 async def build_spec(
     bundle: CaptureBundle,
-    client: Any,
     model: str,
     source_filename: str = "",
     on_progress: Callable[[str], None] | None = None,
@@ -94,7 +93,7 @@ async def build_spec(
 
     # Step 2: Detect base URL (LLM)
     progress("Detecting API base URL (LLM)...")
-    detect_url_step = DetectBaseUrlStep(client, model, debug_dir)
+    detect_url_step = DetectBaseUrlStep(model, debug_dir)
     base_url = await detect_url_step.run(url_method_pairs)
     progress(f"  API base URL: {base_url}")
 
@@ -112,7 +111,7 @@ async def build_spec(
         MethodUrlPair(t.meta.request.method.upper(), t.meta.request.url)
         for t in filtered_traces
     ]
-    group_step = GroupEndpointsStep(client, model, debug_dir)
+    group_step = GroupEndpointsStep(model, debug_dir)
     endpoint_groups = await group_step.run(filtered_pairs)
 
     # Step 5: Strip prefix
@@ -120,11 +119,6 @@ async def build_spec(
     endpoint_groups = await strip_step.run(
         GroupsWithBaseUrl(groups=endpoint_groups, base_url=base_url)
     )
-
-    # Debug mode: limit endpoints
-    if debug_dir is not None and len(endpoint_groups) > 10:
-        progress(f"Debug mode: limiting to 10/{len(endpoint_groups)} endpoints")
-        endpoint_groups = endpoint_groups[:10]
 
     # Step 6: Mechanical extraction
     progress(f"Extracting {len(endpoint_groups)} endpoints...")
@@ -140,15 +134,11 @@ async def build_spec(
     _detect_auth_and_rate_limit(endpoints, endpoint_groups, filtered_traces)
 
     # Steps 8 & 9 run in parallel
-    if skip_enrich:
-        progress("Analyzing auth (enrichment skipped)...")
-    else:
-        progress("Enriching endpoints + analyzing auth...")
 
     async def _enrich() -> list[EndpointSpec] | None:
         if skip_enrich:
             return None
-        enrich_step = EnrichEndpointsStep(client, model, debug_dir)
+        enrich_step = EnrichEndpointsStep(model, debug_dir)
         try:
             return await enrich_step.run(
                 EnrichmentContext(
@@ -163,7 +153,7 @@ async def build_spec(
             return None
 
     async def _auth() -> AuthInfo:
-        auth_step = AnalyzeAuthStep(client, model, debug_dir)
+        auth_step = AnalyzeAuthStep(model, debug_dir)
         try:
             return await auth_step.run(all_traces)
         except Exception:

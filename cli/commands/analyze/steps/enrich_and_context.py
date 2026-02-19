@@ -13,9 +13,10 @@ from cli.commands.analyze.steps.types import (
     EndpointSpec,
     EnrichmentContext,
 )
-from cli.commands.analyze.tools import extract_json, save_debug
 from cli.commands.analyze.utils import pattern_to_regex
 from cli.commands.capture.types import Trace
+from cli.helpers.console import console
+import cli.helpers.llm as llm
 
 
 class EnrichEndpointsStep(LLMStep[EnrichmentContext, list[EndpointSpec]]):
@@ -53,24 +54,28 @@ Provide a JSON response with these keys:
 Respond in JSON."""
 
             try:
-                response: Any = await self.client.messages.create(
+                response: Any = await llm.create(
+                    label=f"enrich_{ep.id}",
                     model=self.model,
                     max_tokens=2048,
                     messages=[{"role": "user", "content": prompt}],
                 )
 
-                save_debug(
+                llm.save_debug(
                     self.debug_dir,
                     f"enrich_{ep.id}",
                     prompt,
                     response.content[0].text,
                 )
-                data = extract_json(response.content[0].text)
+                data = llm.extract_json(response.content[0].text)
 
                 if isinstance(data, dict):
                     _apply_enrichment(ep, data)
-            except Exception:
-                pass  # Leave endpoint un-enriched on failure
+            except Exception as exc:
+                console.print(
+                    f"  [red]Enrichment failed for {ep.method} {ep.path}: "
+                    f"{type(exc).__name__}[/red]"
+                )
 
         await asyncio.gather(*[_enrich_one(ep) for ep in input.endpoints])
 

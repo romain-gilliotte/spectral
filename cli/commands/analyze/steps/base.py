@@ -65,8 +65,7 @@ class LLMStep(Step[In, Out]):
 
     max_retries: int = 1
 
-    def __init__(self, client: Any, model: str, debug_dir: Path | None = None):
-        self.client: Any = client
+    def __init__(self, model: str, debug_dir: Path | None = None):
         self.model = model
         self.debug_dir = debug_dir
 

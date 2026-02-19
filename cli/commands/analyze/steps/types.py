@@ -12,7 +12,6 @@ from typing import Any
 
 from cli.commands.capture.types import Context, Trace, WsMessage
 
-
 # -- Auth types (previously Pydantic models in api_spec.py) ----------------
 
 

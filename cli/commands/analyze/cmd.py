@@ -30,10 +30,9 @@ def analyze(
     capture_path: str, output: str, model: str, debug: bool, skip_enrich: bool
 ) -> None:
     """Analyze a capture bundle and produce an OpenAPI spec."""
-    import anthropic
-
     from cli.commands.analyze.pipeline import build_spec
     from cli.commands.capture.loader import load_bundle
+    import cli.helpers.llm as llm
 
     console.print(f"[bold]Loading capture bundle:[/bold] {capture_path}")
     bundle = load_bundle(capture_path)
@@ -43,7 +42,7 @@ def analyze(
         f"{len(bundle.contexts)} contexts"
     )
 
-    client = anthropic.AsyncAnthropic(max_retries=3)
+    llm.init()
 
     def on_progress(msg: str) -> None:
         console.print(f"  {msg}")
@@ -52,7 +51,6 @@ def analyze(
     openapi = asyncio.run(
         build_spec(
             bundle,
-            client=client,
             model=model,
             source_filename=Path(capture_path).name,
             on_progress=on_progress,

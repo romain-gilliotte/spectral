@@ -8,7 +8,11 @@ import re
 from typing import Any, cast
 from urllib.parse import urlparse
 
-from cli.commands.analyze.schemas import infer_path_schema, infer_query_schema, infer_schema
+from cli.commands.analyze.schemas import (
+    infer_path_schema,
+    infer_query_schema,
+    infer_schema,
+)
 from cli.commands.analyze.steps.base import MechanicalStep
 from cli.commands.analyze.steps.types import (
     EndpointGroup,

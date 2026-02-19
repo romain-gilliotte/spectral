@@ -1,9 +1,11 @@
 """Tests for schema inference utilities."""
 
+from typing import Any
+
 from cli.commands.analyze.schemas import (
-    _detect_format,
-    _infer_type,
-    _infer_type_from_values,
+    _detect_format as _detect_format,  # pyright: ignore[reportPrivateUsage]
+    _infer_type as _infer_type,  # pyright: ignore[reportPrivateUsage]
+    _infer_type_from_values as _infer_type_from_values,  # pyright: ignore[reportPrivateUsage]
     infer_path_schema,
     infer_query_schema,
     infer_schema,
@@ -110,7 +112,7 @@ class TestInferSchema:
 
     def test_array_observed_on_items_not_property(self):
         """Observed values for arrays should be on items (flattened), not on the array property."""
-        samples = [
+        samples: list[dict[str, Any]] = [
             {"tags": ["EXT_BUCKET", "EXT_TIME"]},
             {"tags": []},
             {"tags": ["EXT_BUCKET"]},
