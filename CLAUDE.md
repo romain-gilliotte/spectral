@@ -38,7 +38,7 @@ spectral/
 │   │   ├── utils.js        # Helpers (padId, uuid, now, base64 decode)
 │   │   ├── network.js      # HTTP request/response capture via DevTools Protocol
 │   │   ├── websocket.js    # WebSocket capture via DevTools Protocol
-│   │   ├── graphql.js      # GraphQL __typename injection via Fetch.requestPaused
+│   │   ├── graphql.js      # GraphQL interception via Fetch.requestPaused (detection, APQ rejection, __typename injection)
 │   │   ├── capture.js      # Capture lifecycle (start, stop, stats, content script control)
 │   │   └── export.js       # Bundle export: assemble ZIP and trigger download
 │   ├── content/
@@ -419,7 +419,7 @@ Note: `analyze` requires `ANTHROPIC_API_KEY`. The `-o` flag takes a base name (e
 3. `background/background.js` dispatches DevTools Protocol events to specialized modules:
    - `network.js` — HTTP request/response capture (headers, bodies, timing)
    - `websocket.js` — WebSocket connection and message capture
-   - `graphql.js` — intercepts GraphQL requests via `Fetch.requestPaused` to inject `__typename` into queries
+   - `graphql.js` — intercepts GraphQL requests via `Fetch.requestPaused` (detection, persisted query rejection, `__typename` injection)
 4. `content/content.js` listens to DOM events (click, input, submit) and navigation events, extracts rich page content
 5. Content script sends timestamped context events to background via `chrome.runtime.sendMessage`
 6. On full-page navigation (non-SPA), `chrome.tabs.onUpdated` re-injects content script automatically so UI capture continues
@@ -448,7 +448,7 @@ The popup polls the background for current state and stats, updating the UI acco
 | `Network.webSocketFrameSent` | Outgoing WS message (text or binary as base64) |
 | `Network.webSocketFrameReceived` | Incoming WS message (text or binary as base64) |
 | `Network.webSocketClosed` | WS connection closed |
-| `Fetch.requestPaused` | Intercept GraphQL requests to inject `__typename` |
+| `Fetch.requestPaused` | Intercept all POST requests; detect GraphQL, reject persisted queries (APQ), inject `__typename` |
 
 ### What we capture via content script
 
@@ -548,7 +548,7 @@ Pipeline steps exchange typed dataclasses. Shared types live in `steps/types.py`
 - [x] Bundle loader/writer with ZIP serialization (`cli/commands/capture/loader.py`) — binary-safe roundtrip
 - [x] In-memory data classes (`cli/commands/capture/types.py`) — wraps metadata + binary payloads
 - [x] Chrome extension: modular background service worker (`background/`) — network, websocket, graphql, capture, export
-- [x] Chrome extension: GraphQL `__typename` injection via Fetch.requestPaused (`background/graphql.js`)
+- [x] Chrome extension: GraphQL interception via Fetch.requestPaused (`background/graphql.js`) — detection, APQ rejection, `__typename` injection
 - [x] Chrome extension: content script (`content/content.js`) — DOM event capture, page content extraction, stable selector generation
 - [x] Chrome extension: popup UI (`popup/`) — Start/Stop/Export buttons, live stats, status indicators
 - [x] Tests: model roundtrips, bundle read/write, binary safety, lookups
@@ -632,6 +632,20 @@ Auth analysis runs in parallel with enrichment on ALL unfiltered traces (externa
 
 Per-endpoint enrichment trades a single large prompt for N small focused prompts. Each call reasons about one endpoint with full context, producing higher-quality enrichment. Failures are isolated — one endpoint failing doesn't affect others. All calls run concurrently via `asyncio.gather`.
 
+### GraphQL request patterns
+
+Both the Python protocol detector (`_is_graphql_item` in `protocol.py`) and the extension's interception filter (`isGraphQLItem` in `graphql.js`) recognize three shapes of GraphQL requests:
+
+| Pattern | Shape | Query text available | Extension can inject `__typename` | Example |
+|---|---|---|---|---|
+| **Normal query** | `{"query": "query { ... }", ...}` | Yes | Yes | Most GraphQL clients |
+| **Persisted query (hash)** | `{"extensions": {"persistedQuery": {...}}, ...}` | No (hash only) | Only if APQ rejection forces a retry with full query | Apollo APQ, Spotify |
+| **Named operation** | `{"operation": "FetchUsers", "variables": {...}}` | No (name only) | No | Reddit |
+
+The `operationName` key (standard GraphQL) is also accepted in place of `operation` for the named operation pattern. Both require a `variables` dict to distinguish from arbitrary JSON.
+
+APQ rejection (returning `PersistedQueryNotFound`) works with standard Apollo clients that hold the full query as a fallback. It does not work with clients that only have the hash (Spotify) or only the operation name (Reddit) — these break with errors like "Fallback query not available". The popup exposes toggles for both `__typename` injection and APQ rejection so users can disable them per-site.
+
 ### GraphQL analysis strategy
 The GraphQL pipeline is mechanical-first with LLM enrichment:
 1. The extension injects `__typename` into all GraphQL queries at capture time (via `Fetch.requestPaused`), so responses carry type information
@@ -640,6 +654,8 @@ The GraphQL pipeline is mechanical-first with LLM enrichment:
 4. The assembly step renders the `TypeRegistry` to SDL
 
 This is different from REST because GraphQL's type system is explicit — `__typename` injection makes mechanical type reconstruction reliable without LLM involvement. The LLM only adds business descriptions.
+
+For persisted/named queries where we cannot inject `__typename` or parse the query text, the pipeline can only infer types from response shapes (less precise — no field-level nullability or explicit type names).
 
 ### Path parameter inference
 In the LLM-first pipeline, path parameters are inferred by the LLM during URL grouping. The LLM sees all observed URLs and identifies variable segments (IDs, UUIDs, hashes) to produce patterns like `/api/users/{user_id}/orders`.
