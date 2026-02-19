@@ -8,8 +8,6 @@ from __future__ import annotations
 
 import asyncio
 from collections.abc import Callable
-from datetime import datetime, timezone
-from pathlib import Path
 from typing import Any
 
 from cli.commands.analyze.correlator import correlate
@@ -48,7 +46,6 @@ async def build_spec(
     model: str,
     source_filename: str = "",
     on_progress: Callable[[str], None] | None = None,
-    enable_debug: bool = False,
     skip_enrich: bool = False,
 ) -> dict[str, Any]:
     """Build an OpenAPI 3.1 spec dict from a capture bundle.
@@ -70,14 +67,6 @@ async def build_spec(
         if on_progress:
             on_progress(msg)
 
-    # Debug directory
-    debug_dir = None
-    if enable_debug:
-        run_ts = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.%f")[:-3] + "Z"
-        debug_dir = Path("debug") / run_ts
-        debug_dir.mkdir(parents=True, exist_ok=True)
-        progress(f"Debug logs → {debug_dir}")
-
     all_traces = list(bundle.traces)
     correlations = correlate(bundle)
 
@@ -93,7 +82,7 @@ async def build_spec(
 
     # Step 2: Detect base URL (LLM)
     progress("Detecting API base URL (LLM)...")
-    detect_url_step = DetectBaseUrlStep(model, debug_dir)
+    detect_url_step = DetectBaseUrlStep(model)
     base_url = await detect_url_step.run(url_method_pairs)
     progress(f"  API base URL: {base_url}")
 
@@ -111,7 +100,7 @@ async def build_spec(
         MethodUrlPair(t.meta.request.method.upper(), t.meta.request.url)
         for t in filtered_traces
     ]
-    group_step = GroupEndpointsStep(model, debug_dir)
+    group_step = GroupEndpointsStep(model)
     endpoint_groups = await group_step.run(filtered_pairs)
 
     # Step 5: Strip prefix
@@ -138,7 +127,7 @@ async def build_spec(
     async def _enrich() -> list[EndpointSpec] | None:
         if skip_enrich:
             return None
-        enrich_step = EnrichEndpointsStep(model, debug_dir)
+        enrich_step = EnrichEndpointsStep(model)
         try:
             return await enrich_step.run(
                 EnrichmentContext(
@@ -153,7 +142,7 @@ async def build_spec(
             return None
 
     async def _auth() -> AuthInfo:
-        auth_step = AnalyzeAuthStep(model, debug_dir)
+        auth_step = AnalyzeAuthStep(model)
         try:
             return await auth_step.run(all_traces)
         except Exception:

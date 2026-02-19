@@ -69,7 +69,7 @@ Respond in JSON."""
             messages=[{"role": "user", "content": prompt}],
         )
 
-        llm.save_debug(self.debug_dir, "analyze_auth", prompt, response.content[0].text)
+        llm.save_debug("analyze_auth", prompt, response.content[0].text)
         data = llm.extract_json(response.content[0].text)
         if not isinstance(data, dict):
             return AuthInfo()

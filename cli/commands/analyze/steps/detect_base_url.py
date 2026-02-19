@@ -54,7 +54,6 @@ Respond with a JSON object:
             [{"role": "user", "content": prompt}],
             INVESTIGATION_TOOLS,
             TOOL_EXECUTORS,
-            debug_dir=self.debug_dir,
             call_name="detect_api_base_url",
         )
 

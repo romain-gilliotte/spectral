@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+from pathlib import Path
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock
 
@@ -57,6 +58,19 @@ class TestInit:
         sem = llm._semaphore  # pyright: ignore[reportPrivateUsage]
         assert sem is not None
         assert sem._value == 3  # pyright: ignore[reportPrivateUsage]
+
+    def test_init_debug_dir(self, tmp_path: Path):
+        debug_dir = tmp_path / "debug"
+        debug_dir.mkdir()
+        llm.init(client=MagicMock(), debug_dir=debug_dir)
+        assert llm._debug_dir is debug_dir  # pyright: ignore[reportPrivateUsage]
+
+    def test_reset_clears_debug_dir(self, tmp_path: Path):
+        debug_dir = tmp_path / "debug"
+        debug_dir.mkdir()
+        llm.init(client=MagicMock(), debug_dir=debug_dir)
+        llm.reset()
+        assert llm._debug_dir is None  # pyright: ignore[reportPrivateUsage]
 
 
 class TestCreate:

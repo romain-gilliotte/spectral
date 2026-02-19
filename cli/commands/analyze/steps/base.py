@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from pathlib import Path
 from typing import Any, Generic, TypeVar
 
 In = TypeVar("In")
@@ -65,9 +64,8 @@ class LLMStep(Step[In, Out]):
 
     max_retries: int = 1
 
-    def __init__(self, model: str, debug_dir: Path | None = None):
+    def __init__(self, model: str):
         self.model = model
-        self.debug_dir = debug_dir
 
     @abstractmethod
     async def _execute(self, input: In) -> Out:

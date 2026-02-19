@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+from datetime import datetime, timezone
 from pathlib import Path
 
 import click
@@ -42,7 +43,14 @@ def analyze(
         f"{len(bundle.contexts)} contexts"
     )
 
-    llm.init()
+    debug_dir = None
+    if debug:
+        run_ts = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.%f")[:-3] + "Z"
+        debug_dir = Path("debug") / run_ts
+        debug_dir.mkdir(parents=True, exist_ok=True)
+        console.print(f"  Debug logs → {debug_dir}")
+
+    llm.init(debug_dir=debug_dir)
 
     def on_progress(msg: str) -> None:
         console.print(f"  {msg}")
@@ -54,7 +62,6 @@ def analyze(
             model=model,
             source_filename=Path(capture_path).name,
             on_progress=on_progress,
-            enable_debug=debug,
             skip_enrich=skip_enrich,
         )
     )

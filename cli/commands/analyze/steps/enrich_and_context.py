@@ -62,7 +62,6 @@ Respond in JSON."""
                 )
 
                 llm.save_debug(
-                    self.debug_dir,
                     f"enrich_{ep.id}",
                     prompt,
                     response.content[0].text,
