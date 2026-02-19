@@ -40,7 +40,7 @@ def inspect(capture_path: str, trace_id: str | None) -> None:
     "--domain",
     "domains",
     multiple=True,
-    help="Only intercept these domains (regex). Can be repeated.",
+    help="Only intercept these domains (e.g. '*.example.com'). Can be repeated.",
 )
 def proxy(port: int, output: str | None, domains: tuple[str, ...]) -> None:
     """Start a MITM proxy to capture traffic.

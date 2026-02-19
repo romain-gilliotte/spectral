@@ -360,6 +360,32 @@ def _inject_typename_in_body(body: dict[str, object], is_gql_url: bool) -> bool:
     return False
 
 
+def _domain_to_regex(pattern: str) -> str:
+    """Convert a user-friendly domain pattern to a regex for mitmproxy.
+
+    Handles common patterns:
+    - Plain domain: ``api.example.com`` → ``api\\.example\\.com``
+    - Wildcard prefix: ``*.example.com`` → ``.*\\.example\\.com``
+    - Already valid regex is passed through unchanged.
+    """
+    import re
+
+    # If it already compiles as valid regex, use it as-is
+    try:
+        re.compile(pattern)
+        return pattern
+    except re.PatternError:
+        pass
+
+    # Likely a glob-style pattern — convert it
+    # Replace leading "*." with ".*\." then escape the rest
+    if pattern.startswith("*."):
+        return ".*\\." + re.escape(pattern[2:])
+
+    # Fallback: escape everything
+    return re.escape(pattern)
+
+
 def _run_mitmproxy(
     port: int,
     addons: list[object],
@@ -379,7 +405,8 @@ def _run_mitmproxy(
     loop = asyncio.new_event_loop()
     opts = Options(listen_port=port, mode=["regular"])
     if allow_hosts:
-        opts.update(allow_hosts=allow_hosts)  # pyright: ignore[reportUnknownMemberType]
+        regex_hosts = [_domain_to_regex(h) for h in allow_hosts]
+        opts.update(allow_hosts=regex_hosts)  # pyright: ignore[reportUnknownMemberType]
     master = DumpMaster(opts, loop=loop)
     for addon in addons:
         master.addons.add(addon)  # pyright: ignore[reportUnknownMemberType]
