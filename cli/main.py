@@ -8,8 +8,6 @@ from dotenv import load_dotenv
 from cli.commands.analyze.cmd import analyze
 from cli.commands.android.cmd import android
 from cli.commands.capture.cmd import capture
-from cli.commands.client.cmd import call_command
-from cli.commands.generate.cmd import generate
 
 load_dotenv()
 
@@ -21,8 +19,6 @@ def cli() -> None:
 
 
 cli.add_command(analyze)
-cli.add_command(generate)
-cli.add_command(call_command)
 cli.add_command(capture)
 cli.add_command(android)
 

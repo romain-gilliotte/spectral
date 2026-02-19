@@ -4,42 +4,50 @@ from __future__ import annotations
 
 import asyncio
 import json
-from typing import Any, cast
+from typing import Any, TypeGuard
+from urllib.parse import urlparse
 
 from cli.commands.analyze.steps.base import LLMStep
-from cli.commands.analyze.steps.types import EnrichmentContext
+from cli.commands.analyze.steps.types import (
+    Correlation,
+    EndpointSpec,
+    EnrichmentContext,
+)
 from cli.commands.analyze.tools import extract_json, save_debug
-from cli.commands.analyze.utils import truncate_json
-from cli.formats.api_spec import EndpointSpec
+from cli.commands.analyze.utils import pattern_to_regex
+from cli.commands.capture.types import Trace
 
 
 class EnrichEndpointsStep(LLMStep[EnrichmentContext, list[EndpointSpec]]):
     """Parallel per-endpoint LLM calls to enrich each endpoint with business
-    semantics: business_purpose, user_story, parameter meanings, response
-    details, trigger explanations, and discovery notes.
+    semantics: description, field descriptions for all schemas, response
+    details, and discovery notes.
     """
 
     name = "enrich_endpoints"
 
     async def _execute(self, input: EnrichmentContext) -> list[EndpointSpec]:
-        trace_map = {t.meta.id: t for t in input.traces}
-
         async def _enrich_one(ep: EndpointSpec) -> None:
-            summary = _build_endpoint_summary(ep, trace_map)
+            summary = _build_endpoint_summary(ep, input.traces, input.correlations)
             prompt = f"""You are analyzing a single API endpoint discovered from "{input.app_name}" ({input.base_url}).
 
-Here is the endpoint's mechanical data:
+Below is the endpoint's mechanical data as JSON Schema. Nested properties carry an "observed" array with sample values seen in real traffic — use these to understand business meaning.
 
-{json.dumps(summary, indent=1)[:6000]}
+{json.dumps(summary, indent=1)}
 
 Provide a JSON response with these keys:
-- "business_purpose": concise description of what this endpoint does in business terms
-- "user_story": "As a [persona], I want to [action] so that [goal]"
-- "correlation_confidence": 0.0-1.0 confidence in the UI↔API correlation
-- "parameter_meanings": {{param_name: "business meaning"}} for each parameter
-- "parameter_constraints": {{param_name: "constraint text"}} for parameters where constraints can be inferred from observed values (or omit if none)
+- "description": concise description of what this endpoint does in business terms (this becomes the OpenAPI summary)
+- "field_descriptions": an object mirroring the schema structure with business descriptions for each field. Sub-keys:
+  - "path_parameters": {{param_name: "description", ...}} (omit if no path parameters)
+  - "query_parameters": {{param_name: "description", ...}} (omit if no query parameters)
+  - "request_body": object mirroring the request body schema structure (omit if no request body)
+  - "responses": {{status_code_string: object mirroring the response schema structure}} (omit if no response schemas)
+  Rules for field_descriptions structure:
+  - Leaf values are always description strings.
+  - Nested objects mirror the nesting: {{"address": {{"city": "...", "zip": "..."}}}}
+  - For arrays of objects, use the array field name as key with a flat object describing the item properties: {{"items": {{"name": "...", "price": "..."}}}}
+  - NEVER use dot-paths or bracket notation like "items[].name". Always use nested objects.
 - "response_details": {{status_code_string: {{"business_meaning": "...", "example_scenario": "...", "user_impact": "..." or null, "resolution": "..." or null}}}} for each observed status. For error statuses (4xx/5xx), include user_impact and resolution.
-- "trigger_explanations": array of natural language descriptions for each UI trigger
 - "discovery_notes": observations, edge cases, or dependencies worth noting about this endpoint (or null)
 
 Respond in JSON."""
@@ -60,7 +68,7 @@ Respond in JSON."""
                 data = extract_json(response.content[0].text)
 
                 if isinstance(data, dict):
-                    _apply_enrichment(ep, cast(dict[str, Any], data))
+                    _apply_enrichment(ep, data)
             except Exception:
                 pass  # Leave endpoint un-enriched on failure
 
@@ -69,108 +77,165 @@ Respond in JSON."""
         return input.endpoints
 
 
+def _strip_root_observed(schema: dict[str, Any]) -> dict[str, Any]:
+    """Return a shallow copy of *schema* with ``observed`` removed from root properties only.
+
+    Nested leaves keep their ``observed`` arrays (useful LLM context).
+    Root-level ones are redundant with the property name and type.
+    """
+    props = schema.get("properties")
+    if not _is_json_dict(props):
+        return schema
+    cleaned_props: dict[str, Any] = {}
+    for name, prop in props.items():
+        if _is_json_dict(prop) and "observed" in prop:
+            cleaned_props[name] = {k: v for k, v in prop.items() if k != "observed"}
+        else:
+            cleaned_props[name] = prop
+    return {**schema, "properties": cleaned_props}
+
+
 def _build_endpoint_summary(
-    ep: EndpointSpec, trace_map: dict[str, Any]
+    ep: EndpointSpec,
+    all_traces: list[Trace],
+    correlations: list[Correlation],
 ) -> dict[str, Any]:
-    """Build a compact summary of one endpoint for the LLM prompt."""
+    """Build a compact summary of one endpoint for the LLM prompt.
+
+    Uses the annotated schemas already computed by mechanical extraction
+    rather than raw trace bodies — cheaper in tokens and no information is
+    lost to truncation.  All four schemas (path, query, body, response) are
+    presented uniformly.
+    """
     summary: dict[str, Any] = dict(
         id=ep.id,
         method=ep.method,
         path=ep.path,
-        observed_count=ep.observed_count,
     )
 
-    if ep.ui_triggers:
-        summary["ui_triggers"] = [
-            {
-                "action": t.action,
-                "element_text": t.element_text,
-                "page_url": t.page_url,
-            }
-            for t in ep.ui_triggers[:3]
-        ]
+    # Find traces matching this endpoint (for correlation lookup only)
+    ep_traces = _find_endpoint_traces(ep, all_traces)
 
-    # Add sample request/response from first trace
-    ep_traces = [
-        trace_map[ref] for ref in ep.source_trace_refs[:2] if ref in trace_map
-    ]
-    if ep_traces:
-        t = ep_traces[0]
-        if t.request_body:
-            try:
-                summary["sample_request_body"] = truncate_json(
-                    json.loads(t.request_body), max_keys=10
+    # Build UI trigger context from correlations
+    ui_triggers: list[dict[str, str]] = []
+    for corr in correlations:
+        for t in corr.traces:
+            if t in ep_traces:
+                ui_triggers.append(
+                    {
+                        "action": corr.context.meta.action,
+                        "element_text": corr.context.meta.element.text,
+                        "page_url": corr.context.meta.page.url,
+                    }
                 )
-            except (json.JSONDecodeError, UnicodeDecodeError):
-                pass
-        if t.response_body:
-            try:
-                summary["sample_response_body"] = truncate_json(
-                    json.loads(t.response_body), max_keys=10
-                )
-            except (json.JSONDecodeError, UnicodeDecodeError):
-                pass
-        summary["response_statuses"] = list(
-            set(
-                trace_map[ref].meta.response.status
-                for ref in ep.source_trace_refs
-                if ref in trace_map
-            )
-        )
+                break
+    if ui_triggers:
+        summary["ui_triggers"] = ui_triggers[:3]
 
-    if ep.request.parameters:
-        params_list: list[dict[str, Any]] = []
-        for p in ep.request.parameters:
-            param_info: dict[str, Any] = dict(
-                name=p.name,
-                location=p.location,
-                type=p.type,
-            )
-            if p.observed_values:
-                param_info["observed_values"] = p.observed_values[:5]
-            params_list.append(param_info)
-        summary["parameters"] = params_list
+    # Strip root-level observed (redundant with property name/type);
+    # nested observed are kept as useful context for the LLM.
+    if ep.request.path_schema:
+        summary["path_parameters"] = _strip_root_observed(ep.request.path_schema)
+    if ep.request.query_schema:
+        summary["query_parameters"] = _strip_root_observed(ep.request.query_schema)
+    if ep.request.body_schema:
+        summary["request_body"] = _strip_root_observed(ep.request.body_schema)
+
+    # Response schemas (from mechanical extraction)
+    if ep.responses:
+        responses_list: list[dict[str, Any]] = []
+        for resp in ep.responses:
+            resp_info: dict[str, Any] = {"status": resp.status}
+            if resp.content_type:
+                resp_info["content_type"] = resp.content_type
+            if resp.schema_:
+                resp_info["schema"] = _strip_root_observed(resp.schema_)
+            responses_list.append(resp_info)
+        summary["responses"] = responses_list
 
     return summary
 
 
+def _find_endpoint_traces(ep: EndpointSpec, traces: list[Trace]) -> list[Trace]:
+    """Find traces that match this endpoint's method and path pattern."""
+    pattern_re = pattern_to_regex(ep.path)
+    matched: list[Trace] = []
+    for t in traces:
+        if t.meta.request.method.upper() != ep.method:
+            continue
+        parsed = urlparse(t.meta.request.url)
+        if pattern_re.match(parsed.path):
+            matched.append(t)
+    return matched
+
+
+def _is_json_dict(val: object) -> TypeGuard[dict[str, Any]]:
+    """Type guard: parsed JSON dicts always have string keys."""
+    return isinstance(val, dict)
+
+
+def _apply_schema_descriptions(
+    schema: dict[str, Any] | None, descriptions: dict[str, Any]
+) -> None:
+    """Write ``description`` into schema properties, matching by field name.
+
+    Descriptions mirror the schema structure: leaf values (strings) are
+    descriptions, intermediate values (dicts) recurse into nested properties
+    or into array items.
+    """
+    if not schema or not descriptions:
+        return
+    props: dict[str, Any] = schema.get("properties", {})
+    for field_name, desc in descriptions.items():
+        if field_name not in props:
+            continue
+        if isinstance(desc, str):
+            props[field_name]["description"] = desc
+        elif _is_json_dict(desc):
+            prop_schema = props[field_name]
+            if prop_schema.get("type") == "array" and "items" in prop_schema:
+                # Array of objects: descriptions apply to item properties
+                _apply_schema_descriptions(prop_schema["items"], desc)
+            else:
+                # Nested object
+                _apply_schema_descriptions(prop_schema, desc)
+
+
 def _apply_enrichment(endpoint: EndpointSpec, enrich: dict[str, Any]) -> None:
     """Apply enrichment data from an LLM response to an endpoint."""
-    if enrich.get("business_purpose"):
-        endpoint.business_purpose = enrich["business_purpose"]
-    if enrich.get("user_story"):
-        endpoint.user_story = enrich["user_story"]
+    if enrich.get("description"):
+        endpoint.description = enrich["description"]
     if enrich.get("discovery_notes"):
         endpoint.discovery_notes = enrich["discovery_notes"]
 
-    conf: Any = enrich.get("correlation_confidence")
-    if conf is not None:
-        try:
-            endpoint.correlation_confidence = float(conf)
-        except (ValueError, TypeError):
-            pass
+    # Apply field descriptions from recursive structure
+    field_descs = enrich.get("field_descriptions", {})
+    if _is_json_dict(field_descs):
+        path_descs = field_descs.get("path_parameters", {})
+        if _is_json_dict(path_descs):
+            _apply_schema_descriptions(endpoint.request.path_schema, path_descs)
 
-    param_meanings: Any = enrich.get("parameter_meanings", {})
-    if isinstance(param_meanings, dict):
-        for param in endpoint.request.parameters:
-            if param.name in param_meanings:
-                param.business_meaning = param_meanings[param.name]
+        query_descs = field_descs.get("query_parameters", {})
+        if _is_json_dict(query_descs):
+            _apply_schema_descriptions(endpoint.request.query_schema, query_descs)
 
-    param_constraints: Any = enrich.get("parameter_constraints", {})
-    if isinstance(param_constraints, dict):
-        for param in endpoint.request.parameters:
-            if param.name in param_constraints:
-                param.constraints = param_constraints[param.name]
+        body_descs = field_descs.get("request_body", {})
+        if _is_json_dict(body_descs):
+            _apply_schema_descriptions(endpoint.request.body_schema, body_descs)
 
-    # Support both rich response_details and flat response_meanings
-    response_details_raw: Any = enrich.get("response_details", {})
-    if isinstance(response_details_raw, dict) and response_details_raw:
-        rd = cast(dict[str, Any], response_details_raw)
+        resp_descs = field_descs.get("responses", {})
+        if _is_json_dict(resp_descs):
+            for resp in endpoint.responses:
+                status_descs = resp_descs.get(str(resp.status))
+                if _is_json_dict(status_descs) and resp.schema_:
+                    _apply_schema_descriptions(resp.schema_, status_descs)
+
+    # Response details (business meaning, scenario, impact, resolution)
+    response_details = enrich.get("response_details", {})
+    if _is_json_dict(response_details) and response_details:
         for resp in endpoint.responses:
-            key = str(resp.status)
-            detail_raw: Any = rd.get(key)
-            if isinstance(detail_raw, dict):
-                detail = cast(dict[str, Any], detail_raw)
+            detail = response_details.get(str(resp.status))
+            if _is_json_dict(detail):
                 if detail.get("business_meaning"):
                     resp.business_meaning = detail["business_meaning"]
                 if detail.get("example_scenario"):
@@ -179,20 +244,5 @@ def _apply_enrichment(endpoint: EndpointSpec, enrich: dict[str, Any]) -> None:
                     resp.user_impact = detail["user_impact"]
                 if detail.get("resolution"):
                     resp.resolution = detail["resolution"]
-            elif isinstance(detail_raw, str):
-                resp.business_meaning = detail_raw
-    else:
-        response_meanings_raw: Any = enrich.get("response_meanings", {})
-        if isinstance(response_meanings_raw, dict):
-            rm = cast(dict[str, Any], response_meanings_raw)
-            for resp in endpoint.responses:
-                key = str(resp.status)
-                if key in rm:
-                    resp.business_meaning = rm[key]
-
-    trigger_explanations_raw: Any = enrich.get("trigger_explanations", [])
-    if isinstance(trigger_explanations_raw, list):
-        trigger_explanations = cast(list[Any], trigger_explanations_raw)
-        for i, trigger in enumerate(endpoint.ui_triggers):
-            if i < len(trigger_explanations):
-                trigger.user_explanation = trigger_explanations[i]
+            elif isinstance(detail, str):
+                resp.business_meaning = detail

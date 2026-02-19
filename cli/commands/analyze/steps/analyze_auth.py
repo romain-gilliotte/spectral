@@ -15,12 +15,12 @@ from cli.commands.analyze.utils import (
     sanitize_headers,
     truncate_json,
 )
-from cli.commands.capture.types import Trace
-from cli.formats.api_spec import (
+from cli.commands.analyze.steps.types import (
     AuthInfo,
     LoginEndpointConfig,
     RefreshEndpointConfig,
 )
+from cli.commands.capture.types import Trace
 
 
 class AnalyzeAuthStep(LLMStep[list[Trace], AuthInfo]):

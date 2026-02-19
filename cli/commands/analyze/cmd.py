@@ -6,6 +6,7 @@ import asyncio
 from pathlib import Path
 
 import click
+import yaml
 
 from cli.helpers.console import console
 
@@ -13,7 +14,7 @@ from cli.helpers.console import console
 @click.command()
 @click.argument("capture_path", type=click.Path(exists=True))
 @click.option(
-    "-o", "--output", required=True, help="Output file path for the API spec (.json)"
+    "-o", "--output", required=True, help="Output file path for the OpenAPI spec (.yaml)"
 )
 @click.option("--model", default="claude-sonnet-4-5-20250929", help="LLM model to use")
 @click.option(
@@ -28,7 +29,7 @@ from cli.helpers.console import console
 def analyze(
     capture_path: str, output: str, model: str, debug: bool, skip_enrich: bool
 ) -> None:
-    """Analyze a capture bundle and produce an enriched API spec."""
+    """Analyze a capture bundle and produce an OpenAPI spec."""
     import anthropic
 
     from cli.commands.analyze.pipeline import build_spec
@@ -48,7 +49,7 @@ def analyze(
         console.print(f"  {msg}")
 
     console.print(f"[bold]Analyzing with LLM ({model})...[/bold]")
-    spec = asyncio.run(
+    openapi = asyncio.run(
         build_spec(
             bundle,
             client=client,
@@ -59,9 +60,13 @@ def analyze(
             skip_enrich=skip_enrich,
         )
     )
-    console.print(f"  Found {len(spec.protocols.rest.endpoints)} endpoints")
+    endpoint_count = len(openapi.get("paths", {}))
+    console.print(f"  Found {endpoint_count} paths")
 
     output_path = Path(output)
     output_path.parent.mkdir(parents=True, exist_ok=True)
-    output_path.write_text(spec.model_dump_json(indent=2, by_alias=True))
-    console.print(f"[green]API spec written to {output}[/green]")
+    with open(output_path, "w") as f:
+        yaml.dump(
+            openapi, f, default_flow_style=False, sort_keys=False, allow_unicode=True
+        )
+    console.print(f"[green]OpenAPI spec written to {output}[/green]")

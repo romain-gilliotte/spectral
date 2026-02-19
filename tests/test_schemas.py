@@ -4,7 +4,8 @@ from cli.commands.analyze.schemas import (
     _detect_format,
     _infer_type,
     _infer_type_from_values,
-    extract_query_params,
+    infer_path_schema,
+    infer_query_schema,
     infer_schema,
 )
 from tests.conftest import make_trace
@@ -69,6 +70,94 @@ class TestInferSchema:
         schema = infer_schema([])
         assert schema["type"] == "object"
         assert schema["properties"] == {}
+
+    def test_nested_object(self):
+        samples = [
+            {"address": {"city": "Paris", "zip": "75001"}},
+            {"address": {"city": "Lyon", "zip": "69001"}},
+        ]
+        schema = infer_schema(samples)
+        addr = schema["properties"]["address"]
+        assert addr["type"] == "object"
+        assert "properties" in addr
+        assert addr["properties"]["city"]["type"] == "string"
+        assert addr["properties"]["zip"]["type"] == "string"
+        assert set(addr["required"]) == {"city", "zip"}
+        assert "Paris" in addr["properties"]["city"]["observed"]
+
+    def test_array_of_objects(self):
+        samples = [
+            {"items": [{"id": 1, "name": "A"}, {"id": 2, "name": "B"}]},
+            {"items": [{"id": 3, "name": "C"}]},
+        ]
+        schema = infer_schema(samples)
+        items_prop = schema["properties"]["items"]
+        assert items_prop["type"] == "array"
+        assert "items" in items_prop
+        assert items_prop["items"]["type"] == "object"
+        assert "id" in items_prop["items"]["properties"]
+        assert items_prop["items"]["properties"]["id"]["type"] == "integer"
+
+    def test_array_of_scalars(self):
+        samples = [
+            {"tags": ["a", "b"]},
+            {"tags": ["c"]},
+        ]
+        schema = infer_schema(samples)
+        tags = schema["properties"]["tags"]
+        assert tags["type"] == "array"
+        assert tags["items"]["type"] == "string"
+
+    def test_array_observed_on_items_not_property(self):
+        """Observed values for arrays should be on items (flattened), not on the array property."""
+        samples = [
+            {"tags": ["EXT_BUCKET", "EXT_TIME"]},
+            {"tags": []},
+            {"tags": ["EXT_BUCKET"]},
+        ]
+        schema = infer_schema(samples)
+        tags = schema["properties"]["tags"]
+        assert tags["type"] == "array"
+        # No observed on the array property itself
+        assert "observed" not in tags
+        # Observed is on items, with flattened distinct elements
+        assert "observed" in tags["items"]
+        assert set(tags["items"]["observed"]) == {"EXT_BUCKET", "EXT_TIME"}
+
+    def test_deeply_nested(self):
+        samples = [
+            {"outer": {"inner": {"value": 42}}},
+        ]
+        schema = infer_schema(samples)
+        inner = schema["properties"]["outer"]["properties"]["inner"]
+        assert inner["type"] == "object"
+        assert inner["properties"]["value"]["type"] == "integer"
+        assert 42 in inner["properties"]["value"]["observed"]
+
+    def test_null_then_object_infers_object_type(self):
+        samples = [
+            {"point": None},
+            {"point": {"lon": 4.82, "lat": 45.73}},
+        ]
+        schema = infer_schema(samples)
+        prop = schema["properties"]["point"]
+        assert prop["type"] == "object"
+        assert "properties" in prop
+        assert prop["properties"]["lon"]["type"] == "number"
+        assert prop["properties"]["lat"]["type"] == "number"
+
+    def test_null_then_string_infers_string_type(self):
+        samples = [
+            {"label": None},
+            {"label": "hello"},
+        ]
+        schema = infer_schema(samples)
+        assert schema["properties"]["label"]["type"] == "string"
+
+    def test_all_null_infers_string(self):
+        samples = [{"x": None}, {"x": None}]
+        schema = infer_schema(samples)
+        assert schema["properties"]["x"]["type"] == "string"
 
 
 class TestInferType:
@@ -145,30 +234,104 @@ class TestDetectFormat:
         assert _detect_format([42, 100]) is None
 
 
-class TestExtractQueryParams:
-    def test_extracts_with_type_and_format(self):
+class TestInferPathSchema:
+    def test_no_params_returns_none(self):
+        traces = [
+            make_trace("t_0001", "GET", "https://api.example.com/users", 200, 1000),
+        ]
+        assert infer_path_schema(traces, "/users") is None
+
+    def test_single_param(self):
+        traces = [
+            make_trace("t_0001", "GET", "https://api.example.com/users/123", 200, 1000),
+            make_trace("t_0002", "GET", "https://api.example.com/users/456", 200, 2000),
+        ]
+        schema = infer_path_schema(traces, "/users/{user_id}")
+        assert schema is not None
+        assert schema["type"] == "object"
+        assert "user_id" in schema["properties"]
+        assert schema["required"] == ["user_id"]
+        assert "123" in schema["properties"]["user_id"]["observed"]
+        assert "456" in schema["properties"]["user_id"]["observed"]
+
+    def test_uuid_format_detection(self):
+        traces = [
+            make_trace(
+                "t_0001",
+                "GET",
+                "https://api.example.com/items/a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+                200,
+                1000,
+            ),
+            make_trace(
+                "t_0002",
+                "GET",
+                "https://api.example.com/items/11111111-2222-3333-4444-555555555555",
+                200,
+                2000,
+            ),
+        ]
+        schema = infer_path_schema(traces, "/items/{item_id}")
+        assert schema is not None
+        assert schema["properties"]["item_id"]["format"] == "uuid"
+
+    def test_multiple_params(self):
+        traces = [
+            make_trace(
+                "t_0001",
+                "GET",
+                "https://api.example.com/users/123/orders/o1",
+                200,
+                1000,
+            ),
+        ]
+        schema = infer_path_schema(traces, "/users/{user_id}/orders/{order_id}")
+        assert schema is not None
+        assert set(schema["properties"].keys()) == {"user_id", "order_id"}
+        assert set(schema["required"]) == {"user_id", "order_id"}
+
+    def test_integer_param(self):
+        traces = [
+            make_trace("t_0001", "GET", "https://api.example.com/users/123", 200, 1000),
+            make_trace("t_0002", "GET", "https://api.example.com/users/456", 200, 2000),
+        ]
+        schema = infer_path_schema(traces, "/users/{user_id}")
+        assert schema is not None
+        assert schema["properties"]["user_id"]["type"] == "integer"
+
+
+class TestInferQuerySchema:
+    def test_no_query_params_returns_none(self):
+        traces = [
+            make_trace("t_0001", "GET", "https://api.example.com/users", 200, 1000),
+        ]
+        assert infer_query_schema(traces) is None
+
+    def test_basic_query_params(self):
         traces = [
             make_trace(
                 "t_0001",
                 "GET",
                 "https://api.example.com/items?id=a1b2c3d4-e5f6-7890-abcd-ef1234567890",
                 200,
-                timestamp=1000,
+                1000,
             ),
             make_trace(
                 "t_0002",
                 "GET",
                 "https://api.example.com/items?id=11111111-2222-3333-4444-555555555555",
                 200,
-                timestamp=2000,
+                2000,
             ),
         ]
-        params = extract_query_params(traces)
-        assert "id" in params
-        assert params["id"]["type"] == "string"
-        assert params["id"]["format"] == "uuid"
-        assert params["id"]["required"] is True
-        assert len(params["id"]["values"]) == 2
+        schema = infer_query_schema(traces)
+        assert schema is not None
+        assert schema["type"] == "object"
+        assert "id" in schema["properties"]
+        assert schema["properties"]["id"]["type"] == "string"
+        assert schema["properties"]["id"]["format"] == "uuid"
+        assert "id" in schema.get("required", [])
+        assert len(schema["properties"]["id"]["observed"]) == 2
 
     def test_integer_type(self):
         traces = [
@@ -179,9 +342,9 @@ class TestExtractQueryParams:
                 "t_0002", "GET", "https://api.example.com/search?page=2", 200, 2000
             ),
         ]
-        params = extract_query_params(traces)
-        assert params["page"]["type"] == "integer"
-        assert params["page"]["format"] is None
+        schema = infer_query_schema(traces)
+        assert schema is not None
+        assert schema["properties"]["page"]["type"] == "integer"
 
     def test_optional_param(self):
         traces = [
@@ -196,6 +359,7 @@ class TestExtractQueryParams:
                 "t_0002", "GET", "https://api.example.com/search?q=world", 200, 2000
             ),
         ]
-        params = extract_query_params(traces)
-        assert params["q"]["required"] is True
-        assert params["page"]["required"] is False
+        schema = infer_query_schema(traces)
+        assert schema is not None
+        assert "q" in schema.get("required", [])
+        assert "page" not in schema.get("required", [])

@@ -1,4 +1,10 @@
-"""Schema inference and query parameter extraction utilities."""
+"""Schema inference utilities.
+
+All four parts of an endpoint (path params, query params, request body,
+response body) use the same annotated JSON-schema format produced by
+``infer_schema``.  The ``infer_path_schema`` and ``infer_query_schema``
+helpers build schemas from trace URLs so that all four are uniform.
+"""
 
 from __future__ import annotations
 
@@ -72,8 +78,30 @@ def _detect_format(values: list[Any]) -> str | None:
     return None
 
 
+def _collect_observed(values: list[Any], max_count: int = 5) -> list[Any]:
+    """Collect up to *max_count* distinct observed values."""
+    seen: list[Any] = []
+    seen_set: set[Any] = set()
+    for v in values:
+        try:
+            hashable: Any = v if not isinstance(v, (dict, list)) else str(v)  # pyright: ignore[reportUnknownArgumentType]
+            if hashable not in seen_set:
+                seen_set.add(hashable)
+                seen.append(v)
+                if len(seen) >= max_count:
+                    break
+        except TypeError:
+            seen.append(v)
+            if len(seen) >= max_count:
+                break
+    return seen
+
+
 def infer_schema(samples: list[dict[str, Any]]) -> dict[str, Any]:
     """Infer a JSON schema from multiple object samples, annotated with observed values.
+
+    Recursively explores nested objects and arrays of objects so that the
+    resulting schema fully describes the structure at every level.
 
     Each property carries its type, optional format, and an "observed" list of up
     to 5 distinct values seen across samples. Properties present in all samples
@@ -84,11 +112,23 @@ def infer_schema(samples: list[dict[str, Any]]) -> dict[str, Any]:
         "type": "object",
         "properties": {
             "status": {"type": "string", "observed": ["active", "inactive"]},
-            "count": {"type": "integer", "observed": [1, 5, 10]}
+            "count": {"type": "integer", "observed": [1, 5, 10]},
+            "address": {
+                "type": "object",
+                "properties": {
+                    "city": {"type": "string", "observed": ["Paris"]}
+                },
+                "required": ["city"]
+            }
         },
         "required": ["status", "count"]
     }
     """
+    return _infer_object_schema(samples)
+
+
+def _infer_object_schema(samples: list[dict[str, Any]]) -> dict[str, Any]:
+    """Infer schema for a list of object samples (recursive)."""
     total = len(samples)
     all_keys: dict[str, list[Any]] = defaultdict(list)
     for sample in samples:
@@ -98,34 +138,9 @@ def infer_schema(samples: list[dict[str, Any]]) -> dict[str, Any]:
     properties: dict[str, Any] = {}
     required: list[str] = []
     for key, values in all_keys.items():
-        prop_type = _infer_type(values[0])
-        prop: dict[str, Any] = {"type": prop_type}
-
-        if prop_type == "string" and values:
-            fmt = _detect_format(values)
-            if fmt:
-                prop["format"] = fmt
-
-        # Add up to 5 distinct observed values
-        seen: list[Any] = []
-        seen_set: set[Any] = set()
-        for v in values:
-            try:
-                hashable: Any = v if not isinstance(v, (dict, list)) else str(v)  # pyright: ignore[reportUnknownArgumentType]
-                if hashable not in seen_set:
-                    seen_set.add(hashable)
-                    seen.append(v)
-                    if len(seen) >= 5:
-                        break
-            except TypeError:
-                seen.append(v)
-                if len(seen) >= 5:
-                    break
-        prop["observed"] = seen
-
+        prop = _infer_property(values)
         if len(values) == total:
             required.append(key)
-
         properties[key] = prop
 
     schema: dict[str, Any] = {"type": "object", "properties": properties}
@@ -134,31 +149,173 @@ def infer_schema(samples: list[dict[str, Any]]) -> dict[str, Any]:
     return schema
 
 
-def extract_query_params(traces: list[Trace]) -> dict[str, dict[str, Any]]:
-    """Extract query parameters from trace URLs with type, format, and required info.
+def _infer_property(values: list[Any]) -> dict[str, Any]:
+    """Infer schema for a single property from its observed values."""
+    # Skip None values when determining the type so that a leading null
+    # doesn't shadow the real type (e.g. [None, {"lon": 4.8}] → object).
+    non_null = [v for v in values if v is not None]
+    representative = non_null[0] if non_null else None
+    prop_type = _infer_type(representative)
+    prop: dict[str, Any] = {"type": prop_type}
 
-    Returns a dict keyed by parameter name, each value containing:
-    - values: list of observed string values
-    - type: inferred type (string, integer, number, boolean)
-    - format: detected format (date, email, uuid, uri) or None
-    - required: True if the param appears in every trace
+    if prop_type == "string" and non_null:
+        fmt = _detect_format(non_null)
+        if fmt:
+            prop["format"] = fmt
+
+    if prop_type == "object":
+        # Recurse into nested objects
+        dict_values = [v for v in non_null if isinstance(v, dict)]
+        if dict_values:
+            nested = _infer_object_schema(dict_values)
+            prop["properties"] = nested["properties"]
+            if nested.get("required"):
+                prop["required"] = nested["required"]
+
+    if prop_type == "array":
+        # Infer items schema from array contents — observed goes on items, not here
+        items_schema = _infer_array_items(non_null)
+        if items_schema:
+            prop["items"] = items_schema
+        return prop
+
+    prop["observed"] = _collect_observed(values)
+    return prop
+
+
+def _infer_array_items(array_values: list[Any]) -> dict[str, Any] | None:
+    """Infer the items schema for an array property.
+
+    Collects all elements from all observed arrays and infers a unified schema.
+    """
+    all_elements: list[Any] = []
+    for v in array_values:
+        if isinstance(v, list):
+            all_elements.extend(v)
+
+    if not all_elements:
+        return None
+
+    # If all elements are objects, recurse
+    dict_elements = [e for e in all_elements if isinstance(e, dict)]
+    if dict_elements and len(dict_elements) == len(all_elements):
+        return _infer_object_schema(dict_elements)
+
+    # Otherwise infer a scalar type from the first element
+    item_type = _infer_type(all_elements[0])
+    schema: dict[str, Any] = {"type": item_type}
+    if item_type == "string":
+        fmt = _detect_format(all_elements)
+        if fmt:
+            schema["format"] = fmt
+    schema["observed"] = _collect_observed(all_elements)
+    return schema
+
+
+def _extract_path_param_values(
+    traces: list[Trace],
+    path_pattern: str,
+    param_names: list[str],
+) -> dict[str, list[str]]:
+    """Extract observed path parameter values from trace URLs.
+
+    Builds a named-group regex from the pattern and matches each trace URL
+    to collect distinct values per parameter.
+    """
+    regex = path_pattern
+    for name in param_names:
+        regex = regex.replace(f"{{{name}}}", f"(?P<{name}>[^/]+)")
+    regex = regex + "$"
+    compiled = re.compile(regex)
+
+    result: dict[str, list[str]] = {name: [] for name in param_names}
+    seen: dict[str, set[str]] = {name: set() for name in param_names}
+    for t in traces:
+        parsed = urlparse(t.meta.request.url)
+        m = compiled.search(parsed.path)
+        if m:
+            for name in param_names:
+                val = m.group(name)
+                if val and val not in seen[name]:
+                    seen[name].add(val)
+                    result[name].append(val)
+    return result
+
+
+def infer_path_schema(
+    traces: list[Trace], path_pattern: str
+) -> dict[str, Any] | None:
+    """Infer an annotated JSON schema for path parameters.
+
+    Extracts parameter values from trace URLs using the path pattern, then
+    builds a schema in the same format as ``infer_schema``: an object with
+    one property per path parameter, each carrying type, optional format,
+    and observed values.  All path parameters are required.
+
+    Returns ``None`` when the pattern contains no ``{param}`` segments.
+    """
+    param_names = re.findall(r"\{(\w+)\}", path_pattern)
+    if not param_names:
+        return None
+
+    observed = _extract_path_param_values(traces, path_pattern, param_names)
+
+    properties: dict[str, Any] = {}
+    for name in param_names:
+        values = observed.get(name, [])
+        ptype = _infer_type_from_values(values) if values else "string"
+        prop: dict[str, Any] = {"type": ptype}
+        if ptype == "string" and values:
+            fmt = _detect_format(values)
+            if fmt:
+                prop["format"] = fmt
+        prop["observed"] = _collect_observed(values)
+        properties[name] = prop
+
+    return {
+        "type": "object",
+        "properties": properties,
+        "required": list(param_names),
+    }
+
+
+def infer_query_schema(traces: list[Trace]) -> dict[str, Any] | None:
+    """Infer an annotated JSON schema for query string parameters.
+
+    Collects query-string values across all *traces*, infers type and
+    format per parameter, and marks parameters present in every trace as
+    required.  Returns the same annotated-schema format as ``infer_schema``.
+
+    Returns ``None`` when no query parameters are found.
     """
     raw_params: dict[str, list[str]] = defaultdict(list)
+    traces_with_param: dict[str, int] = defaultdict(int)
     for trace in traces:
         parsed = urlparse(trace.meta.request.url)
         qs = parse_qs(parsed.query)
         for key, values in qs.items():
             raw_params[key].extend(values)
+            traces_with_param[key] += 1
+
+    if not raw_params:
+        return None
 
     total = len(traces)
-    result: dict[str, dict[str, Any]] = {}
+    properties: dict[str, Any] = {}
+    required: list[str] = []
     for name, values in raw_params.items():
-        qtype = _infer_type_from_values(values)
-        qfmt = _detect_format(values) if qtype == "string" else None
-        result[name] = {
-            "values": values,
-            "type": qtype,
-            "format": qfmt,
-            "required": len(values) == total,
-        }
-    return result
+        ptype = _infer_type_from_values(values)
+        prop: dict[str, Any] = {"type": ptype}
+        if ptype == "string" and values:
+            fmt = _detect_format(values)
+            if fmt:
+                prop["format"] = fmt
+        prop["observed"] = _collect_observed(values)
+        properties[name] = prop
+        if traces_with_param[name] == total:
+            required.append(name)
+
+    schema: dict[str, Any] = {"type": "object", "properties": properties}
+    if required:
+        schema["required"] = required
+    return schema

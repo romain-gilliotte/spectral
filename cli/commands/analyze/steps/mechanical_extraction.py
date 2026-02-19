@@ -8,22 +8,17 @@ import re
 from typing import Any, cast
 from urllib.parse import urlparse
 
-from cli.commands.analyze.schemas import extract_query_params, infer_schema
+from cli.commands.analyze.schemas import infer_path_schema, infer_query_schema, infer_schema
 from cli.commands.analyze.steps.base import MechanicalStep
 from cli.commands.analyze.steps.types import (
-    Correlation,
     EndpointGroup,
+    EndpointSpec,
     GroupedTraceData,
+    RequestSpec,
+    ResponseSpec,
 )
 from cli.commands.analyze.utils import get_header, pattern_to_regex
 from cli.commands.capture.types import Trace
-from cli.formats.api_spec import (
-    EndpointSpec,
-    ParameterSpec,
-    RequestSpec,
-    ResponseSpec,
-    UiTrigger,
-)
 
 
 class MechanicalExtractionStep(MechanicalStep[GroupedTraceData, list[EndpointSpec]]):
@@ -34,18 +29,17 @@ class MechanicalExtractionStep(MechanicalStep[GroupedTraceData, list[EndpointSpe
     async def _execute(self, input: GroupedTraceData) -> list[EndpointSpec]:
         endpoints: list[EndpointSpec] = []
         for group in input.groups:
-            group_traces = _find_traces_for_group(group, input.traces)
+            group_traces = find_traces_for_group(group, input.traces)
             endpoint = _build_endpoint_mechanical(
                 group.method,
                 group.pattern,
                 group_traces,
-                input.correlations,
             )
             endpoints.append(endpoint)
         return endpoints
 
 
-def _find_traces_for_group(group: EndpointGroup, traces: list[Trace]) -> list[Trace]:
+def find_traces_for_group(group: EndpointGroup, traces: list[Trace]) -> list[Trace]:
     """Find traces whose URLs are listed in the endpoint group."""
     url_set = set(group.urls)
     matched = [
@@ -72,45 +66,19 @@ def _build_endpoint_mechanical(
     method: str,
     path_pattern: str,
     traces: list[Trace],
-    correlations: list[Correlation],
 ) -> EndpointSpec:
     """Build an endpoint spec from grouped traces (mechanical only)."""
     endpoint_id = _make_endpoint_id(method, path_pattern)
 
-    ui_triggers: list[UiTrigger] = []
-    for corr in correlations:
-        for t in corr.traces:
-            if t in traces:
-                ui_triggers.append(
-                    UiTrigger(
-                        action=corr.context.meta.action,
-                        element_selector=corr.context.meta.element.selector,
-                        element_text=corr.context.meta.element.text,
-                        page_url=corr.context.meta.page.url,
-                    )
-                )
-                break
-
     request_spec = _build_request_spec(traces, path_pattern)
     response_specs = _build_response_specs(traces)
-
-    requires_auth = any(
-        get_header(t.meta.request.headers, "authorization") is not None
-        or _has_auth_cookie(t)
-        for t in traces
-    )
 
     return EndpointSpec(
         id=endpoint_id,
         path=path_pattern,
         method=method,
-        ui_triggers=ui_triggers,
         request=request_spec,
         responses=response_specs,
-        rate_limit=_extract_rate_limit(traces),
-        requires_auth=requires_auth,
-        observed_count=len(traces),
-        source_trace_refs=[t.meta.id for t in traces],
     )
 
 
@@ -122,22 +90,12 @@ def _make_endpoint_id(method: str, path: str) -> str:
 
 
 def _build_request_spec(traces: list[Trace], path_pattern: str) -> RequestSpec:
-    """Build request spec from observed traces."""
-    parameters: list[ParameterSpec] = []
-
-    path_params = re.findall(r"\{(\w+)\}", path_pattern)
-    for param_name in path_params:
-        parameters.append(
-            ParameterSpec(
-                name=param_name,
-                location="path",
-                type="string",
-                required=True,
-            )
-        )
+    """Build request spec from observed traces using annotated schemas."""
+    path_schema = infer_path_schema(traces, path_pattern)
+    query_schema = infer_query_schema(traces)
 
     content_type = None
-    body_schemas: list[dict[str, Any]] = []
+    body_samples: list[dict[str, Any]] = []
     for trace in traces:
         ct = get_header(trace.meta.request.headers, "content-type")
         if ct:
@@ -146,42 +104,18 @@ def _build_request_spec(traces: list[Trace], path_pattern: str) -> RequestSpec:
             try:
                 data: Any = json.loads(trace.request_body)
                 if isinstance(data, dict):
-                    body_schemas.append(cast(dict[str, Any], data))
+                    body_samples.append(cast(dict[str, Any], data))
             except (json.JSONDecodeError, UnicodeDecodeError):
                 pass
 
-    if body_schemas:
-        schema = infer_schema(body_schemas)
-        required_set = set(schema.get("required", []))
-        for key, prop in schema["properties"].items():
-            parameters.append(
-                ParameterSpec(
-                    name=key,
-                    location="body",
-                    type=str(prop["type"]),
-                    format=prop.get("format"),
-                    required=key in required_set,
-                    example=str(prop["observed"][0]) if prop.get("observed") else None,
-                    observed_values=[str(v) for v in prop.get("observed", [])[:5]],
-                )
-            )
+    body_schema = infer_schema(body_samples) if body_samples else None
 
-    query_params = extract_query_params(traces)
-    for name, info in query_params.items():
-        values = info["values"]
-        parameters.append(
-            ParameterSpec(
-                name=name,
-                location="query",
-                type=info["type"],
-                format=info["format"],
-                required=info["required"],
-                example=values[0] if values else None,
-                observed_values=list(set(values))[:5],
-            )
-        )
-
-    return RequestSpec(content_type=content_type, parameters=parameters)
+    return RequestSpec(
+        content_type=content_type,
+        path_schema=path_schema,
+        query_schema=query_schema,
+        body_schema=body_schema,
+    )
 
 
 def _build_response_specs(traces: list[Trace]) -> list[ResponseSpec]:
@@ -210,14 +144,12 @@ def _build_response_specs(traces: list[Trace]) -> list[ResponseSpec]:
 
         if body_samples:
             schema = infer_schema(body_samples)
-            for prop in schema.get("properties", {}).values():
-                prop.pop("observed", None)
 
         specs.append(
             ResponseSpec(
                 status=status,
                 content_type=ct,
-                schema=schema,
+                schema_=schema,
                 example_body=example_body,
             )
         )
@@ -236,7 +168,7 @@ _RATE_LIMIT_HEADERS = [
 ]
 
 
-def _extract_rate_limit(traces: list[Trace]) -> str | None:
+def extract_rate_limit(traces: list[Trace]) -> str | None:
     """Extract rate limit info from response headers across all traces.
 
     Scans for common rate limit headers and returns a human-readable summary,
@@ -271,8 +203,10 @@ def _extract_rate_limit(traces: list[Trace]) -> str | None:
     return ", ".join(parts) if parts else None
 
 
-def _has_auth_cookie(trace: Trace) -> bool:
-    """Check if a trace has auth-related cookies."""
+def has_auth_header_or_cookie(trace: Trace) -> bool:
+    """Check if a trace has auth headers or auth-related cookies."""
+    if get_header(trace.meta.request.headers, "authorization") is not None:
+        return True
     cookie = get_header(trace.meta.request.headers, "cookie")
     if cookie and any(
         name in cookie.lower() for name in ["session", "token", "auth", "jwt"]

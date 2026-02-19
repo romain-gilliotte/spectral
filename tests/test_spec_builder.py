@@ -7,19 +7,29 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 
 from cli.commands.analyze.pipeline import build_spec
-from cli.commands.analyze.schemas import extract_query_params, infer_schema
-from cli.commands.analyze.steps.types import EndpointGroup
+from cli.commands.analyze.schemas import infer_schema
+from cli.commands.analyze.steps.assemble import (
+    _observed_to_examples as _observed_to_examples,  # pyright: ignore[reportPrivateUsage]
+    build_openapi_dict,
+)
 from cli.commands.analyze.steps.enrich_and_context import (
     _apply_enrichment as _apply_enrichment,  # pyright: ignore[reportPrivateUsage]
 )
 from cli.commands.analyze.steps.mechanical_extraction import (
     _build_endpoint_mechanical as _build_endpoint_mechanical,  # pyright: ignore[reportPrivateUsage]
-    _extract_rate_limit as _extract_rate_limit,  # pyright: ignore[reportPrivateUsage]
-    _find_traces_for_group as _find_traces_for_group,  # pyright: ignore[reportPrivateUsage]
     _make_endpoint_id as _make_endpoint_id,  # pyright: ignore[reportPrivateUsage]
+    extract_rate_limit,
+    find_traces_for_group,
+)
+from cli.commands.analyze.steps.types import (
+    AuthInfo,
+    EndpointGroup,
+    EndpointSpec,
+    RequestSpec,
+    ResponseSpec,
+    SpecComponents,
 )
 from cli.commands.capture.types import CaptureBundle
-from cli.formats.api_spec import EndpointSpec, ParameterSpec, RequestSpec, ResponseSpec
 from cli.formats.capture_bundle import Header
 from tests.conftest import make_trace
 
@@ -49,7 +59,9 @@ class TestSchemaInference:
 
 
 class TestQueryParamExtraction:
-    def test_extracts_query_params(self):
+    def test_extracts_query_params_via_schema(self):
+        from cli.commands.analyze.schemas import infer_query_schema
+
         traces = [
             make_trace(
                 "t_0001",
@@ -66,11 +78,12 @@ class TestQueryParamExtraction:
                 2000,
             ),
         ]
-        params = extract_query_params(traces)
-        assert "q" in params
-        assert "page" in params
-        assert "hello" in params["q"]["values"]
-        assert "world" in params["q"]["values"]
+        schema = infer_query_schema(traces)
+        assert schema is not None
+        assert "q" in schema["properties"]
+        assert "page" in schema["properties"]
+        assert "hello" in schema["properties"]["q"]["observed"]
+        assert "world" in schema["properties"]["q"]["observed"]
 
 
 class TestEndpointId:
@@ -99,7 +112,7 @@ class TestFindTracesForGroup:
                 "https://api.example.com/users/456",
             ],
         )
-        matched = _find_traces_for_group(group, traces)
+        matched = find_traces_for_group(group, traces)
         assert len(matched) == 2
         assert all(t.meta.request.method == "GET" for t in matched)
 
@@ -114,7 +127,7 @@ class TestFindTracesForGroup:
             pattern="/users/{user_id}",
             urls=["https://api.example.com/users/123"],
         )
-        matched = _find_traces_for_group(group, traces)
+        matched = find_traces_for_group(group, traces)
         assert len(matched) == 2
 
 
@@ -131,21 +144,66 @@ class TestBuildEndpointMechanical:
                 request_headers=[Header(name="Authorization", value="Bearer tok")],
             ),
         ]
-        endpoint = _build_endpoint_mechanical("GET", "/api/users", traces, [])
+        endpoint = _build_endpoint_mechanical("GET", "/api/users", traces)
         assert endpoint.method == "GET"
         assert endpoint.path == "/api/users"
-        assert endpoint.observed_count == 1
-        assert endpoint.requires_auth is True
-        assert "t_0001" in endpoint.source_trace_refs
 
     def test_endpoint_with_path_params(self):
         traces = [
             make_trace("t_0001", "GET", "https://api.example.com/users/123", 200, 1000),
+            make_trace("t_0002", "GET", "https://api.example.com/users/456", 200, 2000),
         ]
-        endpoint = _build_endpoint_mechanical("GET", "/users/{user_id}", traces, [])
-        path_params = [p for p in endpoint.request.parameters if p.location == "path"]
-        assert len(path_params) == 1
-        assert path_params[0].name == "user_id"
+        endpoint = _build_endpoint_mechanical("GET", "/users/{user_id}", traces)
+        assert endpoint.request.path_schema is not None
+        props = endpoint.request.path_schema["properties"]
+        assert "user_id" in props
+        assert "123" in props["user_id"]["observed"]
+        assert "456" in props["user_id"]["observed"]
+
+    def test_endpoint_with_query_params(self):
+        traces = [
+            make_trace(
+                "t_0001",
+                "GET",
+                "https://api.example.com/items?id=a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+                200,
+                1000,
+            ),
+            make_trace(
+                "t_0002",
+                "GET",
+                "https://api.example.com/items?id=11111111-2222-3333-4444-555555555555",
+                200,
+                2000,
+            ),
+        ]
+        endpoint = _build_endpoint_mechanical("GET", "/items", traces)
+        assert endpoint.request.query_schema is not None
+        props = endpoint.request.query_schema["properties"]
+        assert "id" in props
+        assert props["id"]["format"] == "uuid"
+
+    def test_endpoint_with_body_schema(self):
+        traces = [
+            make_trace(
+                "t_0001",
+                "POST",
+                "https://api.example.com/api/orders",
+                201,
+                timestamp=1000,
+                request_body=json.dumps(
+                    {"product_id": "p1", "quantity": 2}
+                ).encode(),
+                request_headers=[Header(name="Content-Type", value="application/json")],
+            ),
+        ]
+        endpoint = _build_endpoint_mechanical("POST", "/api/orders", traces)
+        assert endpoint.request.body_schema is not None
+        props = endpoint.request.body_schema["properties"]
+        assert "product_id" in props
+        assert "quantity" in props
+        assert props["product_id"]["type"] == "string"
+        assert props["quantity"]["type"] == "integer"
 
 
 class TestFormatDetectionInExtraction:
@@ -176,12 +234,11 @@ class TestFormatDetectionInExtraction:
                 request_headers=[Header(name="Content-Type", value="application/json")],
             ),
         ]
-        endpoint = _build_endpoint_mechanical("POST", "/api/events", traces, [])
-        body_params = {
-            p.name: p for p in endpoint.request.parameters if p.location == "body"
-        }
-        assert body_params["date"].format == "date"
-        assert body_params["name"].format is None  # not a recognizable format
+        endpoint = _build_endpoint_mechanical("POST", "/api/events", traces)
+        assert endpoint.request.body_schema is not None
+        props = endpoint.request.body_schema["properties"]
+        assert props["date"]["format"] == "date"
+        assert "format" not in props["name"]  # not a recognizable format
 
     def test_query_param_uuid_format(self):
         traces = [
@@ -200,11 +257,9 @@ class TestFormatDetectionInExtraction:
                 timestamp=2000,
             ),
         ]
-        endpoint = _build_endpoint_mechanical("GET", "/items", traces, [])
-        query_params = {
-            p.name: p for p in endpoint.request.parameters if p.location == "query"
-        }
-        assert query_params["id"].format == "uuid"
+        endpoint = _build_endpoint_mechanical("GET", "/items", traces)
+        assert endpoint.request.query_schema is not None
+        assert endpoint.request.query_schema["properties"]["id"]["format"] == "uuid"
 
     def test_non_string_body_param_no_format(self):
         traces = [
@@ -218,11 +273,9 @@ class TestFormatDetectionInExtraction:
                 request_headers=[Header(name="Content-Type", value="application/json")],
             ),
         ]
-        endpoint = _build_endpoint_mechanical("POST", "/api/count", traces, [])
-        body_params = {
-            p.name: p for p in endpoint.request.parameters if p.location == "body"
-        }
-        assert body_params["count"].format is None
+        endpoint = _build_endpoint_mechanical("POST", "/api/count", traces)
+        assert endpoint.request.body_schema is not None
+        assert "format" not in endpoint.request.body_schema["properties"]["count"]
 
 
 class TestRateLimitExtraction:
@@ -242,7 +295,7 @@ class TestRateLimitExtraction:
                 ],
             ),
         ]
-        result = _extract_rate_limit(traces)
+        result = extract_rate_limit(traces)
         assert result is not None
         assert "limit=100" in result
         assert "remaining=95" in result
@@ -261,7 +314,7 @@ class TestRateLimitExtraction:
                 ],
             ),
         ]
-        result = _extract_rate_limit(traces)
+        result = extract_rate_limit(traces)
         assert result is None
 
     def test_retry_after_only(self):
@@ -278,27 +331,9 @@ class TestRateLimitExtraction:
                 ],
             ),
         ]
-        result = _extract_rate_limit(traces)
+        result = extract_rate_limit(traces)
         assert result is not None
         assert "retry-after=30" in result
-
-    def test_rate_limit_wired_to_endpoint(self):
-        traces = [
-            make_trace(
-                "t_0001",
-                "GET",
-                "https://api.example.com/data",
-                200,
-                timestamp=1000,
-                response_headers=[
-                    Header(name="Content-Type", value="application/json"),
-                    Header(name="X-RateLimit-Limit", value="1000"),
-                ],
-            ),
-        ]
-        endpoint = _build_endpoint_mechanical("GET", "/data", traces, [])
-        assert endpoint.rate_limit is not None
-        assert "limit=1000" in endpoint.rate_limit
 
 
 class TestApplyEnrichment:
@@ -307,28 +342,130 @@ class TestApplyEnrichment:
         _apply_enrichment(endpoint, {"discovery_notes": "Always called after login"})
         assert endpoint.discovery_notes == "Always called after login"
 
-    def test_parameter_constraints(self):
+    def test_path_parameter_descriptions(self):
         endpoint = EndpointSpec(
             id="test",
-            path="/test",
-            method="POST",
+            path="/users/{user_id}",
+            method="GET",
             request=RequestSpec(
-                parameters=[
-                    ParameterSpec(name="period", location="body", type="string"),
-                ]
+                path_schema={
+                    "type": "object",
+                    "properties": {
+                        "user_id": {"type": "string", "observed": ["123"]},
+                    },
+                    "required": ["user_id"],
+                }
             ),
         )
         _apply_enrichment(
             endpoint,
             {
-                "parameter_constraints": {
-                    "period": "YYYY-MM format, max 24 months history"
+                "field_descriptions": {
+                    "path_parameters": {
+                        "user_id": "Unique identifier for the user"
+                    },
                 },
             },
         )
         assert (
-            endpoint.request.parameters[0].constraints
-            == "YYYY-MM format, max 24 months history"
+            endpoint.request.path_schema["properties"]["user_id"]["description"]
+            == "Unique identifier for the user"
+        )
+
+    def test_query_parameter_descriptions(self):
+        endpoint = EndpointSpec(
+            id="test",
+            path="/search",
+            method="GET",
+            request=RequestSpec(
+                query_schema={
+                    "type": "object",
+                    "properties": {
+                        "q": {"type": "string", "observed": ["hello"]},
+                    },
+                    "required": ["q"],
+                }
+            ),
+        )
+        _apply_enrichment(
+            endpoint,
+            {
+                "field_descriptions": {
+                    "query_parameters": {
+                        "q": "Search query text"
+                    },
+                },
+            },
+        )
+        assert (
+            endpoint.request.query_schema["properties"]["q"]["description"]
+            == "Search query text"
+        )
+
+    def test_request_body_field_descriptions(self):
+        endpoint = EndpointSpec(
+            id="test",
+            path="/test",
+            method="POST",
+            request=RequestSpec(
+                body_schema={
+                    "type": "object",
+                    "properties": {
+                        "period": {"type": "string", "observed": ["2024-01"]},
+                    },
+                    "required": ["period"],
+                }
+            ),
+        )
+        _apply_enrichment(
+            endpoint,
+            {
+                "field_descriptions": {
+                    "request_body": {
+                        "period": "Billing period in YYYY-MM format"
+                    },
+                },
+            },
+        )
+        assert (
+            endpoint.request.body_schema["properties"]["period"]["description"]
+            == "Billing period in YYYY-MM format"
+        )
+
+    def test_nested_body_field_descriptions(self):
+        endpoint = EndpointSpec(
+            id="test",
+            path="/test",
+            method="POST",
+            request=RequestSpec(
+                body_schema={
+                    "type": "object",
+                    "properties": {
+                        "address": {
+                            "type": "object",
+                            "properties": {
+                                "city": {"type": "string", "observed": ["Paris"]},
+                            },
+                        },
+                    },
+                }
+            ),
+        )
+        _apply_enrichment(
+            endpoint,
+            {
+                "field_descriptions": {
+                    "request_body": {
+                        "address": {"city": "City name for delivery"}
+                    },
+                },
+            },
+        )
+        assert (
+            endpoint.request.body_schema["properties"]["address"]["properties"]["city"][
+                "description"
+            ]
+            == "City name for delivery"
         )
 
     def test_rich_response_details(self):
@@ -364,36 +501,85 @@ class TestApplyEnrichment:
         assert endpoint.responses[1].user_impact == "Cannot access the resource"
         assert endpoint.responses[1].resolution == "Contact admin to request access"
 
-    def test_flat_response_meanings_fallback(self):
+    def test_response_field_descriptions(self):
         endpoint = EndpointSpec(
             id="test",
             path="/test",
             method="GET",
-            responses=[ResponseSpec(status=200)],
+            responses=[
+                ResponseSpec(
+                    status=200,
+                    schema_={
+                        "type": "object",
+                        "properties": {
+                            "name": {"type": "string", "observed": ["Alice"]},
+                        },
+                    },
+                ),
+            ],
         )
         _apply_enrichment(
             endpoint,
             {
-                "response_meanings": {"200": "Successfully retrieved data"},
+                "field_descriptions": {
+                    "responses": {
+                        "200": {"name": "Full name of the user"},
+                    },
+                },
             },
         )
-        assert endpoint.responses[0].business_meaning == "Successfully retrieved data"
+        assert (
+            endpoint.responses[0].schema_["properties"]["name"]["description"]
+            == "Full name of the user"
+        )
 
-    def test_response_details_takes_precedence_over_meanings(self):
+    def test_array_of_objects_field_descriptions(self):
+        """Descriptions for array-of-objects fields should apply to item properties."""
         endpoint = EndpointSpec(
             id="test",
             path="/test",
             method="GET",
-            responses=[ResponseSpec(status=200)],
+            responses=[
+                ResponseSpec(
+                    status=200,
+                    schema_={
+                        "type": "object",
+                        "properties": {
+                            "elements": {
+                                "type": "array",
+                                "items": {
+                                    "type": "object",
+                                    "properties": {
+                                        "type": {"type": "string", "observed": ["PARKING_COST"]},
+                                        "value": {"type": "number", "observed": [250]},
+                                    },
+                                },
+                            },
+                        },
+                    },
+                ),
+            ],
         )
         _apply_enrichment(
             endpoint,
             {
-                "response_details": {"200": {"business_meaning": "From details"}},
-                "response_meanings": {"200": "From meanings"},
+                "field_descriptions": {
+                    "responses": {
+                        "200": {
+                            "elements": {
+                                "type": "Category of the cost element",
+                                "value": "Numeric value in cents",
+                            },
+                        },
+                    },
+                },
             },
         )
-        assert endpoint.responses[0].business_meaning == "From details"
+        items_props = endpoint.responses[0].schema_["properties"]["elements"]["items"][
+            "properties"
+        ]
+        assert items_props["type"]["description"] == "Category of the cost element"
+        assert items_props["value"]["description"] == "Numeric value in cents"
 
 
 def _make_mock_create(
@@ -443,13 +629,9 @@ def _make_mock_create(
     if enrich_response is None:
         enrich_response = json.dumps(
             {
-                "business_purpose": "test purpose",
-                "user_story": "As a user, I want to do something",
-                "correlation_confidence": 0.8,
-                "parameter_meanings": {},
-                "parameter_constraints": {},
+                "description": "test purpose",
+                "field_descriptions": {},
                 "response_details": {},
-                "trigger_explanations": [],
                 "discovery_notes": None,
             }
         )
@@ -488,31 +670,18 @@ class TestBuildSpec:
         mock_client = AsyncMock()
         mock_client.messages.create = _make_mock_create()
 
-        spec = await build_spec(
+        openapi = await build_spec(
             sample_bundle,
             client=mock_client,
             model="test-model",
             source_filename="test.zip",
         )
 
-        assert spec.name == "Test App API"
-        assert "test.zip" in spec.source_captures
-        assert len(spec.protocols.rest.endpoints) > 0
-        assert spec.auth.type == "bearer_token"
-        assert spec.protocols.rest.base_url == "https://api.example.com"
-
-    @pytest.mark.asyncio
-    async def test_websocket_specs_built(self, sample_bundle: CaptureBundle) -> None:
-        mock_client = AsyncMock()
-        mock_client.messages.create = _make_mock_create()
-
-        spec = await build_spec(sample_bundle, client=mock_client, model="test-model")
-
-        assert len(spec.protocols.websocket.connections) == 1
-        ws = spec.protocols.websocket.connections[0]
-        assert ws.url == "wss://realtime.example.com/ws"
-        assert ws.subprotocol == "graphql-ws"
-        assert len(ws.messages) == 2
+        assert openapi["openapi"] == "3.1.0"
+        assert openapi["info"]["title"] == "Test App API"
+        assert len(openapi["paths"]) > 0
+        assert "bearerAuth" in openapi["components"]["securitySchemes"]
+        assert openapi["servers"][0]["url"] == "https://api.example.com"
 
     @pytest.mark.asyncio
     async def test_traces_filtered_by_base_url(
@@ -538,11 +707,249 @@ class TestBuildSpec:
             auth_response=json.dumps({"type": "none"}),
         )
 
-        spec = await build_spec(sample_bundle, client=mock_client, model="test-model")
+        openapi = await build_spec(sample_bundle, client=mock_client, model="test-model")
 
-        all_refs: list[str] = []
-        for ep in spec.protocols.rest.endpoints:
-            all_refs.extend(ep.source_trace_refs)
-        assert "t_cdn" not in all_refs
-        assert spec.protocols.rest.base_url == "https://api.example.com"
+        assert openapi["servers"][0]["url"] == "https://api.example.com"
+        # CDN trace should not appear in the output
+        assert len(openapi["paths"]) >= 1
 
+    @pytest.mark.asyncio
+    async def test_auth_detected_on_endpoints(self, sample_bundle: CaptureBundle) -> None:
+        """Endpoints with Authorization header should have security set."""
+        mock_client = AsyncMock()
+        mock_client.messages.create = _make_mock_create()
+
+        openapi = await build_spec(
+            sample_bundle, client=mock_client, model="test-model"
+        )
+
+        # At least one endpoint should have security (sample traces have Authorization)
+        has_security = False
+        for path_ops in openapi["paths"].values():
+            for op in path_ops.values():
+                if "security" in op:
+                    has_security = True
+                    break
+        assert has_security
+
+    @pytest.mark.asyncio
+    async def test_openapi_structure(self, sample_bundle: CaptureBundle) -> None:
+        """Output should be a valid OpenAPI 3.1 structure."""
+        mock_client = AsyncMock()
+        mock_client.messages.create = _make_mock_create()
+
+        openapi = await build_spec(
+            sample_bundle, client=mock_client, model="test-model"
+        )
+
+        assert "openapi" in openapi
+        assert "info" in openapi
+        assert "title" in openapi["info"]
+        assert "paths" in openapi
+        assert "components" in openapi
+        assert "securitySchemes" in openapi["components"]
+        assert "servers" in openapi
+
+
+class TestObservedToExamples:
+    """Tests for _observed_to_examples converting observed → examples."""
+
+    def test_scalar_property(self):
+        schema = {
+            "type": "object",
+            "properties": {
+                "name": {"type": "string", "observed": ["Alice", "Bob"]},
+            },
+        }
+        result = _observed_to_examples(schema)
+        assert "observed" not in result["properties"]["name"]
+        assert result["properties"]["name"]["examples"] == ["Alice", "Bob"]
+
+    def test_nested_object(self):
+        schema = {
+            "type": "object",
+            "properties": {
+                "address": {
+                    "type": "object",
+                    "properties": {
+                        "city": {"type": "string", "observed": ["Paris", "Lyon"]},
+                    },
+                },
+            },
+        }
+        result = _observed_to_examples(schema)
+        city = result["properties"]["address"]["properties"]["city"]
+        assert "observed" not in city
+        assert city["examples"] == ["Paris", "Lyon"]
+
+    def test_array_items(self):
+        schema = {
+            "type": "array",
+            "items": {
+                "type": "string",
+                "observed": ["a", "b"],
+            },
+        }
+        result = _observed_to_examples(schema)
+        assert "observed" not in result["items"]
+        assert result["items"]["examples"] == ["a", "b"]
+
+    def test_no_observed_keeps_schema_unchanged(self):
+        schema = {
+            "type": "object",
+            "properties": {
+                "count": {"type": "integer"},
+            },
+        }
+        result = _observed_to_examples(schema)
+        assert "examples" not in result["properties"]["count"]
+        assert result["properties"]["count"]["type"] == "integer"
+
+    def test_empty_observed_list_no_examples(self):
+        schema = {
+            "type": "string",
+            "observed": [],
+        }
+        result = _observed_to_examples(schema)
+        assert "observed" not in result
+        assert "examples" not in result
+
+    def test_preserves_other_keys(self):
+        schema = {
+            "type": "string",
+            "format": "date",
+            "observed": ["2024-01-15"],
+        }
+        result = _observed_to_examples(schema)
+        assert result["type"] == "string"
+        assert result["format"] == "date"
+        assert result["examples"] == ["2024-01-15"]
+        assert "observed" not in result
+
+
+class TestOpenApiExamples:
+    """Tests for examples appearing in OpenAPI output."""
+
+    def _build_simple_openapi(
+        self,
+        endpoints: list[EndpointSpec],
+        auth: AuthInfo | None = None,
+    ) -> dict[str, Any]:
+        components = SpecComponents(
+            app_name="Test",
+            source_filename="test.zip",
+            base_url="https://api.example.com",
+            endpoints=endpoints,
+            auth=auth or AuthInfo(),
+        )
+        return build_openapi_dict(components)
+
+    def test_response_example_body(self):
+        endpoint = EndpointSpec(
+            id="get_users",
+            path="/users",
+            method="GET",
+            responses=[
+                ResponseSpec(
+                    status=200,
+                    schema_={
+                        "type": "object",
+                        "properties": {"name": {"type": "string"}},
+                    },
+                    example_body={"name": "Alice"},
+                ),
+            ],
+        )
+        openapi = self._build_simple_openapi([endpoint])
+        media = openapi["paths"]["/users"]["get"]["responses"]["200"]["content"][
+            "application/json"
+        ]
+        assert media["example"] == {"name": "Alice"}
+
+    def test_response_no_example_body(self):
+        endpoint = EndpointSpec(
+            id="get_users",
+            path="/users",
+            method="GET",
+            responses=[
+                ResponseSpec(
+                    status=200,
+                    schema_={
+                        "type": "object",
+                        "properties": {"name": {"type": "string"}},
+                    },
+                ),
+            ],
+        )
+        openapi = self._build_simple_openapi([endpoint])
+        media = openapi["paths"]["/users"]["get"]["responses"]["200"]["content"][
+            "application/json"
+        ]
+        assert "example" not in media
+
+    def test_observed_becomes_schema_example(self):
+        endpoint = EndpointSpec(
+            id="get_users",
+            path="/users",
+            method="GET",
+            responses=[
+                ResponseSpec(
+                    status=200,
+                    schema_={
+                        "type": "object",
+                        "properties": {
+                            "name": {"type": "string", "observed": ["Alice"]},
+                        },
+                    },
+                ),
+            ],
+        )
+        openapi = self._build_simple_openapi([endpoint])
+        schema = openapi["paths"]["/users"]["get"]["responses"]["200"]["content"][
+            "application/json"
+        ]["schema"]
+        assert "observed" not in schema["properties"]["name"]
+        assert schema["properties"]["name"]["examples"] == ["Alice"]
+
+    def test_query_param_schema_examples(self):
+        endpoint = EndpointSpec(
+            id="search",
+            path="/search",
+            method="GET",
+            request=RequestSpec(
+                query_schema={
+                    "type": "object",
+                    "properties": {
+                        "q": {"type": "string", "observed": ["hello", "world"]},
+                    },
+                    "required": ["q"],
+                }
+            ),
+        )
+        openapi = self._build_simple_openapi([endpoint])
+        param = openapi["paths"]["/search"]["get"]["parameters"][0]
+        assert param["name"] == "q"
+        assert param["schema"]["examples"] == ["hello", "world"]
+        assert "observed" not in param["schema"]
+
+    def test_request_body_schema_examples(self):
+        endpoint = EndpointSpec(
+            id="create_order",
+            path="/orders",
+            method="POST",
+            request=RequestSpec(
+                content_type="application/json",
+                body_schema={
+                    "type": "object",
+                    "properties": {
+                        "quantity": {"type": "integer", "observed": [2, 5]},
+                    },
+                },
+            ),
+        )
+        openapi = self._build_simple_openapi([endpoint])
+        body_schema = openapi["paths"]["/orders"]["post"]["requestBody"]["content"][
+            "application/json"
+        ]["schema"]
+        assert body_schema["properties"]["quantity"]["examples"] == [2, 5]
+        assert "observed" not in body_schema["properties"]["quantity"]

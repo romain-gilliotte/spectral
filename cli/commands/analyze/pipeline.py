@@ -1,7 +1,7 @@
 """Orchestrator for the analysis pipeline.
 
-Coordinates the Step instances to build an enriched API spec from a capture
-bundle. Auth and WebSocket analysis run in parallel with the main branch.
+Coordinates the Step instances to build an OpenAPI 3.1 spec from a capture
+bundle. Auth analysis runs in parallel with endpoint enrichment.
 """
 
 from __future__ import annotations
@@ -18,15 +18,21 @@ from cli.commands.analyze.steps.analyze_auth import (
     detect_auth_mechanical,
 )
 from cli.commands.analyze.steps.assemble import AssembleStep
-from cli.commands.analyze.steps.build_ws_specs import BuildWsSpecsStep
 from cli.commands.analyze.steps.detect_base_url import DetectBaseUrlStep
 from cli.commands.analyze.steps.enrich_and_context import EnrichEndpointsStep
 from cli.commands.analyze.steps.extract_pairs import ExtractPairsStep
 from cli.commands.analyze.steps.filter_traces import FilterTracesStep
 from cli.commands.analyze.steps.group_endpoints import GroupEndpointsStep
-from cli.commands.analyze.steps.mechanical_extraction import MechanicalExtractionStep
+from cli.commands.analyze.steps.mechanical_extraction import (
+    MechanicalExtractionStep,
+    extract_rate_limit,
+    find_traces_for_group,
+    has_auth_header_or_cookie,
+)
 from cli.commands.analyze.steps.strip_prefix import StripPrefixStep
 from cli.commands.analyze.steps.types import (
+    AuthInfo,
+    EndpointSpec,
     EnrichmentContext,
     GroupedTraceData,
     GroupsWithBaseUrl,
@@ -34,8 +40,7 @@ from cli.commands.analyze.steps.types import (
     SpecComponents,
     TracesWithBaseUrl,
 )
-from cli.commands.capture.types import CaptureBundle
-from cli.formats.api_spec import ApiSpec, EndpointSpec
+from cli.commands.capture.types import CaptureBundle, Trace
 
 
 async def build_spec(
@@ -46,8 +51,8 @@ async def build_spec(
     on_progress: Callable[[str], None] | None = None,
     enable_debug: bool = False,
     skip_enrich: bool = False,
-) -> ApiSpec:
-    """Build an enriched API spec from a capture bundle.
+) -> dict[str, Any]:
+    """Build an OpenAPI 3.1 spec dict from a capture bundle.
 
     Pipeline:
     1. Extract (method, url) pairs from traces
@@ -55,11 +60,11 @@ async def build_spec(
     3. Filter traces by base URL
     4. LLM groups URLs into endpoint patterns
     5. Strip base_url path prefix from patterns
-    6. Mechanical extraction (params, schemas, triggers)
-    7. Per-endpoint LLM enrichment (parallel)  [parallel with auth + ws]
-    8. Auth analysis via LLM (on ALL unfiltered traces)  [parallel]
-    9. WebSocket specs (mechanical)                       [parallel]
-    10. Assemble final spec
+    6. Mechanical extraction (params, schemas)
+    7. Detect auth & rate_limit per endpoint
+    8. Per-endpoint LLM enrichment (parallel)  [parallel with auth]
+    9. Auth analysis via LLM (on ALL unfiltered traces)  [parallel]
+    10. Assemble final OpenAPI dict
     """
 
     def progress(msg: str) -> None:
@@ -128,15 +133,17 @@ async def build_spec(
         GroupedTraceData(
             groups=endpoint_groups,
             traces=filtered_traces,
-            correlations=correlations,
         )
     )
 
-    # Steps 7, 8, 9 run in parallel
+    # Step 7: Detect auth and rate_limit per endpoint
+    _detect_auth_and_rate_limit(endpoints, endpoint_groups, filtered_traces)
+
+    # Steps 8 & 9 run in parallel
     if skip_enrich:
-        progress("Analyzing auth + building WS specs (enrichment skipped)...")
+        progress("Analyzing auth (enrichment skipped)...")
     else:
-        progress("Enriching endpoints + analyzing auth + building WS specs...")
+        progress("Enriching endpoints + analyzing auth...")
 
     async def _enrich() -> list[EndpointSpec] | None:
         if skip_enrich:
@@ -147,6 +154,7 @@ async def build_spec(
                 EnrichmentContext(
                     endpoints=endpoints,
                     traces=filtered_traces,
+                    correlations=correlations,
                     app_name=app_name,
                     base_url=base_url,
                 )
@@ -154,32 +162,39 @@ async def build_spec(
         except Exception:
             return None
 
-    async def _auth() -> Any:
+    async def _auth() -> AuthInfo:
         auth_step = AnalyzeAuthStep(client, model, debug_dir)
         try:
             return await auth_step.run(all_traces)
         except Exception:
             return detect_auth_mechanical(all_traces)
 
-    async def _ws() -> Any:
-        ws_step = BuildWsSpecsStep()
-        return await ws_step.run(bundle.ws_connections)
-
-    enrich_result, auth, ws_specs = await asyncio.gather(_enrich(), _auth(), _ws())
+    enrich_result, auth = await asyncio.gather(_enrich(), _auth())
 
     final_endpoints = enrich_result if enrich_result is not None else endpoints
 
-    # Step 10: Assemble
-    assemble_step = AssembleStep()
-    spec = await assemble_step.run(
+    # Step 10: Assemble OpenAPI
+    assemble_step = AssembleStep(traces=filtered_traces)
+    openapi = await assemble_step.run(
         SpecComponents(
             app_name=app_name,
             source_filename=source_filename,
             base_url=base_url,
             endpoints=final_endpoints,
             auth=auth,
-            ws_specs=ws_specs,
         )
     )
 
-    return spec
+    return openapi
+
+
+def _detect_auth_and_rate_limit(
+    endpoints: list[EndpointSpec],
+    endpoint_groups: list[Any],
+    traces: list[Trace],
+) -> None:
+    """Detect requires_auth and rate_limit for each endpoint from traces."""
+    for ep, group in zip(endpoints, endpoint_groups):
+        group_traces = find_traces_for_group(group, traces)
+        ep.requires_auth = any(has_auth_header_or_cookie(t) for t in group_traces)
+        ep.rate_limit = extract_rate_limit(group_traces)
