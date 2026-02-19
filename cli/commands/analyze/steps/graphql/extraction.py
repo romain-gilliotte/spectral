@@ -8,6 +8,7 @@ and input types.
 from __future__ import annotations
 
 import json
+import re
 from typing import Any, cast
 
 from cli.commands.analyze.steps.base import MechanicalStep
@@ -29,6 +30,66 @@ _SCALAR_MAP: dict[str, str] = {
     "float": "Float",
     "bool": "Boolean",
 }
+
+
+_INT_RE = re.compile(r"^-?\d+$")
+_FLOAT_RE = re.compile(r"^-?\d+\.\d+$")
+
+
+def _resolve_from_variable(arg_value: str, var_types: dict[str, str]) -> str | None:
+    """Resolve a ``$varName`` argument value to its declared GraphQL type.
+
+    Returns the base type with all ``!`` modifiers stripped, or ``None`` if
+    *arg_value* is not a variable reference or the variable is unknown.
+    """
+    if not arg_value.startswith("$"):
+        return None
+    var_name = arg_value[1:]
+    type_name = var_types.get(var_name)
+    if type_name is None:
+        return None
+    return type_name.replace("!", "")
+
+
+def _infer_literal_type(arg_value: str) -> str:
+    """Infer a GraphQL scalar type from a literal argument value string.
+
+    The value comes from ``print_ast`` on a graphql-core AST value node.
+    """
+    if arg_value.startswith('"') and arg_value.endswith('"'):
+        return "String"
+    lower = arg_value.lower()
+    if lower in ("true", "false"):
+        return "Boolean"
+    if _INT_RE.match(arg_value):
+        return "Int"
+    if _FLOAT_RE.match(arg_value):
+        return "Float"
+    if lower == "null":
+        return "JSON"
+    if arg_value.startswith("["):
+        return "[JSON]"
+    if arg_value.startswith("{"):
+        return "JSON"
+    # Bare identifier (enum value) or anything else — enum detection
+    # happens upstream in _walk_fields, so this fallback remains "String"
+    return "String"
+
+
+def _is_enum_literal(value: str) -> bool:
+    """Return True if *value* is a bare identifier (i.e. an enum literal).
+
+    In GraphQL, bare identifiers in argument positions are always enum values.
+    This excludes quoted strings, booleans, numbers, null, lists, objects,
+    and variable references.
+    """
+    if not value or value.startswith(("$", '"', "[", "{")):
+        return False
+    if value.lower() in ("true", "false", "null"):
+        return False
+    if _INT_RE.match(value) or _FLOAT_RE.match(value):
+        return False
+    return True
 
 
 class GraphQLExtractionStep(MechanicalStep[list[Trace], GraphQLSchemaData]):
@@ -77,6 +138,9 @@ def extract_graphql_schema(traces: list[Trace]) -> GraphQLSchemaData:
             elif op.type == "subscription":
                 root_subscription_fields.add(field.name)
 
+        # Build variable type lookup for argument resolution
+        var_types = {v.name: v.type_name for v in op.variables}
+
         # Walk the field tree and response data to populate registry
         _walk_fields(
             registry=registry,
@@ -84,6 +148,7 @@ def extract_graphql_schema(traces: list[Trace]) -> GraphQLSchemaData:
             response_data=response_data.get("data") if response_data else None,
             parent_type_name=root_type_name,
             parent_path=root_type_name,
+            var_types=var_types,
         )
 
         # Process variables for input types and enums
@@ -155,6 +220,7 @@ def _walk_fields(
     response_data: Any,
     parent_type_name: str,
     parent_path: str,
+    var_types: dict[str, str] | None = None,
 ) -> None:
     """Walk parsed fields and response data in parallel to populate the registry.
 
@@ -163,6 +229,9 @@ def _walk_fields(
     - Infer the field type from the response value
     - If the value is an object, determine the type name and recurse
     """
+    if var_types is None:
+        var_types = {}
+
     parent_type = registry.get_or_create_type(parent_type_name)
     parent_type.observation_count += 1
 
@@ -187,10 +256,29 @@ def _walk_fields(
             field_rec = FieldRecord(name=field.name)
             parent_type.fields[field.name] = field_rec
 
-        # Copy arguments
-        for arg_name, arg_type in field.arguments.items():
-            if arg_name not in field_rec.arguments:
-                field_rec.arguments[arg_name] = arg_type
+        # Resolve argument types
+        for arg_name, arg_value in field.arguments.items():
+            resolved = _resolve_from_variable(arg_value, var_types)
+            if resolved is not None:
+                # Variable-resolved types are authoritative — always write
+                field_rec.arguments[arg_name] = resolved
+            elif arg_name not in field_rec.arguments:
+                # Literal-inferred types only write if not yet seen
+                if _is_enum_literal(arg_value):
+                    enum_name = (
+                        f"Inferred{parent_type_name}"
+                        f"{_capitalize_field_name(field.name)}"
+                        f"{_capitalize_field_name(arg_name)}Enum"
+                    )
+                    registry.get_or_create_enum(enum_name).values.add(arg_value)
+                    field_rec.arguments[arg_name] = enum_name
+                else:
+                    field_rec.arguments[arg_name] = _infer_literal_type(arg_value)
+            elif _is_enum_literal(arg_value):
+                # Accumulate new enum values into an existing inferred enum
+                existing = field_rec.arguments[arg_name]
+                if existing in registry.enums:
+                    registry.enums[existing].values.add(arg_value)
 
         # Infer type from value
         if value is None:
@@ -198,7 +286,8 @@ def _walk_fields(
         elif isinstance(value, list):
             field_rec.is_list = True
             _process_list_value(
-                registry, field_rec, field, cast(list[Any], value), parent_path
+                registry, field_rec, field, cast(list[Any], value), parent_path,
+                var_types=var_types,
             )
         elif isinstance(value, dict):
             child_dict = cast(dict[str, Any], value)
@@ -210,6 +299,7 @@ def _walk_fields(
                 response_data=child_dict,
                 parent_type_name=type_name,
                 parent_path=f"{parent_path}.{field.name}",
+                var_types=var_types,
             )
         else:
             scalar = _infer_scalar(value)
@@ -223,6 +313,7 @@ def _process_list_value(
     field: ParsedField,
     values: list[Any],
     parent_path: str,
+    var_types: dict[str, str] | None = None,
 ) -> None:
     """Process a list value to infer item type."""
     for item in values[:5]:  # Sample first 5 items
@@ -236,6 +327,7 @@ def _process_list_value(
                 response_data=child_dict,
                 parent_type_name=type_name,
                 parent_path=f"{parent_path}.{field.name}[]",
+                var_types=var_types,
             )
             break  # Type name determined from first object item
         elif item is not None:
