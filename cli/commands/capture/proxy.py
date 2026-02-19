@@ -5,7 +5,7 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from pathlib import Path
 import signal
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any, cast
 import uuid
 
 if TYPE_CHECKING:
@@ -143,7 +143,11 @@ class DiscoveryAddon:
 
 
 class CaptureAddon:
-    """mitmproxy addon that collects flows into Trace/WsConnection objects."""
+    """mitmproxy addon that collects flows into Trace/WsConnection objects.
+
+    Automatically injects ``__typename`` into GraphQL queries to ensure
+    response objects carry their type names for analysis.
+    """
 
     def __init__(self) -> None:
         self.traces: list[Trace] = []
@@ -155,6 +159,10 @@ class CaptureAddon:
         self._ws_flows: dict[str, HTTPFlow] = {}
         self._flow_ws_ids: dict[str, str] = {}  # flow.id -> ws_id
         self.domains_seen: set[str] = set()
+
+    def request(self, flow: HTTPFlow) -> None:
+        """Intercept requests to inject __typename into GraphQL queries."""
+        _inject_typename_into_flow(flow)
 
     def response(self, flow: HTTPFlow) -> None:
         """Called when a full HTTP response has been received."""
@@ -285,6 +293,71 @@ class CaptureAddon:
             contexts=[],
             timeline=Timeline(events=events),
         )
+
+
+def _inject_typename_into_flow(flow: HTTPFlow) -> None:
+    """Inject __typename into GraphQL query bodies.
+
+    Detects GraphQL requests by URL pattern or body shape, then modifies
+    the request body in-place to add __typename to all selection sets.
+    """
+    import json
+    import re
+
+    req = flow.request
+    if req.method.upper() != "POST":
+        return
+
+    content_type = str(req.headers.get("content-type", "") or "")  # pyright: ignore[reportUnknownMemberType, reportUnknownArgumentType]
+    if "json" not in content_type.lower():
+        return
+
+    url = req.pretty_url
+    body_bytes = req.content
+    if not body_bytes:
+        return
+
+    # Quick check: is this likely a GraphQL request?
+    is_gql_url = bool(re.search(r"/graphql\b", url, re.IGNORECASE))
+    try:
+        body: Any = json.loads(body_bytes)
+    except (json.JSONDecodeError, UnicodeDecodeError):
+        return
+
+    if isinstance(body, dict):
+        if _inject_typename_in_body(cast(dict[str, object], body), is_gql_url):
+            req.content = json.dumps(body).encode()
+    elif isinstance(body, list):
+        # Batch GraphQL
+        modified = False
+        for item in cast(list[Any], body):
+            if isinstance(item, dict) and _inject_typename_in_body(
+                cast(dict[str, object], item), is_gql_url
+            ):
+                modified = True
+        if modified:
+            req.content = json.dumps(body).encode()
+
+
+def _inject_typename_in_body(body: dict[str, object], is_gql_url: bool) -> bool:
+    """Inject __typename into a single GraphQL body dict. Returns True if modified."""
+    import re
+
+    from cli.commands.capture.graphql_utils import inject_typename
+
+    query = body.get("query")
+    if not isinstance(query, str):
+        return False
+
+    # Verify it looks like GraphQL
+    if not is_gql_url and not re.search(r"\b(query|mutation|subscription)\b", query):
+        return False
+
+    modified_query = inject_typename(query)
+    if modified_query != query:
+        body["query"] = modified_query
+        return True
+    return False
 
 
 def _run_mitmproxy(

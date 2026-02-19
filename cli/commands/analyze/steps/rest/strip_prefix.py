@@ -5,7 +5,7 @@ from __future__ import annotations
 from urllib.parse import urlparse
 
 from cli.commands.analyze.steps.base import MechanicalStep
-from cli.commands.analyze.steps.types import EndpointGroup, GroupsWithBaseUrl
+from cli.commands.analyze.steps.rest.types import EndpointGroup, GroupsWithBaseUrl
 
 
 class StripPrefixStep(MechanicalStep[GroupsWithBaseUrl, list[EndpointGroup]]):

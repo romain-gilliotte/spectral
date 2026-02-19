@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections import Counter
 from typing import Any
 
 from cli.commands.analyze.steps.base import LLMStep, StepValidationError
@@ -24,11 +25,13 @@ class DetectBaseUrlStep(LLMStep[list[MethodUrlPair], str]):
     name = "detect_base_url"
 
     async def _execute(self, input: list[MethodUrlPair]) -> str:
-        unique_pairs = sorted(set(input))
-        compacted_pairs = sorted(
-            set(MethodUrlPair(p.method, compact_url(p.url)) for p in unique_pairs)
+        counts = Counter(
+            MethodUrlPair(p.method, compact_url(p.url)) for p in input
         )
-        lines = [f"  {p.method} {p.url}" for p in compacted_pairs]
+        lines = [
+            f"  {p.method} {p.url} ({n}x)" if n > 1 else f"  {p.method} {p.url}"
+            for p, n in sorted(counts.items())
+        ]
 
         prompt = f"""You are analyzing HTTP traffic captured from a web application.
 Identify the base URL of the **business API** (the main application API, not CDN, analytics, tracking, fonts, or third-party services).
@@ -41,9 +44,10 @@ Rules:
 - Pick the single most important API base URL — the one serving the app's core business endpoints.
 - Ignore CDN domains, analytics (google-analytics, hotjar, segment, etc.), ad trackers, font services, static asset hosts.
 - If the API endpoints share a common path prefix (e.g. /api/v1), include it.
+- A single URL called many times (e.g. POST /graphql) often indicates a GraphQL API — that's still a valid business API.
 - Return ONLY the base URL string, no trailing slash.
 
-Observed requests:
+Observed requests (call count shown when > 1):
 {chr(10).join(lines)}
 
 Respond with a JSON object:

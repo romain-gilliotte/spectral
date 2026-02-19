@@ -5,14 +5,14 @@ from __future__ import annotations
 from typing import Any, cast
 
 from cli.commands.analyze.steps.base import MechanicalStep
-from cli.commands.analyze.steps.mechanical_extraction import (
+from cli.commands.analyze.steps.rest.extraction import (
     has_auth_header_or_cookie,
 )
-from cli.commands.analyze.steps.types import (
-    AuthInfo,
+from cli.commands.analyze.steps.rest.types import (
     EndpointSpec,
     SpecComponents,
 )
+from cli.commands.analyze.steps.types import AuthInfo
 from cli.commands.capture.types import Trace
 
 

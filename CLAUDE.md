@@ -359,11 +359,11 @@ Everything else is mechanical (headers, schemas, status codes, URLs, timing).
 ## CLI commands
 
 ```bash
-# Analyze a capture bundle → OpenAPI 3.1 spec (requires ANTHROPIC_API_KEY)
-spectral analyze capture_20260213.zip -o edf-api.yaml
-spectral analyze capture_20260213.zip -o edf-api.yaml --model claude-sonnet-4-5-20250929
-spectral analyze capture_20260213.zip -o edf-api.yaml --skip-enrich  # skip LLM enrichment
-spectral analyze capture_20260213.zip -o edf-api.yaml --debug        # save LLM prompts to debug/
+# Analyze a capture bundle → edf-api.yaml and/or edf-api.graphql (requires ANTHROPIC_API_KEY)
+spectral analyze capture_20260213.zip -o edf-api
+spectral analyze capture_20260213.zip -o edf-api --model claude-sonnet-4-5-20250929
+spectral analyze capture_20260213.zip -o edf-api --skip-enrich  # skip LLM enrichment
+spectral analyze capture_20260213.zip -o edf-api --debug        # save LLM prompts to debug/
 
 # Capture: inspect bundles, run MITM proxy
 spectral capture inspect capture_20260213.zip                    # summary stats

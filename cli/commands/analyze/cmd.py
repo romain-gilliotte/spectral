@@ -15,7 +15,7 @@ from cli.helpers.console import console
 @click.command()
 @click.argument("capture_path", type=click.Path(exists=True))
 @click.option(
-    "-o", "--output", required=True, help="Output file path for the OpenAPI spec (.yaml)"
+    "-o", "--output", required=True, help="Output base name (produces <name>.yaml and/or <name>.graphql)"
 )
 @click.option("--model", default="claude-sonnet-4-5-20250929", help="LLM model to use")
 @click.option(
@@ -30,7 +30,7 @@ from cli.helpers.console import console
 def analyze(
     capture_path: str, output: str, model: str, debug: bool, skip_enrich: bool
 ) -> None:
-    """Analyze a capture bundle and produce an OpenAPI spec."""
+    """Analyze a capture bundle and produce an API spec."""
     from cli.commands.analyze.pipeline import build_spec
     from cli.commands.capture.loader import load_bundle
     import cli.helpers.llm as llm
@@ -56,7 +56,7 @@ def analyze(
         console.print(f"  {msg}")
 
     console.print(f"[bold]Analyzing with LLM ({model})...[/bold]")
-    openapi = asyncio.run(
+    result = asyncio.run(
         build_spec(
             bundle,
             model=model,
@@ -65,13 +65,30 @@ def analyze(
             skip_enrich=skip_enrich,
         )
     )
-    endpoint_count = len(openapi.get("paths", {}))
-    console.print(f"  Found {endpoint_count} paths")
 
-    output_path = Path(output)
-    output_path.parent.mkdir(parents=True, exist_ok=True)
-    with open(output_path, "w") as f:
-        yaml.dump(
-            openapi, f, default_flow_style=False, sort_keys=False, allow_unicode=True
-        )
-    console.print(f"[green]OpenAPI spec written to {output}[/green]")
+    # Strip any extension from the output name so it's a pure base name
+    output_base = Path(output)
+    output_base = output_base.parent / output_base.stem
+
+    # Write OpenAPI spec (REST)
+    if result.openapi is not None:
+        endpoint_count = len(result.openapi.get("paths", {}))
+        console.print(f"  Found {endpoint_count} REST paths")
+        yaml_path = output_base.with_suffix(".yaml")
+        yaml_path.parent.mkdir(parents=True, exist_ok=True)
+        with open(yaml_path, "w") as f:
+            yaml.dump(
+                result.openapi, f, default_flow_style=False, sort_keys=False, allow_unicode=True
+            )
+        console.print(f"[green]OpenAPI spec written to {yaml_path}[/green]")
+
+    # Write GraphQL SDL
+    if result.graphql_sdl is not None:
+        gql_path = output_base.with_suffix(".graphql")
+        gql_path.parent.mkdir(parents=True, exist_ok=True)
+        with open(gql_path, "w") as f:
+            f.write(result.graphql_sdl)
+        console.print(f"[green]GraphQL schema written to {gql_path}[/green]")
+
+    if result.openapi is None and result.graphql_sdl is None:
+        console.print("[yellow]No API traces found in the capture bundle.[/yellow]")

@@ -17,27 +17,27 @@ def reset_llm_globals():
     yield
     llm.reset()
 from cli.commands.analyze.schemas import infer_schema
-from cli.commands.analyze.steps.assemble import (
+from cli.commands.analyze.steps.rest.assemble import (
     _observed_to_examples as _observed_to_examples,  # pyright: ignore[reportPrivateUsage]
     build_openapi_dict,
 )
-from cli.commands.analyze.steps.enrich_and_context import (
+from cli.commands.analyze.steps.rest.enrich import (
     _apply_enrichment as _apply_enrichment,  # pyright: ignore[reportPrivateUsage]
 )
-from cli.commands.analyze.steps.mechanical_extraction import (
+from cli.commands.analyze.steps.rest.extraction import (
     _build_endpoint_mechanical as _build_endpoint_mechanical,  # pyright: ignore[reportPrivateUsage]
     _make_endpoint_id as _make_endpoint_id,  # pyright: ignore[reportPrivateUsage]
     extract_rate_limit,
     find_traces_for_group,
 )
-from cli.commands.analyze.steps.types import (
-    AuthInfo,
+from cli.commands.analyze.steps.rest.types import (
     EndpointGroup,
     EndpointSpec,
     RequestSpec,
     ResponseSpec,
     SpecComponents,
 )
+from cli.commands.analyze.steps.types import AuthInfo
 from cli.commands.capture.types import CaptureBundle
 from cli.formats.capture_bundle import Header
 from tests.conftest import make_trace
@@ -687,12 +687,14 @@ class TestBuildSpec:
         mock_client.messages.create = _make_mock_create()
         llm.init(client=mock_client)
 
-        openapi = await build_spec(
+        result = await build_spec(
             sample_bundle,
             model="test-model",
             source_filename="test.zip",
         )
 
+        assert result.openapi is not None
+        openapi = result.openapi
         assert openapi["openapi"] == "3.1.0"
         assert openapi["info"]["title"] == "Test App API"
         assert len(openapi["paths"]) > 0
@@ -724,8 +726,10 @@ class TestBuildSpec:
         )
         llm.init(client=mock_client)
 
-        openapi = await build_spec(sample_bundle, model="test-model")
+        result = await build_spec(sample_bundle, model="test-model")
 
+        assert result.openapi is not None
+        openapi = result.openapi
         assert openapi["servers"][0]["url"] == "https://api.example.com"
         # CDN trace should not appear in the output
         assert len(openapi["paths"]) >= 1
@@ -737,10 +741,12 @@ class TestBuildSpec:
         mock_client.messages.create = _make_mock_create()
         llm.init(client=mock_client)
 
-        openapi = await build_spec(
+        result = await build_spec(
             sample_bundle, model="test-model"
         )
 
+        assert result.openapi is not None
+        openapi = result.openapi
         # At least one endpoint should have security (sample traces have Authorization)
         has_security = False
         for path_ops in openapi["paths"].values():
@@ -757,10 +763,12 @@ class TestBuildSpec:
         mock_client.messages.create = _make_mock_create()
         llm.init(client=mock_client)
 
-        openapi = await build_spec(
+        result = await build_spec(
             sample_bundle, model="test-model"
         )
 
+        assert result.openapi is not None
+        openapi = result.openapi
         assert "openapi" in openapi
         assert "info" in openapi
         assert "title" in openapi["info"]

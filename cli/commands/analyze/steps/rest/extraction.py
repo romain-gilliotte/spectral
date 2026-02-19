@@ -14,7 +14,7 @@ from cli.commands.analyze.schemas import (
     infer_schema,
 )
 from cli.commands.analyze.steps.base import MechanicalStep
-from cli.commands.analyze.steps.types import (
+from cli.commands.analyze.steps.rest.types import (
     EndpointGroup,
     EndpointSpec,
     GroupedTraceData,

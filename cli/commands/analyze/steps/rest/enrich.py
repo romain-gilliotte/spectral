@@ -8,11 +8,11 @@ from typing import Any, TypeGuard
 from urllib.parse import urlparse
 
 from cli.commands.analyze.steps.base import LLMStep
-from cli.commands.analyze.steps.types import (
-    Correlation,
+from cli.commands.analyze.steps.rest.types import (
     EndpointSpec,
     EnrichmentContext,
 )
+from cli.commands.analyze.steps.types import Correlation
 from cli.commands.analyze.utils import pattern_to_regex
 from cli.commands.capture.types import Trace
 from cli.helpers.console import console

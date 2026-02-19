@@ -5,7 +5,8 @@ from __future__ import annotations
 from typing import Any, cast
 
 from cli.commands.analyze.steps.base import LLMStep, StepValidationError
-from cli.commands.analyze.steps.types import EndpointGroup, MethodUrlPair
+from cli.commands.analyze.steps.rest.types import EndpointGroup
+from cli.commands.analyze.steps.types import MethodUrlPair
 from cli.commands.analyze.tools import (
     INVESTIGATION_TOOLS,
     TOOL_EXECUTORS,
