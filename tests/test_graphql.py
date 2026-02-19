@@ -516,6 +516,41 @@ class TestNestedObjects:
         assert "country" in addr.fields
 
 
+class TestAliasHandling:
+    def test_aliases_resolve_to_real_field_names(self):
+        """Aliases in queries should read values from aliased response keys
+        but store fields under their real (non-aliased) schema names."""
+        traces = [
+            _gql_trace(
+                'query { myUser: user(id: "1") { userName: name userEmail: email } }',
+                response_data={
+                    "myUser": {
+                        "__typename": "User",
+                        "userName": "Alice",
+                        "userEmail": "alice@example.com",
+                    }
+                },
+            )
+        ]
+        schema = extract_graphql_schema(traces)
+
+        # Root query field should be the real name, not the alias
+        assert "user" in schema.root_query_fields
+        assert "myUser" not in schema.root_query_fields
+
+        # Type should exist and have fields under real names
+        assert "User" in schema.registry.types
+        user_type = schema.registry.types["User"]
+        assert "name" in user_type.fields
+        assert "email" in user_type.fields
+        assert "userName" not in user_type.fields
+        assert "userEmail" not in user_type.fields
+
+        # Values should have been read correctly via alias keys
+        assert user_type.fields["name"].type_name == "String"
+        assert user_type.fields["email"].type_name == "String"
+
+
 # ===========================================================================
 # 3. SDL assembly tests
 # ===========================================================================
