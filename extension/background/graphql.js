@@ -79,9 +79,51 @@ export function injectTypename(query) {
 }
 
 /**
- * Handle Fetch.requestPaused — intercept GraphQL requests to inject __typename.
- * Decodes the POST body, injects __typename into GraphQL query strings,
- * then continues the request with the modified body.
+ * Check if a GraphQL request item is a persisted query (has extensions.persistedQuery
+ * but no query string). These are sent by Apollo clients using Automatic Persisted
+ * Queries (APQ) — the client sends a hash instead of the full query.
+ */
+function isPersistedQuery(item) {
+  return item
+    && typeof item.query !== 'string'
+    && item.extensions
+    && item.extensions.persistedQuery;
+}
+
+/** Build a PersistedQueryNotFound error response for a single operation. */
+function persistedQueryNotFoundError() {
+  return {
+    errors: [{
+      message: 'PersistedQueryNotFound',
+      extensions: { code: 'PERSISTED_QUERY_NOT_FOUND' },
+    }],
+  };
+}
+
+/**
+ * Respond to a paused Fetch request with a synthetic JSON response body,
+ * bypassing the actual server.
+ */
+async function fulfillWithJson(debuggeeId, requestId, responseBody) {
+  const json = JSON.stringify(responseBody);
+  const body = btoa(unescape(encodeURIComponent(json)));
+  await chrome.debugger.sendCommand(debuggeeId, 'Fetch.fulfillRequest', {
+    requestId,
+    responseCode: 200,
+    responseHeaders: [{ name: 'Content-Type', value: 'application/json' }],
+    body,
+  });
+}
+
+/**
+ * Handle Fetch.requestPaused — intercept GraphQL requests.
+ *
+ * Two interception modes:
+ * 1. Persisted query rejection — if the request uses a persisted query hash
+ *    (no query string), respond immediately with PersistedQueryNotFound so
+ *    the client retries with the full query text.
+ * 2. __typename injection — inject __typename into selection sets so response
+ *    objects carry type information for analysis.
  */
 export async function handleFetchRequestPaused(params, debuggeeId) {
   const { requestId, request } = params;
@@ -101,6 +143,25 @@ export async function handleFetchRequestPaused(params, debuggeeId) {
       return;
     }
 
+    // --- Persisted query detection ---
+    // Must run before __typename injection: if the request has no query string,
+    // we reject it so the client retries with the full query text.
+    if (Array.isArray(body)) {
+      const hasPersistedItem = body.some(item => isPersistedQuery(item));
+      if (hasPersistedItem) {
+        // Respond with errors for the entire batch — Fetch.fulfillRequest applies
+        // to the whole HTTP response, so we can't selectively pass through some
+        // items. The client will retry the full batch with query strings.
+        const responseBody = body.map(() => persistedQueryNotFoundError());
+        await fulfillWithJson(debuggeeId, requestId, responseBody);
+        return;
+      }
+    } else if (isPersistedQuery(body)) {
+      await fulfillWithJson(debuggeeId, requestId, persistedQueryNotFoundError());
+      return;
+    }
+
+    // --- __typename injection ---
     let modified = false;
 
     if (Array.isArray(body)) {
