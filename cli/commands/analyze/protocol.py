@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 import re
-from typing import Any
+from typing import Any, cast
 
 from cli.commands.capture.types import Trace, WsConnection
 from cli.helpers.http import get_header
@@ -78,27 +78,41 @@ def detect_ws_protocol(ws_conn: WsConnection) -> str:
     return "unknown"
 
 
+def _is_graphql_item(data: dict[str, Any]) -> bool:
+    """Check if a single JSON object looks like a GraphQL request.
+
+    Matches two shapes:
+    - Normal query: ``{"query": "query { ... }", ...}``
+    - Persisted query: ``{"extensions": {"persistedQuery": {...}}, ...}``
+    """
+    query_val = data.get("query")
+    if isinstance(query_val, str) and re.search(
+        r"\b(query|mutation|subscription)\b|\{", query_val
+    ):
+        return True
+    extensions = data.get("extensions")
+    if isinstance(extensions, dict) and "persistedQuery" in extensions:
+        return True
+    return False
+
+
 def _is_graphql(url: str, method: str, body: bytes, content_type: str | None) -> bool:
-    """Check if a request is a GraphQL request."""
-    # URL-based detection
-    if re.search(r"/graphql\b", url, re.IGNORECASE):
-        return True
+    """Check if a request is a GraphQL request based on the JSON body."""
+    if method != "POST" or not body or not content_type:
+        return False
+    if "json" not in content_type.lower():
+        return False
 
-    # Body-based detection for POST requests
-    if method == "POST" and body and content_type and "json" in content_type.lower():
-        try:
-            data: Any = json.loads(body)
-            if isinstance(data, dict) and "query" in data:
-                query_val = data["query"]  # pyright: ignore[reportUnknownVariableType]
-                if isinstance(query_val, str) and re.search(
-                    r"\b(query|mutation|subscription)\b", query_val
-                ):
-                    return True
-        except (json.JSONDecodeError, UnicodeDecodeError):
-            pass
+    try:
+        data: Any = json.loads(body)
+    except (json.JSONDecodeError, UnicodeDecodeError):
+        return False
 
-    # Query parameter detection for GET requests
-    if method == "GET" and "query=" in url:
-        return True
-
+    if isinstance(data, dict):
+        return _is_graphql_item(cast(dict[str, Any], data))
+    if isinstance(data, list):
+        return any(
+            isinstance(item, dict) and _is_graphql_item(cast(dict[str, Any], item))
+            for item in cast(list[Any], data)
+        )
     return False

@@ -12,11 +12,12 @@ class TestDetectTraceProtocol:
         trace = make_trace("t_0001", "GET", "https://api.example.com/users", 200, 1000)
         assert detect_trace_protocol(trace) == "rest"
 
-    def test_graphql_by_url(self):
+    def test_graphql_url_without_body_is_rest(self):
+        """A POST to /graphql without a JSON body is not classified as GraphQL."""
         trace = make_trace(
             "t_0001", "POST", "https://api.example.com/graphql", 200, 1000
         )
-        assert detect_trace_protocol(trace) == "graphql"
+        assert detect_trace_protocol(trace) == "rest"
 
     def test_graphql_by_body(self):
         body = json.dumps({"query": "query { users { id name } }"}).encode()
@@ -83,13 +84,66 @@ class TestDetectTraceProtocol:
         )
         assert detect_trace_protocol(trace) == "binary"
 
-    def test_graphql_get_with_query_param(self):
+    def test_graphql_get_with_query_param_is_rest(self):
+        """GET requests are not classified as GraphQL (body-only detection)."""
         trace = make_trace(
             "t_0001",
             "GET",
             "https://api.example.com/graphql?query={users{id}}",
             200,
             1000,
+        )
+        assert detect_trace_protocol(trace) == "rest"
+
+    def test_graphql_persisted_query(self):
+        """A persisted query (extensions.persistedQuery, no query field) is GraphQL."""
+        body = json.dumps({
+            "extensions": {
+                "persistedQuery": {
+                    "version": 1,
+                    "sha256Hash": "abc123",
+                }
+            }
+        }).encode()
+        trace = make_trace(
+            "t_0001",
+            "POST",
+            "https://api.example.com/api",
+            200,
+            1000,
+            request_body=body,
+            request_headers=[Header(name="Content-Type", value="application/json")],
+        )
+        assert detect_trace_protocol(trace) == "graphql"
+
+    def test_graphql_batch(self):
+        """A batch of GraphQL queries is detected as GraphQL."""
+        body = json.dumps([
+            {"query": "query { users { id } }"},
+            {"query": "query { posts { title } }"},
+        ]).encode()
+        trace = make_trace(
+            "t_0001",
+            "POST",
+            "https://api.example.com/api",
+            200,
+            1000,
+            request_body=body,
+            request_headers=[Header(name="Content-Type", value="application/json")],
+        )
+        assert detect_trace_protocol(trace) == "graphql"
+
+    def test_graphql_shorthand_query(self):
+        """A shorthand query (no keyword, just braces) is detected as GraphQL."""
+        body = json.dumps({"query": "{ users { id } }"}).encode()
+        trace = make_trace(
+            "t_0001",
+            "POST",
+            "https://api.example.com/api",
+            200,
+            1000,
+            request_body=body,
+            request_headers=[Header(name="Content-Type", value="application/json")],
         )
         assert detect_trace_protocol(trace) == "graphql"
 
