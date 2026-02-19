@@ -12,14 +12,6 @@ import pytest
 import cli.helpers.llm as llm
 
 
-@pytest.fixture(autouse=True)
-def reset_llm_globals():
-    """Reset module globals before/after each test."""
-    llm.reset()
-    yield
-    llm.reset()
-
-
 def _make_mock_client(response: Any = None) -> MagicMock:
     """Build a mock client whose messages.create returns *response*."""
     client = MagicMock()

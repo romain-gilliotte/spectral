@@ -365,3 +365,29 @@ class TestInferQuerySchema:
         assert schema is not None
         assert "q" in schema.get("required", [])
         assert "page" not in schema.get("required", [])
+
+
+class TestQueryParamExtraction:
+    def test_extracts_query_params_via_schema(self):
+        traces = [
+            make_trace(
+                "t_0001",
+                "GET",
+                "https://api.example.com/search?q=hello&page=1",
+                200,
+                1000,
+            ),
+            make_trace(
+                "t_0002",
+                "GET",
+                "https://api.example.com/search?q=world&page=2",
+                200,
+                2000,
+            ),
+        ]
+        schema = infer_query_schema(traces)
+        assert schema is not None
+        assert "q" in schema["properties"]
+        assert "page" in schema["properties"]
+        assert "hello" in schema["properties"]["q"]["observed"]
+        assert "world" in schema["properties"]["q"]["observed"]

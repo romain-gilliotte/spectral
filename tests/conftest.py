@@ -6,6 +6,16 @@ import json
 
 import pytest
 
+import cli.helpers.llm as llm
+
+
+@pytest.fixture(autouse=True)
+def reset_llm_globals():
+    """Reset module globals before/after each test."""
+    llm.reset()
+    yield
+    llm.reset()
+
 from cli.commands.capture.types import (
     CaptureBundle,
     Context,
