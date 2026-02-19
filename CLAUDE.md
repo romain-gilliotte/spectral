@@ -22,7 +22,7 @@
 A two-stage pipeline that automatically discovers and documents web application APIs:
 
 1. **Capture** — A Chrome Extension or MITM proxy records network traffic + UI actions while the user browses normally
-2. **Analyze** — A CLI tool correlates UI actions ↔ API calls using an LLM to produce an OpenAPI 3.1 spec enriched with business semantics
+2. **Analyze** — A CLI tool correlates UI actions ↔ API calls using an LLM. REST traces produce an OpenAPI 3.1 spec; GraphQL traces produce a typed SDL schema. Both are enriched with business semantics
 
 The key innovation is the **correlation of UI actions with network traffic** to understand the *business meaning* of each API call, not just its technical shape. No existing tool does this.
 
@@ -32,12 +32,23 @@ The key innovation is the **correlation of UI actions with network traffic** to 
 spectral/
 ├── extension/              # Chrome Extension (Manifest V3)
 │   ├── manifest.json
-│   ├── background.js       # Network capture via chrome.debugger (DevTools Protocol)
-│   ├── content.js          # UI context capture (clicks, navigation, DOM state, page content)
-│   ├── popup.html          # Start/stop/export UI with live stats
-│   ├── popup.js            # Popup controller (state management, polling)
-│   ├── popup.css           # Popup styling (320px popup, status indicators)
+│   ├── background/         # Service worker modules
+│   │   ├── background.js   # Entry point: event listeners, message handler
+│   │   ├── state.js        # Shared capture state, state machine enum
+│   │   ├── utils.js        # Helpers (padId, uuid, now, base64 decode)
+│   │   ├── network.js      # HTTP request/response capture via DevTools Protocol
+│   │   ├── websocket.js    # WebSocket capture via DevTools Protocol
+│   │   ├── graphql.js      # GraphQL __typename injection via Fetch.requestPaused
+│   │   ├── capture.js      # Capture lifecycle (start, stop, stats, content script control)
+│   │   └── export.js       # Bundle export: assemble ZIP and trigger download
+│   ├── content/
+│   │   └── content.js      # UI context capture (clicks, navigation, DOM state, page content)
+│   ├── popup/
+│   │   ├── popup.html      # Start/stop/export UI with live stats
+│   │   ├── popup.js        # Popup controller (state management, polling)
+│   │   └── popup.css       # Popup styling (320px popup, status indicators)
 │   ├── lib/
+│   │   ├── jszip.js        # ESM wrapper for jszip.min.js
 │   │   └── jszip.min.js    # ZIP library for bundle export
 │   └── icons/
 │       ├── icon16.png
@@ -46,33 +57,42 @@ spectral/
 ├── cli/                    # Python CLI tool
 │   ├── __init__.py
 │   ├── main.py             # Entry point: commands (analyze, capture, android)
-│   ├── commands/            # All command packages
+│   ├── commands/
 │   │   ├── capture/         # Capture: bundle parsing, inspect, MITM proxy
 │   │   │   ├── cmd.py       # CLI group: capture inspect, capture proxy, capture discover
 │   │   │   ├── inspect.py   # Inspect implementation: summary + per-trace detail views
 │   │   │   ├── proxy.py     # Generic MITM proxy engine (mitmproxy addons, run_proxy, run_discover)
 │   │   │   ├── loader.py    # Unzips and loads a capture bundle (+ write_bundle)
+│   │   │   ├── graphql_utils.py # GraphQL __typename injection (AST visitor via graphql-core)
 │   │   │   └── types.py     # Data classes for traces, contexts, timeline (wraps Pydantic + binary)
 │   │   ├── analyze/         # Analysis engine
-│   │   │   ├── cmd.py       # CLI command: analyze <bundle> -o <output> [--model] [--debug] [--skip-enrich]
-│   │   │   ├── pipeline.py  # Orchestrator: build_spec() with parallel branches → OpenAPI 3.1
+│   │   │   ├── cmd.py       # CLI command: analyze <bundle> -o <name> [--model] [--debug] [--skip-enrich]
+│   │   │   ├── pipeline.py  # Orchestrator: build_spec() → REST (OpenAPI) and/or GraphQL (SDL)
 │   │   │   ├── correlator.py# Time-window correlation: UI action → API calls
 │   │   │   ├── protocol.py  # Protocol detection (REST, GraphQL, WebSocket, gRPC, binary)
-│   │   │   ├── tools.py     # LLM tool loop (_call_with_tools), investigation tools, _extract_json
+│   │   │   ├── tools.py     # LLM tool loop, investigation tools
 │   │   │   ├── utils.py     # Shared utilities (_pattern_to_regex, _compact_url, _sanitize_headers)
 │   │   │   ├── schemas.py   # JSON schema inference, annotated schemas, format detection
 │   │   │   └── steps/       # Pipeline steps (Step[In,Out] architecture)
-│   │   │       ├── types.py            # Intermediate dataclasses (Correlation, EndpointGroup, etc.)
+│   │   │       ├── types.py            # Shared dataclasses (MethodUrlPair, AnalysisResult, etc.)
 │   │   │       ├── base.py             # Step, LLMStep, MechanicalStep, StepValidationError
 │   │   │       ├── detect_base_url.py  # LLMStep: identify business API base URL
-│   │   │       ├── group_endpoints.py  # LLMStep: group URLs into endpoint patterns
 │   │   │       ├── analyze_auth.py     # LLMStep: detect auth mechanism from all traces
-│   │   │       ├── enrich_and_context.py # LLMStep: per-endpoint parallel enrichment
 │   │   │       ├── extract_pairs.py    # MechanicalStep: traces → (method, url) pairs
 │   │   │       ├── filter_traces.py    # MechanicalStep: keep traces matching base URL
-│   │   │       ├── strip_prefix.py     # MechanicalStep: remove base URL path prefix
-│   │   │       ├── mechanical_extraction.py # MechanicalStep: groups → EndpointSpec[]
-│   │   │       └── assemble.py         # MechanicalStep: combine all parts → OpenAPI 3.1 dict
+│   │   │       ├── rest/               # REST-specific steps
+│   │   │       │   ├── types.py        # REST dataclasses (EndpointGroup, EndpointSpec, etc.)
+│   │   │       │   ├── group_endpoints.py # LLMStep: group URLs into endpoint patterns
+│   │   │       │   ├── strip_prefix.py    # MechanicalStep: remove base URL path prefix
+│   │   │       │   ├── extraction.py      # MechanicalStep: groups → EndpointSpec[]
+│   │   │       │   ├── enrich.py          # LLMStep: per-endpoint parallel enrichment
+│   │   │       │   └── assemble.py        # MechanicalStep: combine all parts → OpenAPI 3.1 dict
+│   │   │       └── graphql/            # GraphQL-specific steps
+│   │   │           ├── types.py        # GraphQL dataclasses (TypeRecord, FieldRecord, etc.)
+│   │   │           ├── parser.py       # Parse GraphQL queries from trace bodies
+│   │   │           ├── extraction.py   # MechanicalStep: traces → TypeRegistry (type reconstruction)
+│   │   │           ├── enrich.py       # LLMStep: per-type parallel enrichment
+│   │   │           └── assemble.py     # MechanicalStep: TypeRegistry → SDL string
 │   │   └── android/         # Android APK tools (pull, patch, install, cert)
 │   │       ├── cmd.py       # CLI group: android list, pull, patch, install, cert
 │   │       ├── adb.py       # ADB wrapper: list, pull, install, push cert
@@ -81,11 +101,12 @@ spectral/
 │   │   └── capture_bundle.py   # Capture bundle Pydantic models (17 models)
 │   └── helpers/             # Shared utilities
 │       ├── console.py       # Rich console instance
+│       ├── llm.py           # Centralized LLM helper (rate-limit retry, concurrency control)
 │       ├── naming.py        # safe_name(), to_identifier()
 │       ├── subprocess.py    # run_subprocess() helper
 │       └── http.py          # HTTP helpers
 ├── tests/
-│   ├── conftest.py         # Shared fixtures (sample_bundle, make_trace, make_context, etc.)
+│   ├── conftest.py          # Shared fixtures (sample_bundle, make_trace, make_context, etc.)
 │   ├── test_formats.py
 │   ├── test_loader.py
 │   ├── test_protocol.py
@@ -94,6 +115,8 @@ spectral/
 │   ├── test_schemas.py      # Annotated schemas, type inference, format detection
 │   ├── test_steps.py        # Step base classes (Step, LLMStep, MechanicalStep)
 │   ├── test_llm_tools.py    # Tool executors, _call_with_tools, DetectBaseUrlStep
+│   ├── test_llm_helper.py   # LLM helper: retry, concurrency, debug logging
+│   ├── test_graphql.py      # GraphQL: parser, extraction, enrichment, SDL assembly
 │   ├── test_helpers.py      # Naming, subprocess, HTTP helpers
 │   ├── test_cli.py
 │   ├── test_android.py      # ADB, patch, android CLI (list, pull, patch, install, cert)
@@ -336,11 +359,14 @@ This flat timeline makes correlation trivial: to find which API calls relate to 
 
 ---
 
-## FORMAT 2: OpenAPI 3.1 Output (.yaml)
+## FORMAT 2: Analysis Output
 
-The output of `spectral analyze` is a standard **OpenAPI 3.1** spec enriched with LLM-inferred business semantics. Business meaning is embedded in standard OpenAPI fields (`summary`, `description`, response `description`) and `x-` extensions where needed (e.g. `x-rate-limit`).
+The pipeline auto-detects the protocol and produces the appropriate output format:
 
-The pipeline builds the spec through internal dataclasses (`cli/commands/analyze/steps/types.py`): `EndpointSpec`, `RequestSpec`, `ResponseSpec`, `AuthInfo`. The `AssembleStep` converts these into the final OpenAPI dict, mapping `observed` values to `examples`, schemas to `content`, and auth info to `securitySchemes`.
+- **REST** → OpenAPI 3.1 YAML (`.yaml`), enriched with LLM-inferred business semantics in standard OpenAPI fields (`summary`, `description`) and `x-` extensions (e.g. `x-rate-limit`). Built through REST-specific dataclasses (`cli/commands/analyze/steps/rest/types.py`): `EndpointSpec`, `RequestSpec`, `ResponseSpec`. The `AssembleStep` converts these into the final OpenAPI dict.
+- **GraphQL** → SDL schema (`.graphql`), with type/field descriptions inferred by the LLM. Built by reconstructing types from captured queries and responses (using `__typename` injection), then rendered to SDL by the `GraphQLAssembleStep`.
+
+A single capture can contain both REST and GraphQL traces; the pipeline processes them in parallel and writes both output files.
 
 ### What the LLM infers (Stage 2 — analyze)
 
@@ -380,7 +406,7 @@ spectral android install com.spotify.music-patched.apk
 spectral android cert                                            # push mitmproxy CA cert to device
 ```
 
-Note: `analyze` requires LLM analysis (requires `ANTHROPIC_API_KEY`). Default model is `claude-sonnet-4-5-20250929`.
+Note: `analyze` requires `ANTHROPIC_API_KEY`. The `-o` flag takes a base name (e.g. `-o edf-api` produces `edf-api.yaml` and/or `edf-api.graphql`). Default model is `claude-sonnet-4-5-20250929`.
 
 ---
 
@@ -390,15 +416,13 @@ Note: `analyze` requires LLM analysis (requires `ANTHROPIC_API_KEY`). Default mo
 
 1. User clicks "Start Capture" in extension popup
 2. Extension attaches `chrome.debugger` to the active tab
-3. `background.js` listens to DevTools Protocol events:
-   - `Network.requestWillBeSent` — capture request metadata (provisional headers)
-   - `Network.requestWillBeSentExtraInfo` — capture wire-level request headers (Cookie, browser-managed Auth)
-   - `Network.responseReceived` + `Network.getResponseBody` — capture response metadata + body
-   - `Network.responseReceivedExtraInfo` — capture wire-level response headers (Set-Cookie, cross-origin)
-   - `Network.webSocketCreated`, `Network.webSocketFrameSent`, `Network.webSocketFrameReceived` — WebSocket
-4. `content.js` listens to DOM events (click, input, submit) and navigation events, extracts rich page content
-5. Content script sends timestamped context events to background.js via `chrome.runtime.sendMessage`
-6. On full-page navigation (non-SPA), `chrome.tabs.onUpdated` re-injects `content.js` automatically so UI capture continues
+3. `background/background.js` dispatches DevTools Protocol events to specialized modules:
+   - `network.js` — HTTP request/response capture (headers, bodies, timing)
+   - `websocket.js` — WebSocket connection and message capture
+   - `graphql.js` — intercepts GraphQL requests via `Fetch.requestPaused` to inject `__typename` into queries
+4. `content/content.js` listens to DOM events (click, input, submit) and navigation events, extracts rich page content
+5. Content script sends timestamped context events to background via `chrome.runtime.sendMessage`
+6. On full-page navigation (non-SPA), `chrome.tabs.onUpdated` re-injects content script automatically so UI capture continues
 7. User clicks "Stop Capture" → background detaches debugger
 7. User clicks "Export" → background assembles the ZIP bundle using JSZip and triggers download
 
@@ -424,6 +448,7 @@ The popup polls the background for current state and stats, updating the UI acco
 | `Network.webSocketFrameSent` | Outgoing WS message (text or binary as base64) |
 | `Network.webSocketFrameReceived` | Incoming WS message (text or binary as base64) |
 | `Network.webSocketClosed` | WS connection closed |
+| `Fetch.requestPaused` | Intercept GraphQL requests to inject `__typename` |
 
 ### What we capture via content script
 
@@ -457,20 +482,27 @@ When storing a trace, the extension finds the most recent context(s) within a 2-
 
 The `build_spec()` function in `pipeline.py` orchestrates a Step-based pipeline. Each step is a typed `Step[In, Out]` with `run()` method, optional validation, and retry for LLM steps.
 
-**Main branch** (sequential):
+**Common steps** (sequential):
 1. **Extract pairs** — `MechanicalStep`: collect `(method, url)` pairs from all traces
-2. **Detect base URL** — `LLMStep`: identify the business API origin (with investigation tools)
+2. **Detect base URL** — `LLMStep`: identify the business API origin (with investigation tools, call frequency hints)
 3. **Filter traces** — `MechanicalStep`: keep only traces matching the base URL
-4. **Group endpoints** — `LLMStep`: group URLs into endpoint patterns with `{param}` syntax (with investigation tools)
-5. **Strip prefix** — `MechanicalStep`: remove base URL path prefix from patterns
-6. **Mechanical extraction** — `MechanicalStep`: build `EndpointSpec[]` with schemas, params
-7. **Detect auth & rate limit** — mechanical per-endpoint detection from trace headers
+4. **Split by protocol** — traces are separated into REST and GraphQL groups
 
-**Parallel branches** (run via `asyncio.gather` after step 7):
-- **Enrich endpoints** — `LLMStep`: N parallel per-endpoint LLM calls for business semantics
-- **Auth analysis** — `LLMStep`: detect auth mechanism from ALL unfiltered traces (with mechanical fallback)
+**REST branch** (when REST traces are present):
+1. **Group endpoints** — `LLMStep`: group URLs into endpoint patterns with `{param}` syntax
+2. **Strip prefix** — `MechanicalStep`: remove base URL path prefix from patterns
+3. **Mechanical extraction** — `MechanicalStep`: build `EndpointSpec[]` with schemas, params
+4. **Detect auth & rate limit** — mechanical per-endpoint detection from trace headers
+5. **Enrich endpoints** — `LLMStep`: N parallel per-endpoint LLM calls for business semantics (via `asyncio.gather`)
+6. **Auth analysis** — `LLMStep`: detect auth mechanism from ALL unfiltered traces (runs in parallel with enrichment)
+7. **Assembly** — `MechanicalStep`: combine all outputs into OpenAPI 3.1 dict
 
-**Assembly** — `MechanicalStep`: combine all outputs into OpenAPI 3.1 dict
+**GraphQL branch** (when GraphQL traces are present):
+1. **Extraction** — `MechanicalStep`: parse queries via `graphql-core`, walk response data with `__typename` to reconstruct a `TypeRegistry` (object types, input types, enums, scalars, field nullability/list-ness)
+2. **Enrich types** — `LLMStep`: N parallel per-type LLM calls for descriptions (via `asyncio.gather`)
+3. **Assembly** — `MechanicalStep`: render `TypeRegistry` → SDL string
+
+Both branches run in parallel via `asyncio.gather` and produce independent outputs.
 
 ### Step classes (`cli/commands/analyze/steps/base.py`)
 
@@ -484,28 +516,28 @@ The `build_spec()` function in `pipeline.py` orchestrates a Step-based pipeline.
 
 | Step | File | Tools | Validation |
 |---|---|---|---|
-| Detect base URL | `detect_base_url.py` | decode_base64, decode_url, decode_jwt | Valid URL (scheme + host) |
-| Group endpoints | `group_endpoints.py` | decode_base64, decode_url, decode_jwt | Coverage, pattern match, no duplicates |
-| Enrich endpoints | `enrich_and_context.py` | none | Best-effort (no validation) |
-| Auth analysis | `analyze_auth.py` | none | Best-effort (fallback to `detect_auth_mechanical`) |
+| Detect base URL | `steps/detect_base_url.py` | decode_base64, decode_url, decode_jwt | Valid URL (scheme + host) |
+| Group endpoints (REST) | `steps/rest/group_endpoints.py` | decode_base64, decode_url, decode_jwt | Coverage, pattern match, no duplicates |
+| Enrich endpoints (REST) | `steps/rest/enrich.py` | none | Best-effort (no validation) |
+| Enrich types (GraphQL) | `steps/graphql/enrich.py` | none | Best-effort (no validation) |
+| Auth analysis | `steps/analyze_auth.py` | none | Best-effort (fallback to `detect_auth_mechanical`) |
 
 All LLM steps use `_extract_json()` to robustly parse LLM JSON responses (handles markdown blocks, nested objects).
 
 ### Internal data flow
 
-Pipeline steps exchange typed dataclasses defined in `cli/commands/analyze/steps/types.py`. Key types:
+Pipeline steps exchange typed dataclasses. Shared types live in `steps/types.py`, protocol-specific types in `steps/rest/types.py` and `steps/graphql/types.py`.
 
-| Type | Purpose |
-|---|---|
-| `MethodUrlPair` | An observed (method, url) pair from a single trace |
-| `EndpointGroup` | An LLM-identified endpoint group (method, pattern, urls) |
-| `EndpointSpec` | Full endpoint with request/response schemas, rate_limit, requires_auth, description |
-| `RequestSpec` | Path/query/body annotated schemas |
-| `ResponseSpec` | Status, schema, business_meaning, example_body |
-| `AuthInfo` | Detected auth type, obtain_flow, login/refresh config, user_journey |
-| `SpecComponents` | All pieces needed for the assembly step |
-
-The `AssembleStep` converts `SpecComponents` into a plain `dict[str, Any]` (OpenAPI 3.1).
+| Type | Location | Purpose |
+|---|---|---|
+| `MethodUrlPair` | `steps/types.py` | An observed (method, url) pair from a single trace |
+| `AnalysisResult` | `steps/types.py` | Final output: optional `openapi` dict + optional `graphql_sdl` string |
+| `AuthInfo` | `steps/types.py` | Detected auth type, obtain_flow, login/refresh config, user_journey |
+| `EndpointGroup` | `steps/rest/types.py` | An LLM-identified REST endpoint group (method, pattern, urls) |
+| `EndpointSpec` | `steps/rest/types.py` | Full REST endpoint with request/response schemas |
+| `SpecComponents` | `steps/rest/types.py` | All pieces needed for the REST assembly step |
+| `TypeRegistry` | `steps/graphql/types.py` | Accumulated GraphQL types, fields, enums from all traces |
+| `GraphQLSchemaData` | `steps/graphql/types.py` | Final GraphQL schema with root fields + type registry |
 
 ---
 
@@ -515,27 +547,33 @@ The `AssembleStep` converts `SpecComponents` into a plain `dict[str, Any]` (Open
 - [x] Pydantic models for capture bundle format (`cli/formats/capture_bundle.py`) — 17 models including PageContent
 - [x] Bundle loader/writer with ZIP serialization (`cli/commands/capture/loader.py`) — binary-safe roundtrip
 - [x] In-memory data classes (`cli/commands/capture/types.py`) — wraps metadata + binary payloads
-- [x] Chrome extension: `background.js` — DevTools Protocol capture, state machine, timestamp conversion
-- [x] Chrome extension: `content.js` — DOM event capture, page content extraction, stable selector generation
-- [x] Chrome extension: popup UI — Start/Stop/Export buttons, live stats, status indicators
+- [x] Chrome extension: modular background service worker (`background/`) — network, websocket, graphql, capture, export
+- [x] Chrome extension: GraphQL `__typename` injection via Fetch.requestPaused (`background/graphql.js`)
+- [x] Chrome extension: content script (`content/content.js`) — DOM event capture, page content extraction, stable selector generation
+- [x] Chrome extension: popup UI (`popup/`) — Start/Stop/Export buttons, live stats, status indicators
 - [x] Tests: model roundtrips, bundle read/write, binary safety, lookups
 
 ### Phase 2: Analysis engine
 - [x] Protocol detection (`cli/commands/analyze/protocol.py`) — REST, GraphQL, gRPC, binary, WS sub-protocols
 - [x] Time-window correlation (`cli/commands/analyze/correlator.py`) — UI action → API calls with configurable window
-- [x] Step-based pipeline (`cli/commands/analyze/pipeline.py`) — orchestrator with parallel branches → OpenAPI 3.1
+- [x] Step-based pipeline (`cli/commands/analyze/pipeline.py`) — orchestrator with parallel REST + GraphQL branches
 - [x] Step abstraction (`cli/commands/analyze/steps/base.py`) — Step[In,Out], LLMStep (retry), MechanicalStep
-- [x] LLM base URL detection (`steps/detect_base_url.py`) — with investigation tools
-- [x] LLM endpoint grouping (`steps/group_endpoints.py`) — with investigation tools + validation
-- [x] LLM per-endpoint enrichment (`steps/enrich_and_context.py`) — parallel per-endpoint calls via asyncio.gather
+- [x] LLM base URL detection (`steps/detect_base_url.py`) — with investigation tools + call frequency hints
+- [x] REST: LLM endpoint grouping (`steps/rest/group_endpoints.py`) — with investigation tools + validation
+- [x] REST: LLM per-endpoint enrichment (`steps/rest/enrich.py`) — parallel per-endpoint calls via asyncio.gather
+- [x] REST: Mechanical extraction (`steps/rest/extraction.py`) — schemas, params, trace matching
+- [x] REST: OpenAPI 3.1 assembly (`steps/rest/assemble.py`) — security schemes, parameters, request bodies, responses
+- [x] GraphQL: Query parsing (`steps/graphql/parser.py`) — operations, fragments, variables via graphql-core
+- [x] GraphQL: Type extraction (`steps/graphql/extraction.py`) — TypeRegistry from queries + __typename responses
+- [x] GraphQL: LLM per-type enrichment (`steps/graphql/enrich.py`) — parallel per-type calls via asyncio.gather
+- [x] GraphQL: SDL assembly (`steps/graphql/assemble.py`) — render TypeRegistry → SDL string
+- [x] GraphQL: __typename injection (`cli/commands/capture/graphql_utils.py`) — AST visitor via graphql-core
 - [x] LLM auth analysis (`steps/analyze_auth.py`) — on all unfiltered traces, with mechanical fallback
-- [x] Mechanical extraction (`steps/mechanical_extraction.py`) — schemas, params, trace matching
-- [x] OpenAPI 3.1 assembly (`steps/assemble.py`) — security schemes, parameters, request bodies, responses
 - [x] JSON schema inference with format detection (`cli/commands/analyze/schemas.py`) — date, email, UUID, URI
 - [x] Annotated schemas (`cli/commands/analyze/schemas.py`) — schema + observed values per property
 - [x] Investigation tools (`cli/commands/analyze/tools.py`) — decode_base64, decode_url, decode_jwt, tool loop
 - [x] Shared utilities (`cli/commands/analyze/utils.py`) — _pattern_to_regex, _compact_url, _sanitize_headers
-- [x] Tests: pipeline, steps, schemas, tools, protocol, correlator, mechanical extraction
+- [x] Tests: pipeline, steps, schemas, tools, protocol, correlator, mechanical extraction, GraphQL full pipeline
 - [ ] Real-world testing with actual API keys
 - [ ] Prompt tuning for better enrichment quality
 
@@ -553,7 +591,7 @@ The `AssembleStep` converts `SpecComponents` into a plain `dict[str, Any]` (Open
 - [ ] Privacy controls: exclude domains, redact headers/cookies
 
 ### Test coverage
-257 tests across 12 test files, all passing:
+327 tests across 14 test files, all passing:
 - `tests/test_formats.py` — Pydantic model roundtrips and defaults
 - `tests/test_loader.py` — Bundle read/write, binary safety, lookups
 - `tests/test_protocol.py` — Protocol detection for HTTP and WebSocket
@@ -562,6 +600,8 @@ The `AssembleStep` converts `SpecComponents` into a plain `dict[str, Any]` (Open
 - `tests/test_schemas.py` — Annotated schemas, type inference, format detection, schema merging
 - `tests/test_steps.py` — Step base classes: execution, validation, retry logic
 - `tests/test_llm_tools.py` — Tool executors, _call_with_tools loop, DetectBaseUrlStep
+- `tests/test_llm_helper.py` — LLM helper: retry, concurrency, debug logging
+- `tests/test_graphql.py` — GraphQL: parser, extraction, type reconstruction, enrichment, SDL assembly
 - `tests/test_helpers.py` — Naming, subprocess, HTTP helpers
 - `tests/test_cli.py` — All CLI commands via Click test runner
 - `tests/test_android.py` — ADB, patch, android CLI (list, pull, patch, install, cert)
@@ -572,7 +612,7 @@ The `AssembleStep` converts `SpecComponents` into a plain `dict[str, Any]` (Open
 ## Key technical notes
 
 ### Timestamp conversion in the extension
-Chrome DevTools Protocol uses monotonic timestamps (seconds since browser start), not epoch time. `background.js` converts these to epoch milliseconds by computing an offset: `Date.now() - (chromeTimestamp * 1000)` on the first event, then applying it consistently to all subsequent events.
+Chrome DevTools Protocol uses monotonic timestamps (seconds since browser start), not epoch time. `background/utils.js` converts these to epoch milliseconds by computing an offset: `Date.now() - (chromeTimestamp * 1000)` on the first event, then applying it consistently to all subsequent events.
 
 ### Binary handling in the extension
 `Network.getResponseBody` returns `{ body: string, base64Encoded: boolean }`. When `base64Encoded` is true, decode to binary before writing to `.bin` file. When false, write as UTF-8 text. Always store as binary files to be uniform.
@@ -580,8 +620,8 @@ Chrome DevTools Protocol uses monotonic timestamps (seconds since browser start)
 ### WebSocket in the extension
 Chrome DevTools Protocol gives us `Network.webSocketFrameSent` and `Network.webSocketFrameReceived` with `{ requestId, timestamp, response: { opcode, mask, payloadData } }`. The `payloadData` is a string for text frames and base64 for binary frames. Store both as `.bin` files with metadata in the companion `.json`.
 
-### LLM-first analysis strategy
-The analysis pipeline is LLM-first (not mechanical-first with LLM enrichment):
+### LLM-first analysis strategy (REST)
+The REST pipeline is LLM-first (not mechanical-first with LLM enrichment):
 1. The LLM identifies the business API base URL — filtering out CDN, analytics, trackers
 2. The LLM groups URLs into endpoint patterns — this is more accurate than mechanical heuristics for complex APIs
 3. For each group, mechanical extraction provides the raw data (schemas, params, headers)
@@ -591,6 +631,15 @@ The analysis pipeline is LLM-first (not mechanical-first with LLM enrichment):
 Auth analysis runs in parallel with enrichment on ALL unfiltered traces (external auth providers would be filtered out by base URL detection). Both branches converge at assembly via `asyncio.gather`.
 
 Per-endpoint enrichment trades a single large prompt for N small focused prompts. Each call reasons about one endpoint with full context, producing higher-quality enrichment. Failures are isolated — one endpoint failing doesn't affect others. All calls run concurrently via `asyncio.gather`.
+
+### GraphQL analysis strategy
+The GraphQL pipeline is mechanical-first with LLM enrichment:
+1. The extension injects `__typename` into all GraphQL queries at capture time (via `Fetch.requestPaused`), so responses carry type information
+2. The extraction step parses queries via `graphql-core` and walks the parsed field tree alongside the JSON response data to reconstruct a `TypeRegistry` — object types, input types, enums, scalars, field nullability and list-ness
+3. N parallel per-type LLM calls add descriptions to types and fields
+4. The assembly step renders the `TypeRegistry` to SDL
+
+This is different from REST because GraphQL's type system is explicit — `__typename` injection makes mechanical type reconstruction reliable without LLM involvement. The LLM only adds business descriptions.
 
 ### Path parameter inference
 In the LLM-first pipeline, path parameters are inferred by the LLM during URL grouping. The LLM sees all observed URLs and identifies variable segments (IDs, UUIDs, hashes) to produce patterns like `/api/users/{user_id}/orders`.
@@ -610,13 +659,14 @@ Given multiple JSON response bodies for the same endpoint, build annotated schem
 ## Dependencies
 
 ### Extension
-- JSZip (bundled in `extension/lib/jszip.min.js`) — ZIP file creation for bundle export
+- JSZip (bundled in `extension/lib/`) — ZIP file creation for bundle export
 
 ### CLI
 ```
 click          # CLI framework
 pydantic       # Data models and validation
 anthropic      # Anthropic API client for LLM calls
+graphql-core   # GraphQL query parsing and AST manipulation
 pyyaml         # YAML output for OpenAPI
 rich           # Pretty terminal output
 python-dotenv  # .env file loading
