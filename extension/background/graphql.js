@@ -5,6 +5,8 @@
  * type names, enabling accurate type inference during analysis.
  */
 
+import { captureState } from './state.js';
+
 /**
  * Inject __typename into all selection sets of a GraphQL query string.
  * Uses a lightweight brace-tracking approach (no full parser needed).
@@ -104,13 +106,25 @@ function persistedQueryNotFoundError() {
  * Respond to a paused Fetch request with a synthetic JSON response body,
  * bypassing the actual server.
  */
-async function fulfillWithJson(debuggeeId, requestId, responseBody) {
+async function fulfillWithJson(debuggeeId, requestId, responseBody, requestHeaders) {
   const json = JSON.stringify(responseBody);
   const body = btoa(unescape(encodeURIComponent(json)));
+  // Include CORS headers so the browser allows cross-origin reads.
+  // Mirror the request Origin as Access-Control-Allow-Origin.
+  const origin = requestHeaders?.find(h => h.name.toLowerCase() === 'origin')?.value;
+  const responseHeaders = [
+    { name: 'Content-Type', value: 'application/json' },
+  ];
+  if (origin) {
+    responseHeaders.push(
+      { name: 'Access-Control-Allow-Origin', value: origin },
+      { name: 'Access-Control-Allow-Credentials', value: 'true' },
+    );
+  }
   await chrome.debugger.sendCommand(debuggeeId, 'Fetch.fulfillRequest', {
     requestId,
     responseCode: 200,
-    responseHeaders: [{ name: 'Content-Type', value: 'application/json' }],
+    responseHeaders,
     body,
   });
 }
@@ -143,43 +157,52 @@ export async function handleFetchRequestPaused(params, debuggeeId) {
       return;
     }
 
+    // Convert request.headers (object) to array format for fulfillWithJson
+    const requestHeaders = request.headers
+      ? Object.entries(request.headers).map(([name, value]) => ({ name, value }))
+      : [];
+
     // --- Persisted query detection ---
     // Must run before __typename injection: if the request has no query string,
     // we reject it so the client retries with the full query text.
-    if (Array.isArray(body)) {
-      const hasPersistedItem = body.some(item => isPersistedQuery(item));
-      if (hasPersistedItem) {
-        // Respond with errors for the entire batch — Fetch.fulfillRequest applies
-        // to the whole HTTP response, so we can't selectively pass through some
-        // items. The client will retry the full batch with query strings.
-        const responseBody = body.map(() => persistedQueryNotFoundError());
-        await fulfillWithJson(debuggeeId, requestId, responseBody);
+    if (captureState.settings.injectApqError) {
+      if (Array.isArray(body)) {
+        const hasPersistedItem = body.some(item => isPersistedQuery(item));
+        if (hasPersistedItem) {
+          // Respond with errors for the entire batch — Fetch.fulfillRequest applies
+          // to the whole HTTP response, so we can't selectively pass through some
+          // items. The client will retry the full batch with query strings.
+          const responseBody = body.map(() => persistedQueryNotFoundError());
+          await fulfillWithJson(debuggeeId, requestId, responseBody, requestHeaders);
+          return;
+        }
+      } else if (isPersistedQuery(body)) {
+        await fulfillWithJson(debuggeeId, requestId, persistedQueryNotFoundError(), requestHeaders);
         return;
       }
-    } else if (isPersistedQuery(body)) {
-      await fulfillWithJson(debuggeeId, requestId, persistedQueryNotFoundError());
-      return;
     }
 
     // --- __typename injection ---
     let modified = false;
 
-    if (Array.isArray(body)) {
-      // Batch GraphQL
-      for (const item of body) {
-        if (item && typeof item.query === 'string') {
-          const injected = injectTypename(item.query);
-          if (injected !== item.query) {
-            item.query = injected;
-            modified = true;
+    if (captureState.settings.injectTypename) {
+      if (Array.isArray(body)) {
+        // Batch GraphQL
+        for (const item of body) {
+          if (item && typeof item.query === 'string') {
+            const injected = injectTypename(item.query);
+            if (injected !== item.query) {
+              item.query = injected;
+              modified = true;
+            }
           }
         }
-      }
-    } else if (body && typeof body.query === 'string') {
-      const injected = injectTypename(body.query);
-      if (injected !== body.query) {
-        body.query = injected;
-        modified = true;
+      } else if (body && typeof body.query === 'string') {
+        const injected = injectTypename(body.query);
+        if (injected !== body.query) {
+          body.query = injected;
+          modified = true;
+        }
       }
     }
 
