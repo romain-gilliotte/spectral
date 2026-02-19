@@ -2,7 +2,7 @@
 
 ## Style preferences
 
-- **No code samples in documentation.** Documentation files (`_documentation/`) should describe concepts in prose and tables, not paste code. The code lives in the code.
+- **No code samples in documentation.** Documentation files should describe concepts in prose and tables, not paste code. The code lives in the code.
 
 ## Development environment
 
@@ -15,7 +15,7 @@
 - **Before finishing any code change**, run the full verification suite and fix any new errors:
   - `uv run pytest tests/ -x -q` — all tests must pass
   - `uv run ruff check` — zero lint errors (use `--fix` for auto-fixable import sorting)
-  - `uv run pyright` — zero new type errors (pre-existing errors in `schemas.py`, `assemble.py`, `test_schemas.py`, `test_spec_builder.py` are known)
+  - `uv run pyright` — zero new type errors (pre-existing errors in `proxy.py`, `test_proxy.py` are known)
 
 ## What this project is
 
@@ -105,22 +105,24 @@ spectral/
 │       ├── naming.py        # safe_name(), to_identifier()
 │       ├── subprocess.py    # run_subprocess() helper
 │       └── http.py          # HTTP helpers
-├── tests/
-│   ├── conftest.py          # Shared fixtures (sample_bundle, make_trace, make_context, etc.)
-│   ├── test_formats.py
-│   ├── test_loader.py
-│   ├── test_protocol.py
-│   ├── test_correlator.py
-│   ├── test_spec_builder.py # Pipeline, mechanical extraction, schema inference
-│   ├── test_schemas.py      # Annotated schemas, type inference, format detection
-│   ├── test_steps.py        # Step base classes (Step, LLMStep, MechanicalStep)
-│   ├── test_llm_tools.py    # Tool executors, _call_with_tools, DetectBaseUrlStep
-│   ├── test_llm_helper.py   # LLM helper: retry, concurrency, debug logging
-│   ├── test_graphql.py      # GraphQL: parser, extraction, enrichment, SDL assembly
-│   ├── test_helpers.py      # Naming, subprocess, HTTP helpers
-│   ├── test_cli.py
-│   ├── test_android.py      # ADB, patch, android CLI (list, pull, patch, install, cert)
-│   └── test_capture_proxy.py # MITM proxy engine, flow conversion, manifest compat
+├── tests/                     # Mirrors cli/ directory structure
+│   ├── conftest.py            # Shared fixtures (sample_bundle, make_trace, make_context, etc.)
+│   ├── analyze/               # Tests for analyze command
+│   │   ├── steps/
+│   │   │   ├── graphql/       # GraphQL step tests (parser, extraction, enrich, assemble)
+│   │   │   ├── rest/          # REST step tests (extraction, enrich, assemble)
+│   │   │   ├── test_base.py   # Step base classes (Step, LLMStep, MechanicalStep)
+│   │   │   └── test_detect_base_url.py
+│   │   ├── test_correlator.py
+│   │   ├── test_pipeline.py
+│   │   ├── test_protocol.py
+│   │   ├── test_schemas.py
+│   │   └── test_tools.py
+│   ├── android/               # ADB, patch, android CLI tests
+│   ├── capture/               # Loader, proxy, graphql_utils tests
+│   ├── cli/                   # CLI command tests
+│   ├── formats/               # Pydantic model roundtrip tests
+│   └── helpers/               # Naming, subprocess, HTTP, LLM helper tests
 ├── pyproject.toml
 └── README.md
 ```
@@ -591,21 +593,16 @@ Pipeline steps exchange typed dataclasses. Shared types live in `steps/types.py`
 - [ ] Privacy controls: exclude domains, redact headers/cookies
 
 ### Test coverage
-327 tests across 14 test files, all passing:
-- `tests/test_formats.py` — Pydantic model roundtrips and defaults
-- `tests/test_loader.py` — Bundle read/write, binary safety, lookups
-- `tests/test_protocol.py` — Protocol detection for HTTP and WebSocket
-- `tests/test_correlator.py` — Time-window correlation logic
-- `tests/test_spec_builder.py` — Pipeline builds, mechanical extraction, schema inference, trace matching
-- `tests/test_schemas.py` — Annotated schemas, type inference, format detection, schema merging
-- `tests/test_steps.py` — Step base classes: execution, validation, retry logic
-- `tests/test_llm_tools.py` — Tool executors, _call_with_tools loop, DetectBaseUrlStep
-- `tests/test_llm_helper.py` — LLM helper: retry, concurrency, debug logging
-- `tests/test_graphql.py` — GraphQL: parser, extraction, type reconstruction, enrichment, SDL assembly
-- `tests/test_helpers.py` — Naming, subprocess, HTTP helpers
-- `tests/test_cli.py` — All CLI commands via Click test runner
-- `tests/test_android.py` — ADB, patch, android CLI (list, pull, patch, install, cert)
-- `tests/test_capture_proxy.py` — MITM proxy engine, flow conversion, manifest compat
+377 tests across 25 test files in 8 subdirectories, all passing. Test structure mirrors `cli/commands/`:
+- `tests/formats/` — Pydantic model roundtrips and defaults
+- `tests/capture/` — Bundle loader, MITM proxy engine, GraphQL utils
+- `tests/analyze/` — Protocol detection, correlator, pipeline, schemas, tools
+- `tests/analyze/steps/` — Step base classes, detect base URL
+- `tests/analyze/steps/rest/` — REST extraction, enrichment, assembly
+- `tests/analyze/steps/graphql/` — GraphQL parser, extraction, enrichment, SDL assembly
+- `tests/android/` — ADB, patch, android CLI (list, pull, patch, install, cert)
+- `tests/cli/` — All CLI commands via Click test runner
+- `tests/helpers/` — Naming, subprocess, HTTP, LLM helper
 
 ---
 
