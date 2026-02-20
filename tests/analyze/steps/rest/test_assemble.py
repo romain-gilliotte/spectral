@@ -186,7 +186,6 @@ class TestOpenApiExamples:
                     "properties": {
                         "q": {"type": "string", "observed": ["hello", "world"]},
                     },
-                    "required": ["q"],
                 }
             ),
         )

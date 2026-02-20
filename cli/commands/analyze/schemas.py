@@ -104,8 +104,7 @@ def infer_schema(samples: list[dict[str, Any]]) -> dict[str, Any]:
     resulting schema fully describes the structure at every level.
 
     Each property carries its type, optional format, and an "observed" list of up
-    to 5 distinct values seen across samples. Properties present in all samples
-    are marked required.
+    to 5 distinct values seen across samples.
 
     Returns a dict like:
     {
@@ -117,11 +116,9 @@ def infer_schema(samples: list[dict[str, Any]]) -> dict[str, Any]:
                 "type": "object",
                 "properties": {
                     "city": {"type": "string", "observed": ["Paris"]}
-                },
-                "required": ["city"]
+                }
             }
-        },
-        "required": ["status", "count"]
+        }
     }
     """
     return _infer_object_schema(samples)
@@ -129,24 +126,16 @@ def infer_schema(samples: list[dict[str, Any]]) -> dict[str, Any]:
 
 def _infer_object_schema(samples: list[dict[str, Any]]) -> dict[str, Any]:
     """Infer schema for a list of object samples (recursive)."""
-    total = len(samples)
     all_keys: dict[str, list[Any]] = defaultdict(list)
     for sample in samples:
         for key, value in sample.items():
             all_keys[key].append(value)
 
     properties: dict[str, Any] = {}
-    required: list[str] = []
     for key, values in all_keys.items():
-        prop = _infer_property(values)
-        if len(values) == total:
-            required.append(key)
-        properties[key] = prop
+        properties[key] = _infer_property(values)
 
-    schema: dict[str, Any] = {"type": "object", "properties": properties}
-    if required:
-        schema["required"] = required
-    return schema
+    return {"type": "object", "properties": properties}
 
 
 def _infer_property(values: list[Any]) -> dict[str, Any]:
@@ -169,8 +158,6 @@ def _infer_property(values: list[Any]) -> dict[str, Any]:
         if dict_values:
             nested = _infer_object_schema(dict_values)
             prop["properties"] = nested["properties"]
-            if nested.get("required"):
-                prop["required"] = nested["required"]
 
     if prop_type == "array":
         # Infer items schema from array contents — observed goes on items, not here
@@ -283,26 +270,22 @@ def infer_query_schema(traces: list[Trace]) -> dict[str, Any] | None:
     """Infer an annotated JSON schema for query string parameters.
 
     Collects query-string values across all *traces*, infers type and
-    format per parameter, and marks parameters present in every trace as
-    required.  Returns the same annotated-schema format as ``infer_schema``.
+    format per parameter.  Returns the same annotated-schema format as
+    ``infer_schema``.
 
     Returns ``None`` when no query parameters are found.
     """
     raw_params: dict[str, list[str]] = defaultdict(list)
-    traces_with_param: dict[str, int] = defaultdict(int)
     for trace in traces:
         parsed = urlparse(trace.meta.request.url)
         qs = parse_qs(parsed.query)
         for key, values in qs.items():
             raw_params[key].extend(values)
-            traces_with_param[key] += 1
 
     if not raw_params:
         return None
 
-    total = len(traces)
     properties: dict[str, Any] = {}
-    required: list[str] = []
     for name, values in raw_params.items():
         ptype = _infer_type_from_values(values)
         prop: dict[str, Any] = {"type": ptype}
@@ -312,10 +295,5 @@ def infer_query_schema(traces: list[Trace]) -> dict[str, Any] | None:
                 prop["format"] = fmt
         prop["observed"] = _collect_observed(values)
         properties[name] = prop
-        if traces_with_param[name] == total:
-            required.append(name)
 
-    schema: dict[str, Any] = {"type": "object", "properties": properties}
-    if required:
-        schema["required"] = required
-    return schema
+    return {"type": "object", "properties": properties}

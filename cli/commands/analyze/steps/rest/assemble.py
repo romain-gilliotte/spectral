@@ -108,9 +108,10 @@ def _params_from_schema(
         p: dict[str, Any] = {
             "name": name,
             "in": location,
-            "required": name in required_set,
             "schema": prop_clean,
         }
+        if name in required_set:
+            p["required"] = True
         if prop.get("description"):
             p["description"] = prop["description"]
         params.append(p)

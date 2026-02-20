@@ -23,7 +23,7 @@ class TestInferSchema:
         assert schema["type"] == "object"
         assert schema["properties"]["name"]["type"] == "string"
         assert schema["properties"]["age"]["type"] == "integer"
-        assert set(schema["required"]) == {"name", "age"}
+        assert "required" not in schema
 
     def test_observed_values(self):
         samples = [
@@ -57,8 +57,9 @@ class TestInferSchema:
             {"name": "Bob"},
         ]
         schema = infer_schema(samples)
-        assert "name" in schema.get("required", [])
-        assert "email" not in schema.get("required", [])
+        assert "required" not in schema
+        assert "name" in schema["properties"]
+        assert "email" in schema["properties"]
 
     def test_format_detection(self):
         samples = [
@@ -84,7 +85,7 @@ class TestInferSchema:
         assert "properties" in addr
         assert addr["properties"]["city"]["type"] == "string"
         assert addr["properties"]["zip"]["type"] == "string"
-        assert set(addr["required"]) == {"city", "zip"}
+        assert "required" not in addr
         assert "Paris" in addr["properties"]["city"]["observed"]
 
     def test_array_of_objects(self):
@@ -332,7 +333,7 @@ class TestInferQuerySchema:
         assert "id" in schema["properties"]
         assert schema["properties"]["id"]["type"] == "string"
         assert schema["properties"]["id"]["format"] == "uuid"
-        assert "id" in schema.get("required", [])
+        assert "required" not in schema
         assert len(schema["properties"]["id"]["observed"]) == 2
 
     def test_integer_type(self):
@@ -363,8 +364,9 @@ class TestInferQuerySchema:
         ]
         schema = infer_query_schema(traces)
         assert schema is not None
-        assert "q" in schema.get("required", [])
-        assert "page" not in schema.get("required", [])
+        assert "required" not in schema
+        assert "q" in schema["properties"]
+        assert "page" in schema["properties"]
 
 
 class TestQueryParamExtraction:
