@@ -59,6 +59,9 @@ class AnalysisResult:
 
     openapi: dict[str, Any] | None = None
     graphql_sdl: str | None = None
+    auth: AuthInfo | None = None
+    base_url: str = ""
+    auth_helper_script: str | None = None
 
 
 async def build_spec(
@@ -187,6 +190,30 @@ async def build_spec(
         _rest_enrich(), _graphql_enrich(), _auth()
     )
 
+    # Phase B2: Generate auth helper script (if interactive auth detected)
+    auth_helper_script: str | None = None
+    needs_script = (
+        auth.type in ("bearer_token", "cookie")
+        and auth.login_config is not None
+        and not skip_enrich
+    )
+    if needs_script:
+        from cli.commands.analyze.steps.generate_auth_script import (
+            GenerateAuthScriptInput,
+            GenerateAuthScriptStep,
+        )
+
+        progress("Generating auth helper script (LLM)...")
+        try:
+            script_step = GenerateAuthScriptStep(model)
+            auth_helper_script = await script_step.run(
+                GenerateAuthScriptInput(
+                    auth=auth, traces=all_traces, api_name=app_name
+                )
+            )
+        except Exception:
+            progress("  Auth helper generation failed — skipping")
+
     # Phase C: Assembly
     openapi: dict[str, Any] | None = None
     graphql_sdl: str | None = None
@@ -211,7 +238,13 @@ async def build_spec(
             gql_assemble = GraphQLAssembleStep()
             graphql_sdl = await gql_assemble.run(final_schema)
 
-    return AnalysisResult(openapi=openapi, graphql_sdl=graphql_sdl)
+    return AnalysisResult(
+        openapi=openapi,
+        graphql_sdl=graphql_sdl,
+        auth=auth,
+        base_url=base_url,
+        auth_helper_script=auth_helper_script,
+    )
 
 
 async def _rest_extract(

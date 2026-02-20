@@ -10,7 +10,7 @@ from cli.commands.capture.loader import load_bundle_bytes, write_bundle_bytes
 from cli.commands.capture.proxy import (
     CaptureAddon,
     DiscoveryAddon,
-    _domain_to_regex,
+    domain_to_regex,
     flow_to_trace,
     ws_flow_to_connection,
 )
@@ -256,19 +256,19 @@ class TestDiscoveryAddon:
 
 class TestDomainToRegex:
     def test_glob_wildcard_prefix(self) -> None:
-        assert _domain_to_regex("*.leboncoin.fr") == r".*\.leboncoin\.fr"
+        assert domain_to_regex("*.leboncoin.fr") == r".*\.leboncoin\.fr"
 
     def test_plain_domain_passes_through(self) -> None:
         # Plain domain is valid regex (dots match any char, which is fine)
-        result = _domain_to_regex("api.leboncoin.fr")
+        result = domain_to_regex("api.leboncoin.fr")
         assert result == "api.leboncoin.fr"
 
     def test_valid_regex_passes_through(self) -> None:
-        assert _domain_to_regex(r".*\.example\.com") == r".*\.example\.com"
+        assert domain_to_regex(r".*\.example\.com") == r".*\.example\.com"
 
     def test_bare_star_escaped(self) -> None:
         # "*" alone is invalid regex — should be escaped
-        result = _domain_to_regex("*")
+        result = domain_to_regex("*")
         assert result == r"\*"
 
 

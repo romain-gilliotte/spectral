@@ -360,7 +360,7 @@ def _inject_typename_in_body(body: dict[str, object], is_gql_url: bool) -> bool:
     return False
 
 
-def _domain_to_regex(pattern: str) -> str:
+def domain_to_regex(pattern: str) -> str:
     """Convert a user-friendly domain pattern to a regex for mitmproxy.
 
     Handles common patterns:
@@ -374,7 +374,7 @@ def _domain_to_regex(pattern: str) -> str:
     try:
         re.compile(pattern)
         return pattern
-    except re.PatternError:
+    except re.error:
         pass
 
     # Likely a glob-style pattern — convert it
@@ -405,7 +405,7 @@ def _run_mitmproxy(
     loop = asyncio.new_event_loop()
     opts = Options(listen_port=port, mode=["regular"])
     if allow_hosts:
-        regex_hosts = [_domain_to_regex(h) for h in allow_hosts]
+        regex_hosts = [domain_to_regex(h) for h in allow_hosts]
         opts.update(allow_hosts=regex_hosts)  # pyright: ignore[reportUnknownMemberType]
     master = DumpMaster(opts, loop=loop)
     for addon in addons:

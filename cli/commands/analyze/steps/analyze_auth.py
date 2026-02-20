@@ -40,23 +40,29 @@ Here are relevant traces (login flows, token exchanges, authenticated requests):
 
 Identify:
 1. "type": The auth type (e.g., "bearer_token", "oauth2", "cookie", "basic", "api_key", "none")
-2. "obtain_flow": How the token is obtained (e.g., "oauth2_authorization_code", "oauth2_password", "login_form", "api_key", "social_auth")
+2. "obtain_flow": How the token is obtained (e.g., "oauth2_authorization_code", "oauth2_password", "oauth2_client_credentials", "login_form", "otp_sms", "api_key", "social_auth")
 3. "token_header": The header carrying the auth token (e.g., "Authorization", "X-API-Key", "Cookie")
 4. "token_prefix": The prefix before the token value (e.g., "Bearer", "Basic", null)
 5. "business_process": Human description of how auth works
-6. "user_journey": Array of steps describing the login process
+6. "user_journey": Array of string steps describing the login process (e.g., ["Enter phone number", "Receive SMS code", "Submit code"])
 7. "discovery_notes": Any additional observations
-8. "login_endpoint": If a login/token endpoint is visible, provide:
-   {{"url": "full URL or path", "method": "POST", "credential_fields": {{"username": "email", "password": "password"}}, "extra_fields": {{"grant_type": "password", "client_id": "xxx"}}, "token_response_path": "access_token", "refresh_token_response_path": "refresh_token"}}
-   Set to null if no login endpoint is visible.
+8. "login_endpoint": If a login/token endpoint is visible, provide an object with these fields:
+   - "url": full URL of the endpoint
+   - "method": HTTP method (usually "POST")
+   - "credential_fields": object mapping each user-supplied field name to a SHORT HUMAN DESCRIPTION of what the user should enter — NOT the observed value from the trace. Example: {{"email": "your email address", "password": "your password"}}. For OTP flows: {{"phoneNumber": "phone number with country prefix", "verificationCode": "SMS verification code"}}
+   - "extra_fields": object with FIXED fields that are always sent with the same value (e.g., {{"grant_type": "password", "countryCode": "FR"}}). These are constants, not user input. Only include fields whose value is always the same across requests.
+   - "token_response_path": dot-separated path to the access token in the JSON response body (e.g., "access_token", "data.token", "result.jwt"). Must be a valid path that resolves to the token string when walking the response JSON object key by key. If the token is not directly accessible via a simple JSON path (e.g., embedded in a URL query parameter, inside an encoded string, or wrapped in a non-JSON format), set this to "" and explain the extraction difficulty in discovery_notes.
+   - "refresh_token_response_path": dot-separated path to the refresh token in the response, or "" if none
+   Set login_endpoint to null if no login endpoint is visible.
 9. "refresh_endpoint_config": If a refresh/token-refresh endpoint is visible, provide:
-   {{"url": "full URL", "method": "POST", "token_field": "refresh_token", "extra_fields": {{"grant_type": "refresh_token", "client_id": "xxx"}}, "token_response_path": "access_token"}}
+   {{"url": "full URL", "method": "POST", "token_field": "refresh_token", "extra_fields": {{}}, "token_response_path": "access_token"}}
    Set to null if no refresh endpoint is visible.
 
 Look for these patterns:
 - Auth0/Okta/Cognito IdP domains (external token endpoints with grant_type, client_id)
 - Login form POST endpoints (email/password → JWT token)
 - OAuth2 password grant (grant_type=password)
+- OTP/SMS verification flows (phone number + verification code)
 - Custom auth headers: X-API-Key, X-Auth-Token, X-Access-Token
 - If the token endpoint is on an external domain, use the full URL.
 
