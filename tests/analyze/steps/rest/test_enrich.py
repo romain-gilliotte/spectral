@@ -328,6 +328,78 @@ class TestStripNonLeafObserved:
         assert "observed" not in result["properties"]["tags"]
         assert result["properties"]["tags"]["items"]["observed"] == ["a", "b"]
 
+    def test_strips_array_of_objects_nested_observed(self):
+        schema: dict[str, Any] = {
+            "type": "object",
+            "properties": {
+                "items": {
+                    "type": "array",
+                    "observed": [[{"meta": {"id": 1}}]],
+                    "items": {
+                        "type": "object",
+                        "observed": [{"meta": {"id": 1}}],
+                        "properties": {
+                            "meta": {
+                                "type": "object",
+                                "observed": [{"id": 1}],
+                                "properties": {
+                                    "id": {"type": "integer", "observed": [1]},
+                                },
+                            },
+                        },
+                    },
+                },
+            },
+        }
+        result = _strip_non_leaf_observed(schema)
+        arr = result["properties"]["items"]
+        assert "observed" not in arr
+        items_obj = arr["items"]
+        assert "observed" not in items_obj
+        assert "observed" not in items_obj["properties"]["meta"]
+        assert items_obj["properties"]["meta"]["properties"]["id"]["observed"] == [1]
+
+    def test_strips_deeply_nested_array_object_observed(self):
+        schema: dict[str, Any] = {
+            "type": "object",
+            "properties": {
+                "groups": {
+                    "type": "array",
+                    "observed": [[{"members": [{"name": "A"}]}]],
+                    "items": {
+                        "type": "object",
+                        "observed": [{"members": [{"name": "A"}]}],
+                        "properties": {
+                            "members": {
+                                "type": "array",
+                                "observed": [[{"name": "A"}]],
+                                "items": {
+                                    "type": "object",
+                                    "observed": [{"name": "A"}],
+                                    "properties": {
+                                        "name": {
+                                            "type": "string",
+                                            "observed": ["A"],
+                                        },
+                                    },
+                                },
+                            },
+                        },
+                    },
+                },
+            },
+        }
+        result = _strip_non_leaf_observed(schema)
+        groups = result["properties"]["groups"]
+        assert "observed" not in groups
+        group_items = groups["items"]
+        assert "observed" not in group_items
+        members = group_items["properties"]["members"]
+        assert "observed" not in members
+        member_items = members["items"]
+        assert "observed" not in member_items
+        assert member_items["properties"]["name"]["observed"] == ["A"]
+
     def test_keeps_scalar_observed(self):
         schema: dict[str, Any] = {
             "type": "object",
@@ -424,6 +496,29 @@ class TestStripNonLeafObservedAdditionalProperties:
         ap = result["additionalProperties"]
         assert "observed" not in ap
         assert ap["properties"]["total"]["observed"] == [100]
+
+    def test_array_additional_properties_recurses_into_items(self):
+        schema: dict[str, Any] = {
+            "type": "object",
+            "additionalProperties": {
+                "type": "array",
+                "observed": [[{"amount": 100}]],
+                "items": {
+                    "type": "object",
+                    "observed": [{"amount": 100}],
+                    "properties": {
+                        "amount": {"type": "integer", "observed": [100]},
+                    },
+                },
+            },
+            "x-key-pattern": "date",
+        }
+        result = _strip_non_leaf_observed(schema)
+        ap = result["additionalProperties"]
+        assert "observed" not in ap
+        items_obj = ap["items"]
+        assert "observed" not in items_obj
+        assert items_obj["properties"]["amount"]["observed"] == [100]
 
     def test_scalar_additional_properties_untouched(self):
         schema: dict[str, Any] = {

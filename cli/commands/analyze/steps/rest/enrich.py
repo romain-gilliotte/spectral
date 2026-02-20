@@ -77,36 +77,26 @@ def _strip_non_leaf_observed(schema: dict[str, Any]) -> dict[str, Any]:
     Intermediate objects and arrays have their ``observed`` stripped to avoid
     duplicating all child data as serialized dicts/lists.
     """
-    out = dict(schema)
+    if schema.get("type") not in ("object", "array"):
+        return schema
 
-    # Handle additionalProperties (dynamic-key schemas)
-    ap = out.get("additionalProperties")
-    if _is_json_dict(ap):
-        ap_type = ap.get("type")
-        if ap_type in ("object", "array"):
-            cleaned_ap = {k: v for k, v in ap.items() if k != "observed"}
-            if ap_type == "object":
-                cleaned_ap = _strip_non_leaf_observed(cleaned_ap)
-            out["additionalProperties"] = cleaned_ap
+    out = {k: v for k, v in schema.items() if k != "observed"}
 
     props = out.get("properties")
-    if not _is_json_dict(props):
-        return out
-    cleaned_props: dict[str, Any] = {}
-    for name, prop in props.items():
-        if not _is_json_dict(prop):
-            cleaned_props[name] = prop
-            continue
-        prop_type = prop.get("type")
-        if prop_type in ("object", "array"):
-            cleaned = {k: v for k, v in prop.items() if k != "observed"}
-            # Recurse into nested objects
-            if prop_type == "object":
-                cleaned = _strip_non_leaf_observed(cleaned)
-            cleaned_props[name] = cleaned
-        else:
-            cleaned_props[name] = prop
-    out["properties"] = cleaned_props
+    if _is_json_dict(props):
+        out["properties"] = {
+            name: _strip_non_leaf_observed(prop) if _is_json_dict(prop) else prop
+            for name, prop in props.items()
+        }
+
+    ap = out.get("additionalProperties")
+    if _is_json_dict(ap):
+        out["additionalProperties"] = _strip_non_leaf_observed(ap)
+
+    items = out.get("items")
+    if _is_json_dict(items):
+        out["items"] = _strip_non_leaf_observed(items)
+
     return out
 
 
