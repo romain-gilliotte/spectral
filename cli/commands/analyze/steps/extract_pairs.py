@@ -2,12 +2,12 @@
 
 from __future__ import annotations
 
-from cli.commands.analyze.steps.base import MechanicalStep
+from cli.commands.analyze.steps.base import Step
 from cli.commands.analyze.steps.types import MethodUrlPair
 from cli.commands.capture.types import CaptureBundle
 
 
-class ExtractPairsStep(MechanicalStep[CaptureBundle, list[MethodUrlPair]]):
+class ExtractPairsStep(Step[CaptureBundle, list[MethodUrlPair]]):
     """Extract (method, url) pairs from all traces in a capture bundle."""
 
     name = "extract_pairs"

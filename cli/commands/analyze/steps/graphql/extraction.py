@@ -11,7 +11,7 @@ import json
 import re
 from typing import Any, cast
 
-from cli.commands.analyze.steps.base import MechanicalStep
+from cli.commands.analyze.steps.base import Step
 from cli.commands.analyze.steps.graphql.parser import parse_graphql_traces
 from cli.commands.analyze.steps.graphql.types import (
     FieldRecord,
@@ -92,7 +92,7 @@ def _is_enum_literal(value: str) -> bool:
     return True
 
 
-class GraphQLExtractionStep(MechanicalStep[list[Trace], GraphQLSchemaData]):
+class GraphQLExtractionStep(Step[list[Trace], GraphQLSchemaData]):
     """Build a GraphQL schema from captured traces using mechanical extraction.
 
     For each GraphQL trace:

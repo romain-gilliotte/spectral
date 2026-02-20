@@ -58,12 +58,16 @@ def _make_rate_limit_error(retry_after: str | None = None) -> Exception:
 class TestInit:
     def test_init_with_mock_client(self):
         mock = MagicMock()
-        llm.init(client=mock)
+        llm.init(client=mock, model="m")
         assert llm._client is mock  # pyright: ignore[reportPrivateUsage]
         assert llm._semaphore is not None  # pyright: ignore[reportPrivateUsage]
 
+    def test_init_stores_model(self):
+        llm.init(client=MagicMock(), model="claude-test-model")
+        assert llm._model == "claude-test-model"  # pyright: ignore[reportPrivateUsage]
+
     def test_init_custom_concurrency(self):
-        llm.init(client=MagicMock(), max_concurrent=3)
+        llm.init(client=MagicMock(), max_concurrent=3, model="m")
         sem = llm._semaphore  # pyright: ignore[reportPrivateUsage]
         assert sem is not None
         assert sem._value == 3  # pyright: ignore[reportPrivateUsage]
@@ -71,15 +75,16 @@ class TestInit:
     def test_init_debug_dir(self, tmp_path: Path):
         debug_dir = tmp_path / "debug"
         debug_dir.mkdir()
-        llm.init(client=MagicMock(), debug_dir=debug_dir)
+        llm.init(client=MagicMock(), debug_dir=debug_dir, model="m")
         assert llm._debug_dir is debug_dir  # pyright: ignore[reportPrivateUsage]
 
-    def test_reset_clears_debug_dir(self, tmp_path: Path):
+    def test_reset_clears_all(self, tmp_path: Path):
         debug_dir = tmp_path / "debug"
         debug_dir.mkdir()
-        llm.init(client=MagicMock(), debug_dir=debug_dir)
+        llm.init(client=MagicMock(), debug_dir=debug_dir, model="m")
         llm.reset()
         assert llm._debug_dir is None  # pyright: ignore[reportPrivateUsage]
+        assert llm._model is None  # pyright: ignore[reportPrivateUsage]
 
 
 class TestInternalCreate:
@@ -88,7 +93,7 @@ class TestInternalCreate:
         """Successful call on first attempt, no retry needed."""
         expected = MagicMock()
         client = _make_mock_client(expected)
-        llm.init(client=client)
+        llm.init(client=client, model="m")
 
         result = await llm._create(model="m", max_tokens=10, messages=[])  # pyright: ignore[reportPrivateUsage]
         assert result is expected
@@ -102,7 +107,7 @@ class TestInternalCreate:
 
         client = MagicMock()
         client.messages.create = AsyncMock(side_effect=[error, expected])
-        llm.init(client=client)
+        llm.init(client=client, model="m")
 
         result = await llm._create(model="m", max_tokens=10, messages=[])  # pyright: ignore[reportPrivateUsage]
         assert result is expected
@@ -120,7 +125,7 @@ class TestInternalCreate:
         original_backoff = llm.FALLBACK_BACKOFF
         llm.FALLBACK_BACKOFF = 0.01
         try:
-            llm.init(client=client)
+            llm.init(client=client, model="m")
             result = await llm._create(model="m", max_tokens=10, messages=[])  # pyright: ignore[reportPrivateUsage]
             assert result is expected
         finally:
@@ -137,7 +142,7 @@ class TestInternalCreate:
         client.messages.create = AsyncMock(
             side_effect=[error] * (llm.MAX_RETRIES + 1)
         )
-        llm.init(client=client)
+        llm.init(client=client, model="m")
 
         with pytest.raises(anthropic.RateLimitError):
             await llm._create(model="m", max_tokens=10, messages=[])  # pyright: ignore[reportPrivateUsage]
@@ -148,7 +153,7 @@ class TestInternalCreate:
         """Non-rate-limit errors propagate immediately without retry."""
         client = MagicMock()
         client.messages.create = AsyncMock(side_effect=ValueError("boom"))
-        llm.init(client=client)
+        llm.init(client=client, model="m")
 
         with pytest.raises(ValueError, match="boom"):
             await llm._create(model="m", max_tokens=10, messages=[])  # pyright: ignore[reportPrivateUsage]
@@ -171,7 +176,7 @@ class TestInternalCreate:
 
         client = MagicMock()
         client.messages.create = slow_create
-        llm.init(client=client, max_concurrent=max_concurrent)
+        llm.init(client=client, max_concurrent=max_concurrent, model="m")
 
         await asyncio.gather(*[
             llm._create(model="m", max_tokens=10, messages=[])  # pyright: ignore[reportPrivateUsage]
@@ -191,11 +196,30 @@ class TestAsk:
     async def test_ask_returns_text(self):
         """ask() returns the text content from the LLM response."""
         client = _make_mock_client(_make_mock_response("the answer"))
-        llm.init(client=client)
+        llm.init(client=client, model="m")
 
-        result = await llm.ask("what is 1+1?", model="m")
+        result = await llm.ask("what is 1+1?")
         assert result == "the answer"
         client.messages.create.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    async def test_ask_uses_stored_model(self):
+        """ask() passes the model configured via init() to the API."""
+        client = _make_mock_client(_make_mock_response("ok"))
+        llm.init(client=client, model="claude-test-123")
+
+        await llm.ask("hello")
+        call_kwargs = client.messages.create.call_args
+        assert call_kwargs.kwargs["model"] == "claude-test-123"
+
+    @pytest.mark.asyncio
+    async def test_ask_without_model_raises(self):
+        """ask() raises RuntimeError if no model was configured."""
+        client = _make_mock_client(_make_mock_response("ok"))
+        llm.init(client=client)
+
+        with pytest.raises(RuntimeError, match="No model configured"):
+            await llm.ask("hello")
 
     @pytest.mark.asyncio
     async def test_ask_with_tools_delegates(self):
@@ -215,14 +239,13 @@ class TestAsk:
 
         client = MagicMock()
         client.messages.create = AsyncMock(side_effect=[tool_response, final_response])
-        llm.init(client=client)
+        llm.init(client=client, model="m")
 
         tools = [{"name": "my_tool", "description": "test", "input_schema": {"type": "object"}}]
         executors: dict[str, Callable[[dict[str, Any]], str]] = {"my_tool": lambda inp: "tool_output"}
 
         result = await llm.ask(
             "use the tool",
-            model="m",
             tools=tools,
             executors=executors,
         )
@@ -236,9 +259,9 @@ class TestAsk:
         debug_dir.mkdir()
 
         client = _make_mock_client(_make_mock_response("debug test"))
-        llm.init(client=client, debug_dir=debug_dir)
+        llm.init(client=client, debug_dir=debug_dir, model="m")
 
-        await llm.ask("hello", model="m", label="test_label")
+        await llm.ask("hello", label="test_label")
 
         files = list(debug_dir.iterdir())
         assert len(files) == 1
@@ -248,6 +271,28 @@ class TestAsk:
         assert "=== RESPONSE ===" in content
         assert "debug test" in content
         assert "test_label" in files[0].name
+
+    @pytest.mark.asyncio
+    async def test_ask_detects_truncation(self):
+        """ask() raises ValueError when the response is truncated (max_tokens)."""
+        client = _make_mock_client(_make_mock_response("partial...", stop_reason="max_tokens"))
+        llm.init(client=client, model="m")
+
+        with pytest.raises(ValueError, match="LLM response truncated"):
+            await llm.ask("hello", max_tokens=100, label="test_trunc")
+
+    @pytest.mark.asyncio
+    async def test_tool_loop_detects_truncation(self):
+        """_call_with_tools raises ValueError on max_tokens stop_reason."""
+        truncated = _make_mock_response("partial", stop_reason="max_tokens")
+        client = _make_mock_client(truncated)
+        llm.init(client=client, model="m")
+
+        tools = [{"name": "t", "description": "t", "input_schema": {"type": "object"}}]
+        executors: dict[str, Callable[[dict[str, Any]], str]] = {"t": lambda inp: "ok"}
+
+        with pytest.raises(ValueError, match="LLM response truncated"):
+            await llm.ask("hello", tools=tools, executors=executors)
 
 
 class TestCompactJson:

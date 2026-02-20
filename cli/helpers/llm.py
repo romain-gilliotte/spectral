@@ -4,12 +4,12 @@ Usage::
 
     import cli.helpers.llm as llm
 
-    llm.init()                          # once at startup (creates AsyncAnthropic + semaphore)
-    llm.init(client=mock_client)        # in tests — inject a mock
-    llm.init(debug_dir=Path("debug/…"))  # enable debug logging of LLM calls
+    llm.init(model="claude-sonnet-4-5-20250929")  # once at startup
+    llm.init(client=mock_client, model="test")     # in tests — inject a mock
+    llm.init(debug_dir=Path("debug/…"), model=...) # enable debug logging
 
-    text = await llm.ask(prompt, model="claude-sonnet-4-5-20250929")
-    text = await llm.ask(prompt, model=..., tools=..., executors=...)
+    text = await llm.ask(prompt)
+    text = await llm.ask(prompt, tools=..., executors=...)
 
     data = llm.extract_json(text)       # robust JSON extraction from LLM output
 """
@@ -29,6 +29,7 @@ from cli.helpers.console import console
 _client: Any = None
 _semaphore: asyncio.Semaphore | None = None
 _debug_dir: Path | None = None
+_model: str | None = None
 
 MAX_CONCURRENT = 5
 MAX_RETRIES = 3
@@ -39,15 +40,17 @@ def init(
     client: Any = None,
     max_concurrent: int = MAX_CONCURRENT,
     debug_dir: Path | None = None,
+    model: str | None = None,
 ) -> None:
     """Initialize the module-level client, semaphore, and optional debug directory.
 
     Call once before any ``ask()`` call.  In production, *client* is
     ``None`` and a real ``AsyncAnthropic`` is created.  In tests, pass a
     mock client.  When *debug_dir* is set, LLM prompts and responses are
-    saved there automatically by ``ask()``.
+    saved there automatically by ``ask()``.  When *model* is set, all
+    ``ask()`` calls use it by default.
     """
-    global _client, _semaphore, _debug_dir
+    global _client, _semaphore, _debug_dir, _model
 
     if client is not None:
         _client = client
@@ -58,14 +61,16 @@ def init(
 
     _semaphore = asyncio.Semaphore(max_concurrent)
     _debug_dir = debug_dir
+    _model = model
 
 
 def reset() -> None:
-    """Clear the module-level client, semaphore, and debug directory (for tests)."""
-    global _client, _semaphore, _debug_dir
+    """Clear the module-level client, semaphore, debug directory, and model (for tests)."""
+    global _client, _semaphore, _debug_dir, _model
     _client = None
     _semaphore = None
     _debug_dir = None
+    _model = None
 
 
 # ---------------------------------------------------------------------------
@@ -76,7 +81,6 @@ def reset() -> None:
 async def ask(
     prompt: str,
     *,
-    model: str,
     max_tokens: int = 4096,
     label: str = "",
     tools: list[dict[str, Any]] | None = None,
@@ -85,10 +89,13 @@ async def ask(
 ) -> str:
     """The single entry point for calling the LLM.
 
-    Returns the assistant's text response.  When *tools* and *executors*
-    are supplied, runs the tool-use loop via ``_call_with_tools``.
-    Debug logging is handled internally.
+    Returns the assistant's text response.  Uses the model configured
+    via ``init(model=...)``.  When *tools* and *executors* are supplied,
+    runs the tool-use loop via ``_call_with_tools``.  Debug logging is
+    handled internally.
     """
+    model = _require_model()
+
     if tools is not None and executors is not None:
         return await _call_with_tools(
             model,
@@ -107,6 +114,8 @@ async def ask(
         messages=[{"role": "user", "content": prompt}],
     )
 
+    _check_truncation(response, max_tokens=max_tokens, label=label)
+
     parts: list[str] = []
     for block in response.content:
         if getattr(block, "type", None) == "text":
@@ -118,6 +127,27 @@ async def ask(
         [{"role": "user", "content": prompt}, {"role": "assistant", "content": text}],
     )
     return text
+
+
+def _require_model() -> str:
+    """Return the configured model or raise if not set."""
+    if _model is None:
+        raise RuntimeError(
+            "No model configured — call llm.init(model=...) first"
+        )
+    return _model
+
+
+def _check_truncation(
+    response: Any, *, max_tokens: int, label: str
+) -> None:
+    """Raise if the response was truncated due to max_tokens."""
+    if getattr(response, "stop_reason", None) == "max_tokens":
+        tag = f" ({label})" if label else ""
+        raise ValueError(
+            f"LLM response truncated{tag} (max_tokens={max_tokens}). "
+            f"The prompt or expected output is too large."
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -334,6 +364,12 @@ async def _call_with_tools(
             tools=tools,
             messages=messages,
         )
+
+        if response.stop_reason == "max_tokens":
+            raise ValueError(
+                f"LLM response truncated ({call_name}, max_tokens={max_tokens}). "
+                f"The prompt or expected output is too large."
+            )
 
         if response.stop_reason != "tool_use":
             parts: list[str] = []

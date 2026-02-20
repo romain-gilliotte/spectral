@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Any, cast
 
-from cli.commands.analyze.steps.base import LLMStep, StepValidationError
+from cli.commands.analyze.steps.base import Step, StepValidationError
 from cli.commands.analyze.steps.rest.types import EndpointGroup
 from cli.commands.analyze.steps.types import MethodUrlPair
 from cli.commands.analyze.tools import (
@@ -15,7 +15,7 @@ from cli.commands.analyze.utils import compact_url
 import cli.helpers.llm as llm
 
 
-class GroupEndpointsStep(LLMStep[list[MethodUrlPair], list[EndpointGroup]]):
+class GroupEndpointsStep(Step[list[MethodUrlPair], list[EndpointGroup]]):
     """Ask the LLM to group URLs into endpoint patterns with {param} syntax.
 
     Input: list of MethodUrlPair (filtered to the base URL).
@@ -63,7 +63,6 @@ Respond with a compact JSON array (no indentation):
 
         text = await llm.ask(
             prompt,
-            model=self.model,
             label="analyze_endpoints",
             tools=INVESTIGATION_TOOLS,
             executors=TOOL_EXECUTORS,

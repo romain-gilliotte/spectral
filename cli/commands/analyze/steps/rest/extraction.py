@@ -13,7 +13,7 @@ from cli.commands.analyze.schemas import (
     infer_query_schema,
     infer_schema,
 )
-from cli.commands.analyze.steps.base import MechanicalStep
+from cli.commands.analyze.steps.base import Step
 from cli.commands.analyze.steps.rest.types import (
     EndpointGroup,
     EndpointSpec,
@@ -25,7 +25,7 @@ from cli.commands.analyze.utils import get_header, pattern_to_regex
 from cli.commands.capture.types import Trace
 
 
-class MechanicalExtractionStep(MechanicalStep[GroupedTraceData, list[EndpointSpec]]):
+class MechanicalExtractionStep(Step[GroupedTraceData, list[EndpointSpec]]):
     """Build EndpointSpec for each group using only mechanical extraction."""
 
     name = "mechanical_extraction"

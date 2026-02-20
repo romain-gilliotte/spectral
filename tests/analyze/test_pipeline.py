@@ -99,11 +99,10 @@ class TestBuildSpec:
     async def test_full_build(self, sample_bundle: CaptureBundle) -> None:
         mock_client = AsyncMock()
         mock_client.messages.create = _make_mock_create()
-        llm.init(client=mock_client)
+        llm.init(client=mock_client, model="test-model")
 
         result = await build_spec(
             sample_bundle,
-            model="test-model",
             source_filename="test.zip",
         )
 
@@ -136,9 +135,9 @@ class TestBuildSpec:
             ),
             auth_response=json.dumps({"type": "none"}),
         )
-        llm.init(client=mock_client)
+        llm.init(client=mock_client, model="test-model")
 
-        result = await build_spec(sample_bundle, model="test-model")
+        result = await build_spec(sample_bundle)
 
         assert result.openapi is not None
         openapi = result.openapi
@@ -151,11 +150,9 @@ class TestBuildSpec:
         """Endpoints with Authorization header should have security set."""
         mock_client = AsyncMock()
         mock_client.messages.create = _make_mock_create()
-        llm.init(client=mock_client)
+        llm.init(client=mock_client, model="test-model")
 
-        result = await build_spec(
-            sample_bundle, model="test-model"
-        )
+        result = await build_spec(sample_bundle)
 
         assert result.openapi is not None
         openapi = result.openapi
@@ -173,11 +170,9 @@ class TestBuildSpec:
         """Output should be a valid OpenAPI 3.1 structure."""
         mock_client = AsyncMock()
         mock_client.messages.create = _make_mock_create()
-        llm.init(client=mock_client)
+        llm.init(client=mock_client, model="test-model")
 
-        result = await build_spec(
-            sample_bundle, model="test-model"
-        )
+        result = await build_spec(sample_bundle)
 
         assert result.openapi is not None
         openapi = result.openapi

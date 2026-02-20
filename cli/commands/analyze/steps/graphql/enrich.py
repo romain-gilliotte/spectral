@@ -5,7 +5,7 @@ from __future__ import annotations
 import asyncio
 from typing import Any, cast
 
-from cli.commands.analyze.steps.base import LLMStep
+from cli.commands.analyze.steps.base import Step
 from cli.commands.analyze.steps.graphql.types import (
     GraphQLSchemaData,
     TypeRecord,
@@ -33,7 +33,7 @@ class GraphQLEnrichContext:
         self.app_name = app_name
 
 
-class GraphQLEnrichStep(LLMStep[GraphQLEnrichContext, GraphQLSchemaData]):
+class GraphQLEnrichStep(Step[GraphQLEnrichContext, GraphQLSchemaData]):
     """Parallel per-type LLM calls to enrich each type with business descriptions.
 
     Each call receives:
@@ -88,7 +88,7 @@ Provide a JSON response:
 Respond in compact JSON only (no indentation)."""
 
             try:
-                text = await llm.ask(prompt, model=self.model, max_tokens=1024, label=f"enrich_gql_{type_rec.name}")
+                text = await llm.ask(prompt, max_tokens=1024, label=f"enrich_gql_{type_rec.name}")
                 data = llm.extract_json(text)
                 if isinstance(data, dict):
                     _apply_type_enrichment(type_rec, data)
@@ -112,7 +112,7 @@ Provide a JSON response:
 Respond in compact JSON only (no indentation)."""
 
             try:
-                text = await llm.ask(prompt, model=self.model, max_tokens=256, label=f"enrich_gql_enum_{enum_name}")
+                text = await llm.ask(prompt, max_tokens=256, label=f"enrich_gql_enum_{enum_name}")
                 data = llm.extract_json(text)
                 if isinstance(data, dict):
                     desc = data.get("description")

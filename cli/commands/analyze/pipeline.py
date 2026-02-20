@@ -66,7 +66,6 @@ class AnalysisResult:
 
 async def build_spec(
     bundle: CaptureBundle,
-    model: str,
     source_filename: str = "",
     on_progress: Callable[[str], None] | None = None,
     skip_enrich: bool = False,
@@ -97,7 +96,7 @@ async def build_spec(
 
     # Step 2: Detect base URL (LLM)
     progress("Detecting API base URL (LLM)...")
-    detect_url_step = DetectBaseUrlStep(model)
+    detect_url_step = DetectBaseUrlStep()
     base_url = await detect_url_step.run(url_method_pairs)
     progress(f"  API base URL: {base_url}")
 
@@ -133,7 +132,7 @@ async def build_spec(
 
     if has_rest:
         rest_endpoints, _ = await _rest_extract(
-            rest_traces, base_url, model, progress
+            rest_traces, base_url, progress
         )
 
     if has_graphql:
@@ -148,7 +147,7 @@ async def build_spec(
     async def _rest_enrich() -> list[EndpointSpec] | None:
         if not has_rest or rest_endpoints is None or skip_enrich:
             return None
-        enrich_step = EnrichEndpointsStep(model)
+        enrich_step = EnrichEndpointsStep()
         try:
             return await enrich_step.run(
                 EnrichmentContext(
@@ -165,7 +164,7 @@ async def build_spec(
     async def _graphql_enrich() -> GraphQLSchemaData | None:
         if not has_graphql or graphql_schema is None or skip_enrich:
             return None
-        enrich_step = GraphQLEnrichStep(model)
+        enrich_step = GraphQLEnrichStep()
         try:
             progress("Enriching GraphQL schema (LLM)...")
             return await enrich_step.run(
@@ -180,7 +179,7 @@ async def build_spec(
             return None
 
     async def _auth() -> AuthInfo:
-        auth_step = AnalyzeAuthStep(model)
+        auth_step = AnalyzeAuthStep()
         try:
             return await auth_step.run(all_traces)
         except Exception:
@@ -205,7 +204,7 @@ async def build_spec(
 
         progress("Generating auth helper script (LLM)...")
         try:
-            script_step = GenerateAuthScriptStep(model)
+            script_step = GenerateAuthScriptStep()
             auth_helper_script = await script_step.run(
                 GenerateAuthScriptInput(
                     auth=auth, traces=all_traces, api_name=app_name
@@ -250,7 +249,6 @@ async def build_spec(
 async def _rest_extract(
     rest_traces: list[Trace],
     base_url: str,
-    model: str,
     on_progress: Callable[[str], None],
 ) -> tuple[list[EndpointSpec], list[Any]]:
     """Run REST extraction pipeline up to (but not including) enrichment."""
@@ -260,7 +258,7 @@ async def _rest_extract(
         MethodUrlPair(t.meta.request.method.upper(), t.meta.request.url)
         for t in rest_traces
     ]
-    group_step = GroupEndpointsStep(model)
+    group_step = GroupEndpointsStep()
     endpoint_groups = await group_step.run(filtered_pairs)
 
     # Strip prefix

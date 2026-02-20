@@ -52,7 +52,7 @@ def analyze(
         debug_dir.mkdir(parents=True, exist_ok=True)
         console.print(f"  Debug logs → {debug_dir}")
 
-    llm.init(debug_dir=debug_dir)
+    llm.init(debug_dir=debug_dir, model=model)
 
     def on_progress(msg: str) -> None:
         console.print(f"  {msg}")
@@ -61,7 +61,6 @@ def analyze(
     result = asyncio.run(
         build_spec(
             bundle,
-            model=model,
             source_filename=Path(capture_path).name,
             on_progress=on_progress,
             skip_enrich=skip_enrich,

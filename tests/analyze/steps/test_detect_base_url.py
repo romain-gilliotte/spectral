@@ -31,9 +31,9 @@ class TestDetectBaseUrlStep:
 
         client = MagicMock()
         client.messages.create = mock_create
-        llm.init(client=client)
+        llm.init(client=client, model="test")
 
-        step = DetectBaseUrlStep("model")
+        step = DetectBaseUrlStep()
         result = await step.run(
             [
                 MethodUrlPair("GET", "https://www.example.com/api/users"),
@@ -51,9 +51,9 @@ class TestDetectBaseUrlStep:
 
         client = MagicMock()
         client.messages.create = mock_create
-        llm.init(client=client)
+        llm.init(client=client, model="test")
 
-        step = DetectBaseUrlStep("model")
+        step = DetectBaseUrlStep()
         result = await step.run([MethodUrlPair("GET", "https://api.example.com/v1")])
         assert result == "https://api.example.com"
 
@@ -66,9 +66,9 @@ class TestDetectBaseUrlStep:
 
         client = MagicMock()
         client.messages.create = mock_create
-        llm.init(client=client)
+        llm.init(client=client, model="test")
 
-        step = DetectBaseUrlStep("model")
+        step = DetectBaseUrlStep()
         result = await step.run([MethodUrlPair("GET", "https://api.example.com/users")])
         assert result == "https://api.example.com"
 
@@ -81,8 +81,8 @@ class TestDetectBaseUrlStep:
 
         client = MagicMock()
         client.messages.create = mock_create
-        llm.init(client=client)
+        llm.init(client=client, model="test")
 
-        step = DetectBaseUrlStep("model")
+        step = DetectBaseUrlStep()
         with pytest.raises(ValueError, match="Expected"):
             await step.run([MethodUrlPair("GET", "https://example.com/api")])

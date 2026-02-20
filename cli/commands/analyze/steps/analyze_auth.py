@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 from typing import Any, cast
 
-from cli.commands.analyze.steps.base import LLMStep
+from cli.commands.analyze.steps.base import Step
 from cli.commands.analyze.steps.types import (
     AuthInfo,
     LoginEndpointConfig,
@@ -21,7 +21,7 @@ import cli.helpers.llm as llm
 from cli.helpers.llm import compact_json
 
 
-class AnalyzeAuthStep(LLMStep[list[Trace], AuthInfo]):
+class AnalyzeAuthStep(Step[list[Trace], AuthInfo]):
     """Analyze authentication mechanism from traces using LLM.
 
     Input: ALL traces (not just filtered ones — external auth providers may be on different domains).
@@ -69,7 +69,7 @@ Look for these patterns:
 
 Respond in compact JSON (no indentation)."""
 
-        text = await llm.ask(prompt, model=self.model, max_tokens=2048, label="analyze_auth")
+        text = await llm.ask(prompt, max_tokens=2048, label="analyze_auth")
         data = llm.extract_json(text)
         if not isinstance(data, dict):
             return AuthInfo()

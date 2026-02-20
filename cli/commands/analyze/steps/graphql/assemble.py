@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from cli.commands.analyze.steps.base import MechanicalStep
+from cli.commands.analyze.steps.base import Step
 from cli.commands.analyze.steps.graphql.types import (
     EnumRecord,
     FieldRecord,
@@ -12,7 +12,7 @@ from cli.commands.analyze.steps.graphql.types import (
 )
 
 
-class GraphQLAssembleStep(MechanicalStep[GraphQLSchemaData, str]):
+class GraphQLAssembleStep(Step[GraphQLSchemaData, str]):
     """Generate a GraphQL SDL string from the inferred schema data."""
 
     name = "graphql_assemble"

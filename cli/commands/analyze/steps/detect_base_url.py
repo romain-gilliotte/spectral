@@ -5,7 +5,7 @@ from __future__ import annotations
 from collections import Counter
 from typing import Any
 
-from cli.commands.analyze.steps.base import LLMStep, StepValidationError
+from cli.commands.analyze.steps.base import Step, StepValidationError
 from cli.commands.analyze.steps.types import MethodUrlPair
 from cli.commands.analyze.tools import (
     INVESTIGATION_TOOLS,
@@ -15,7 +15,7 @@ from cli.commands.analyze.utils import compact_url
 import cli.helpers.llm as llm
 
 
-class DetectBaseUrlStep(LLMStep[list[MethodUrlPair], str]):
+class DetectBaseUrlStep(Step[list[MethodUrlPair], str]):
     """Ask the LLM to identify the business API base URL from captured traffic.
 
     Input: list of MethodUrlPair.
@@ -55,7 +55,6 @@ Respond with a compact JSON object (no indentation):
 
         text = await llm.ask(
             prompt,
-            model=self.model,
             label="detect_api_base_url",
             tools=INVESTIGATION_TOOLS,
             executors=TOOL_EXECUTORS,

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Any, cast
 
-from cli.commands.analyze.steps.base import MechanicalStep
+from cli.commands.analyze.steps.base import Step
 from cli.commands.analyze.steps.rest.extraction import (
     has_auth_header_or_cookie,
 )
@@ -16,7 +16,7 @@ from cli.commands.analyze.steps.types import AuthInfo
 from cli.commands.capture.types import Trace
 
 
-class AssembleStep(MechanicalStep[SpecComponents, dict[str, Any]]):
+class AssembleStep(Step[SpecComponents, dict[str, Any]]):
     """Combine all pipeline components into an OpenAPI 3.1 dict."""
 
     name = "assemble"

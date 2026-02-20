@@ -4,11 +4,11 @@ from __future__ import annotations
 
 from urllib.parse import urlparse
 
-from cli.commands.analyze.steps.base import MechanicalStep
+from cli.commands.analyze.steps.base import Step
 from cli.commands.analyze.steps.rest.types import EndpointGroup, GroupsWithBaseUrl
 
 
-class StripPrefixStep(MechanicalStep[GroupsWithBaseUrl, list[EndpointGroup]]):
+class StripPrefixStep(Step[GroupsWithBaseUrl, list[EndpointGroup]]):
     """Remove the base URL path prefix from endpoint patterns.
 
     e.g. base_url="https://app.example.com/api" + pattern="/api/foo" -> pattern="/foo"

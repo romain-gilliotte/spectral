@@ -11,7 +11,7 @@ from collections.abc import Callable
 import json
 from typing import Any
 
-from cli.commands.analyze.steps.base import LLMStep
+from cli.commands.analyze.steps.base import Step
 from cli.commands.analyze.steps.types import AuthInfo
 from cli.commands.analyze.tools import INVESTIGATION_TOOLS, TOOL_EXECUTORS
 from cli.commands.analyze.utils import sanitize_headers, truncate_json
@@ -100,7 +100,7 @@ def _execute_inspect_trace(
 # -- The step ----------------------------------------------------------------
 
 
-class GenerateAuthScriptStep(LLMStep[GenerateAuthScriptInput, str]):
+class GenerateAuthScriptStep(Step[GenerateAuthScriptInput, str]):
     """Generate a self-contained Python auth helper script using LLM.
 
     Input: GenerateAuthScriptInput (AuthInfo + traces + api_name).
@@ -167,7 +167,6 @@ Respond with ONLY the Python script inside a ```python code block. No explanatio
 
         text = await llm.ask(
             prompt,
-            model=self.model,
             max_tokens=8192,
             label="generate_auth_script",
             tools=tools,

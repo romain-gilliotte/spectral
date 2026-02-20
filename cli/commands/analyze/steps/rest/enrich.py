@@ -6,7 +6,7 @@ import asyncio
 from typing import Any, TypeGuard
 from urllib.parse import urlparse
 
-from cli.commands.analyze.steps.base import LLMStep
+from cli.commands.analyze.steps.base import Step
 from cli.commands.analyze.steps.rest.types import (
     EndpointSpec,
     EnrichmentContext,
@@ -19,7 +19,7 @@ import cli.helpers.llm as llm
 from cli.helpers.llm import compact_json
 
 
-class EnrichEndpointsStep(LLMStep[EnrichmentContext, list[EndpointSpec]]):
+class EnrichEndpointsStep(Step[EnrichmentContext, list[EndpointSpec]]):
     """Parallel per-endpoint LLM calls to enrich each endpoint with business
     semantics: description, field descriptions for all schemas, response
     details, and discovery notes.
@@ -54,7 +54,7 @@ Provide a JSON response with these keys:
 Respond in compact JSON (no indentation)."""
 
             try:
-                text = await llm.ask(prompt, model=self.model, max_tokens=2048, label=f"enrich_{ep.id}")
+                text = await llm.ask(prompt, max_tokens=2048, label=f"enrich_{ep.id}")
                 data = llm.extract_json(text)
 
                 if isinstance(data, dict):
