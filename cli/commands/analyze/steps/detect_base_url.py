@@ -53,12 +53,12 @@ Observed requests (call count shown when > 1):
 Respond with a JSON object:
 {{"base_url": "https://..."}}"""
 
-        text = await llm.call_with_tools(
-            self.model,
-            [{"role": "user", "content": prompt}],
-            INVESTIGATION_TOOLS,
-            TOOL_EXECUTORS,
-            call_name="detect_api_base_url",
+        text = await llm.ask(
+            prompt,
+            model=self.model,
+            label="detect_api_base_url",
+            tools=INVESTIGATION_TOOLS,
+            executors=TOOL_EXECUTORS,
         )
 
         result = llm.extract_json(text)

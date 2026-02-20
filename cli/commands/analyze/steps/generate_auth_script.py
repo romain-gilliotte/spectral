@@ -164,13 +164,13 @@ Use the `inspect_trace` tool to examine any trace in detail (request/response bo
 
 Respond with ONLY the Python script inside a ```python code block. No explanation before or after."""
 
-        text = await llm.call_with_tools(
-            self.model,
-            [{"role": "user", "content": prompt}],
-            tools,
-            executors,
-            call_name="generate_auth_script",
+        text = await llm.ask(
+            prompt,
+            model=self.model,
             max_tokens=8192,
+            label="generate_auth_script",
+            tools=tools,
+            executors=executors,
         )
 
         return _extract_script(text)

@@ -136,7 +136,7 @@ class TestCallWithTools:
         client.messages.create = mock_create
         llm.init(client=client)
 
-        result = await llm.call_with_tools(
+        result = await llm._call_with_tools(  # pyright: ignore[reportPrivateUsage]
             "model",
             [{"role": "user", "content": "hi"}],
             INVESTIGATION_TOOLS,
@@ -166,7 +166,7 @@ class TestCallWithTools:
         client.messages.create = mock_create
         llm.init(client=client)
 
-        result = await llm.call_with_tools(
+        result = await llm._call_with_tools(  # pyright: ignore[reportPrivateUsage]
             "model",
             [{"role": "user", "content": "analyze"}],
             INVESTIGATION_TOOLS,
@@ -200,7 +200,7 @@ class TestCallWithTools:
         client.messages.create = mock_create
         llm.init(client=client)
 
-        result = await llm.call_with_tools(
+        result = await llm._call_with_tools(  # pyright: ignore[reportPrivateUsage]
             "model",
             [{"role": "user", "content": "go"}],
             INVESTIGATION_TOOLS,
@@ -221,7 +221,7 @@ class TestCallWithTools:
         llm.init(client=client)
 
         with pytest.raises(ValueError, match="exceeded 3 iterations"):
-            await llm.call_with_tools(
+            await llm._call_with_tools(  # pyright: ignore[reportPrivateUsage]
                 "model",
                 [{"role": "user", "content": "go"}],
                 INVESTIGATION_TOOLS,
@@ -251,7 +251,7 @@ class TestCallWithTools:
         client.messages.create = mock_create
         llm.init(client=client)
 
-        result = await llm.call_with_tools(
+        result = await llm._call_with_tools(  # pyright: ignore[reportPrivateUsage]
             "model",
             [{"role": "user", "content": "go"}],
             INVESTIGATION_TOOLS,

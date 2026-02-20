@@ -1,4 +1,4 @@
-"""Centralized LLM client, generic helpers, and tool_use conversation loop.
+"""Centralized LLM client with a single ``ask()`` entry point.
 
 Usage::
 
@@ -8,15 +8,10 @@ Usage::
     llm.init(client=mock_client)        # in tests — inject a mock
     llm.init(debug_dir=Path("debug/…"))  # enable debug logging of LLM calls
 
-    response = await llm.create(        # drop-in for client.messages.create
-        model="claude-sonnet-4-5-20250929",
-        max_tokens=2048,
-        messages=[...],
-    )
+    text = await llm.ask(prompt, model="claude-sonnet-4-5-20250929")
+    text = await llm.ask(prompt, model=..., tools=..., executors=...)
 
     data = llm.extract_json(text)       # robust JSON extraction from LLM output
-    llm.save_debug(name, prompt, response_text)
-    text = await llm.call_with_tools(model, messages, tools, executors)
 """
 
 from __future__ import annotations
@@ -47,10 +42,10 @@ def init(
 ) -> None:
     """Initialize the module-level client, semaphore, and optional debug directory.
 
-    Call once before any ``create()`` call.  In production, *client* is
+    Call once before any ``ask()`` call.  In production, *client* is
     ``None`` and a real ``AsyncAnthropic`` is created.  In tests, pass a
     mock client.  When *debug_dir* is set, LLM prompts and responses are
-    saved there by ``save_debug()``.
+    saved there automatically by ``ask()``.
     """
     global _client, _semaphore, _debug_dir
 
@@ -73,10 +68,67 @@ def reset() -> None:
     _debug_dir = None
 
 
-async def create(*, label: str = "", **kwargs: Any) -> Any:
+# ---------------------------------------------------------------------------
+# Public entry point
+# ---------------------------------------------------------------------------
+
+
+async def ask(
+    prompt: str,
+    *,
+    model: str,
+    max_tokens: int = 4096,
+    label: str = "",
+    tools: list[dict[str, Any]] | None = None,
+    executors: dict[str, Callable[[dict[str, Any]], str]] | None = None,
+    max_iterations: int = 10,
+) -> str:
+    """The single entry point for calling the LLM.
+
+    Returns the assistant's text response.  When *tools* and *executors*
+    are supplied, runs the tool-use loop via ``_call_with_tools``.
+    Debug logging is handled internally.
+    """
+    if tools is not None and executors is not None:
+        return await _call_with_tools(
+            model,
+            [{"role": "user", "content": prompt}],
+            tools,
+            executors,
+            max_tokens=max_tokens,
+            max_iterations=max_iterations,
+            call_name=label or "call",
+        )
+
+    response: Any = await _create(
+        label=label,
+        model=model,
+        max_tokens=max_tokens,
+        messages=[{"role": "user", "content": prompt}],
+    )
+
+    parts: list[str] = []
+    for block in response.content:
+        if getattr(block, "type", None) == "text":
+            parts.append(block.text)
+    text = "\n".join(parts)
+
+    _save_debug(
+        label or "call",
+        [{"role": "user", "content": prompt}, {"role": "assistant", "content": text}],
+    )
+    return text
+
+
+# ---------------------------------------------------------------------------
+# Internal helpers
+# ---------------------------------------------------------------------------
+
+
+async def _create(*, label: str = "", **kwargs: Any) -> Any:
     """Call ``client.messages.create`` with semaphore gating and rate-limit retry.
 
-    Retries up to ``_MAX_RETRIES`` times on ``RateLimitError``, reading the
+    Retries up to ``MAX_RETRIES`` times on ``RateLimitError``, reading the
     ``retry-after`` response header when available (falls back to exponential
     backoff starting at 2 s).  Non-rate-limit errors propagate immediately.
     """
@@ -134,26 +186,8 @@ def _parse_retry_after(exc: Exception) -> float | None:
         return None
 
 
-# ---------------------------------------------------------------------------
-# Generic LLM helpers
-# ---------------------------------------------------------------------------
-
-
-def save_debug(call_name: str, prompt: str, response_text: str) -> None:
-    """Save an LLM call's prompt and response to the debug directory."""
-    if _debug_dir is None:
-        return
-    ts = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.%f")[:-3] + "Z"
-    path = _debug_dir / f"{ts}_{call_name}"
-    path.write_text(f"=== PROMPT ===\n{prompt}\n\n=== RESPONSE ===\n{response_text}\n")
-
-
-def save_debug_conversation(call_name: str, turns: list[dict[str, Any]]) -> None:
-    """Save a multi-turn tool conversation to the debug directory.
-
-    Uses the same plain-text format as ``save_debug`` with extra sections
-    for tool calls and their results.
-    """
+def _save_debug(call_name: str, turns: list[dict[str, Any]]) -> None:
+    """Save an LLM conversation (single-shot or multi-turn) to the debug directory."""
     if _debug_dir is None:
         return
     ts = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.%f")[:-3] + "Z"
@@ -179,6 +213,11 @@ def save_debug_conversation(call_name: str, turns: list[dict[str, Any]]) -> None
                         parts.append(f"{header}\n{tc['result']}")
 
     path.write_text("\n\n".join(parts) + "\n")
+
+
+# ---------------------------------------------------------------------------
+# Generic LLM helpers
+# ---------------------------------------------------------------------------
 
 
 def extract_json(text: str) -> dict[str, Any] | list[Any]:
@@ -220,7 +259,7 @@ def extract_json(text: str) -> dict[str, Any] | list[Any]:
     raise ValueError(f"Could not extract JSON from LLM response: {text[:200]}")
 
 
-async def call_with_tools(
+async def _call_with_tools(
     model: str,
     messages: list[dict[str, Any]],
     tools: list[dict[str, Any]],
@@ -237,7 +276,7 @@ async def call_with_tools(
         debug_turns.append({"role": "user", "content": messages[0].get("content", "")})
 
     for _ in range(max_iterations):
-        response: Any = await create(
+        response: Any = await _create(
             label=call_name,
             model=model,
             max_tokens=max_tokens,
@@ -253,7 +292,7 @@ async def call_with_tools(
             text = "\n".join(parts)
             if _debug_dir is not None:
                 debug_turns.append({"role": "assistant", "content": text})
-                save_debug_conversation(call_name, debug_turns)
+                _save_debug(call_name, debug_turns)
             return text
 
         # Process tool calls
@@ -321,4 +360,4 @@ async def call_with_tools(
         if _debug_dir is not None:
             debug_turns.append({"role": "assistant", "tool_calls": debug_tool_calls})
 
-    raise ValueError(f"call_with_tools exceeded {max_iterations} iterations")
+    raise ValueError(f"_call_with_tools exceeded {max_iterations} iterations")

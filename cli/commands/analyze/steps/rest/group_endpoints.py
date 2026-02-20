@@ -61,12 +61,12 @@ Respond with a JSON array:
   {{"method": "GET", "pattern": "/api/users/{{user_id}}/orders", "urls": ["https://example.com/api/users/123/orders", "https://example.com/api/users/456/orders"]}}
 ]"""
 
-        text = await llm.call_with_tools(
-            self.model,
-            [{"role": "user", "content": prompt}],
-            INVESTIGATION_TOOLS,
-            TOOL_EXECUTORS,
-            call_name="analyze_endpoints",
+        text = await llm.ask(
+            prompt,
+            model=self.model,
+            label="analyze_endpoints",
+            tools=INVESTIGATION_TOOLS,
+            executors=TOOL_EXECUTORS,
         )
 
         result = llm.extract_json(text)

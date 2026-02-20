@@ -54,19 +54,8 @@ Provide a JSON response with these keys:
 Respond in JSON."""
 
             try:
-                response: Any = await llm.create(
-                    label=f"enrich_{ep.id}",
-                    model=self.model,
-                    max_tokens=2048,
-                    messages=[{"role": "user", "content": prompt}],
-                )
-
-                llm.save_debug(
-                    f"enrich_{ep.id}",
-                    prompt,
-                    response.content[0].text,
-                )
-                data = llm.extract_json(response.content[0].text)
+                text = await llm.ask(prompt, model=self.model, max_tokens=2048, label=f"enrich_{ep.id}")
+                data = llm.extract_json(text)
 
                 if isinstance(data, dict):
                     _apply_enrichment(ep, data)

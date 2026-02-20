@@ -68,15 +68,8 @@ Look for these patterns:
 
 Respond in JSON."""
 
-        response: Any = await llm.create(
-            label="analyze_auth",
-            model=self.model,
-            max_tokens=2048,
-            messages=[{"role": "user", "content": prompt}],
-        )
-
-        llm.save_debug("analyze_auth", prompt, response.content[0].text)
-        data = llm.extract_json(response.content[0].text)
+        text = await llm.ask(prompt, model=self.model, max_tokens=2048, label="analyze_auth")
+        data = llm.extract_json(text)
         if not isinstance(data, dict):
             return AuthInfo()
 

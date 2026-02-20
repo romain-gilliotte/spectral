@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock
@@ -12,10 +13,26 @@ import pytest
 import cli.helpers.llm as llm
 
 
+def _make_text_block(text: str) -> MagicMock:
+    """Build a mock content block with type='text'."""
+    block = MagicMock()
+    block.type = "text"
+    block.text = text
+    return block
+
+
+def _make_mock_response(text: str = "hello", stop_reason: str = "end_turn") -> MagicMock:
+    """Build a mock API response containing a single text block."""
+    resp = MagicMock()
+    resp.content = [_make_text_block(text)]
+    resp.stop_reason = stop_reason
+    return resp
+
+
 def _make_mock_client(response: Any = None) -> MagicMock:
     """Build a mock client whose messages.create returns *response*."""
     client = MagicMock()
-    mock_response = response or MagicMock()
+    mock_response = response or _make_mock_response()
     client.messages.create = AsyncMock(return_value=mock_response)
     return client
 
@@ -65,7 +82,7 @@ class TestInit:
         assert llm._debug_dir is None  # pyright: ignore[reportPrivateUsage]
 
 
-class TestCreate:
+class TestInternalCreate:
     @pytest.mark.asyncio
     async def test_success_no_retry(self):
         """Successful call on first attempt, no retry needed."""
@@ -73,7 +90,7 @@ class TestCreate:
         client = _make_mock_client(expected)
         llm.init(client=client)
 
-        result = await llm.create(model="m", max_tokens=10, messages=[])
+        result = await llm._create(model="m", max_tokens=10, messages=[])  # pyright: ignore[reportPrivateUsage]
         assert result is expected
         client.messages.create.assert_awaited_once()
 
@@ -87,7 +104,7 @@ class TestCreate:
         client.messages.create = AsyncMock(side_effect=[error, expected])
         llm.init(client=client)
 
-        result = await llm.create(model="m", max_tokens=10, messages=[])
+        result = await llm._create(model="m", max_tokens=10, messages=[])  # pyright: ignore[reportPrivateUsage]
         assert result is expected
         assert client.messages.create.await_count == 2
 
@@ -104,7 +121,7 @@ class TestCreate:
         llm.FALLBACK_BACKOFF = 0.01
         try:
             llm.init(client=client)
-            result = await llm.create(model="m", max_tokens=10, messages=[])
+            result = await llm._create(model="m", max_tokens=10, messages=[])  # pyright: ignore[reportPrivateUsage]
             assert result is expected
         finally:
             llm.FALLBACK_BACKOFF = original_backoff
@@ -123,7 +140,7 @@ class TestCreate:
         llm.init(client=client)
 
         with pytest.raises(anthropic.RateLimitError):
-            await llm.create(model="m", max_tokens=10, messages=[])
+            await llm._create(model="m", max_tokens=10, messages=[])  # pyright: ignore[reportPrivateUsage]
         assert client.messages.create.await_count == llm.MAX_RETRIES + 1
 
     @pytest.mark.asyncio
@@ -134,7 +151,7 @@ class TestCreate:
         llm.init(client=client)
 
         with pytest.raises(ValueError, match="boom"):
-            await llm.create(model="m", max_tokens=10, messages=[])
+            await llm._create(model="m", max_tokens=10, messages=[])  # pyright: ignore[reportPrivateUsage]
         client.messages.create.assert_awaited_once()
 
     @pytest.mark.asyncio
@@ -157,13 +174,77 @@ class TestCreate:
         llm.init(client=client, max_concurrent=max_concurrent)
 
         await asyncio.gather(*[
-            llm.create(model="m", max_tokens=10, messages=[])
+            llm._create(model="m", max_tokens=10, messages=[])  # pyright: ignore[reportPrivateUsage]
             for _ in range(6)
         ])
         assert peak_concurrent <= max_concurrent
 
     @pytest.mark.asyncio
     async def test_not_initialized_raises(self):
-        """Calling create() before init() raises RuntimeError."""
+        """Calling _create() before init() raises RuntimeError."""
         with pytest.raises(RuntimeError, match="not initialized"):
-            await llm.create(model="m", max_tokens=10, messages=[])
+            await llm._create(model="m", max_tokens=10, messages=[])  # pyright: ignore[reportPrivateUsage]
+
+
+class TestAsk:
+    @pytest.mark.asyncio
+    async def test_ask_returns_text(self):
+        """ask() returns the text content from the LLM response."""
+        client = _make_mock_client(_make_mock_response("the answer"))
+        llm.init(client=client)
+
+        result = await llm.ask("what is 1+1?", model="m")
+        assert result == "the answer"
+        client.messages.create.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    async def test_ask_with_tools_delegates(self):
+        """ask() with tools delegates to the tool loop."""
+        # First response uses a tool, second gives final text
+        tool_use_block = MagicMock()
+        tool_use_block.type = "tool_use"
+        tool_use_block.name = "my_tool"
+        tool_use_block.input = {"key": "val"}
+        tool_use_block.id = "tu_1"
+
+        tool_response = MagicMock()
+        tool_response.content = [tool_use_block]
+        tool_response.stop_reason = "tool_use"
+
+        final_response = _make_mock_response('{"result": "ok"}')
+
+        client = MagicMock()
+        client.messages.create = AsyncMock(side_effect=[tool_response, final_response])
+        llm.init(client=client)
+
+        tools = [{"name": "my_tool", "description": "test", "input_schema": {"type": "object"}}]
+        executors: dict[str, Callable[[dict[str, Any]], str]] = {"my_tool": lambda inp: "tool_output"}
+
+        result = await llm.ask(
+            "use the tool",
+            model="m",
+            tools=tools,
+            executors=executors,
+        )
+        assert result == '{"result": "ok"}'
+        assert client.messages.create.await_count == 2
+
+    @pytest.mark.asyncio
+    async def test_ask_saves_debug(self, tmp_path: Path):
+        """ask() writes a debug file when debug_dir is set."""
+        debug_dir = tmp_path / "debug"
+        debug_dir.mkdir()
+
+        client = _make_mock_client(_make_mock_response("debug test"))
+        llm.init(client=client, debug_dir=debug_dir)
+
+        await llm.ask("hello", model="m", label="test_label")
+
+        files = list(debug_dir.iterdir())
+        assert len(files) == 1
+        content = files[0].read_text()
+        assert "=== PROMPT ===" in content
+        assert "hello" in content
+        assert "=== RESPONSE ===" in content
+        assert "debug test" in content
+        assert "test_label" in files[0].name

@@ -88,18 +88,8 @@ Provide a JSON response:
 Respond in JSON only."""
 
             try:
-                response: Any = await llm.create(
-                    label=f"enrich_gql_{type_rec.name}",
-                    model=self.model,
-                    max_tokens=1024,
-                    messages=[{"role": "user", "content": prompt}],
-                )
-                llm.save_debug(
-                    f"enrich_gql_{type_rec.name}",
-                    prompt,
-                    response.content[0].text,
-                )
-                data = llm.extract_json(response.content[0].text)
+                text = await llm.ask(prompt, model=self.model, max_tokens=1024, label=f"enrich_gql_{type_rec.name}")
+                data = llm.extract_json(text)
                 if isinstance(data, dict):
                     _apply_type_enrichment(type_rec, data)
             except Exception as exc:
@@ -122,13 +112,8 @@ Provide a JSON response:
 Respond in JSON only."""
 
             try:
-                response: Any = await llm.create(
-                    label=f"enrich_gql_enum_{enum_name}",
-                    model=self.model,
-                    max_tokens=256,
-                    messages=[{"role": "user", "content": prompt}],
-                )
-                data = llm.extract_json(response.content[0].text)
+                text = await llm.ask(prompt, model=self.model, max_tokens=256, label=f"enrich_gql_enum_{enum_name}")
+                data = llm.extract_json(text)
                 if isinstance(data, dict):
                     desc = data.get("description")
                     if isinstance(desc, str):
