@@ -18,6 +18,7 @@ from cli.commands.analyze.utils import (
 )
 from cli.commands.capture.types import Trace
 import cli.helpers.llm as llm
+from cli.helpers.llm import compact_json
 
 
 class AnalyzeAuthStep(LLMStep[list[Trace], AuthInfo]):
@@ -36,7 +37,7 @@ class AnalyzeAuthStep(LLMStep[list[Trace], AuthInfo]):
 
 Here are relevant traces (login flows, token exchanges, authenticated requests):
 
-{json.dumps(auth_summary)[:8000]}
+{compact_json(auth_summary)[:8000]}
 
 Identify:
 1. "type": The auth type (e.g., "bearer_token", "oauth2", "cookie", "basic", "api_key", "none")
@@ -66,7 +67,7 @@ Look for these patterns:
 - Custom auth headers: X-API-Key, X-Auth-Token, X-Access-Token
 - If the token endpoint is on an external domain, use the full URL.
 
-Respond in JSON."""
+Respond in compact JSON (no indentation)."""
 
         text = await llm.ask(prompt, model=self.model, max_tokens=2048, label="analyze_auth")
         data = llm.extract_json(text)

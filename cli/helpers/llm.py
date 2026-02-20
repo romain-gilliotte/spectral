@@ -197,10 +197,12 @@ def _save_debug(call_name: str, turns: list[dict[str, Any]]) -> None:
     for turn in turns:
         role = turn.get("role", "")
         if role == "user":
-            parts.append(f"=== PROMPT ===\n{turn.get('content', '')}")
+            content = _reformat_debug_text(str(turn.get("content", "")))
+            parts.append(f"=== PROMPT ===\n{content}")
         elif role == "assistant":
             if "content" in turn:
-                parts.append(f"=== RESPONSE ===\n{turn['content']}")
+                content = _reformat_debug_text(str(turn["content"]))
+                parts.append(f"=== RESPONSE ===\n{content}")
             if "tool_calls" in turn:
                 for tc in turn["tool_calls"]:
                     if tc.get("type") == "text":
@@ -210,7 +212,8 @@ def _save_debug(call_name: str, turns: list[dict[str, Any]]) -> None:
                         header = f"=== TOOL: {tc['tool']}({inp}) ==="
                         if tc.get("error"):
                             header += " [ERROR]"
-                        parts.append(f"{header}\n{tc['result']}")
+                        result = _reformat_debug_text(str(tc["result"]))
+                        parts.append(f"{header}\n{result}")
 
     path.write_text("\n\n".join(parts) + "\n")
 
@@ -218,6 +221,11 @@ def _save_debug(call_name: str, turns: list[dict[str, Any]]) -> None:
 # ---------------------------------------------------------------------------
 # Generic LLM helpers
 # ---------------------------------------------------------------------------
+
+
+def compact_json(obj: Any) -> str:
+    """Serialize *obj* to compact JSON (no whitespace) for LLM prompts."""
+    return json.dumps(obj, separators=(",", ":"), ensure_ascii=False)
 
 
 def extract_json(text: str) -> dict[str, Any] | list[Any]:
@@ -257,6 +265,49 @@ def extract_json(text: str) -> dict[str, Any] | list[Any]:
                         break
 
     raise ValueError(f"Could not extract JSON from LLM response: {text[:200]}")
+
+
+def _readable_json(obj: Any) -> str:
+    """Format *obj* as semi-compact JSON for debug readability.
+
+    Short inner arrays/objects (<=80 chars when collapsed) are placed on a
+    single line while larger structures remain indented.
+    """
+    text = json.dumps(obj, indent=2, ensure_ascii=False)
+    # Iteratively collapse innermost [...] / {...} blocks that fit on one line.
+    _INNER = re.compile(r"[\[{][^{}\[\]]*[\]}]", re.DOTALL)
+    while True:
+        prev = text
+
+        def _collapse(m: re.Match[str]) -> str:
+            collapsed = re.sub(r"\s+", " ", m.group())
+            return collapsed if len(collapsed) <= 80 else m.group()
+
+        text = _INNER.sub(_collapse, text)
+        if text == prev:
+            break
+    return text
+
+
+def _reformat_debug_text(text: str) -> str:
+    """Reformat JSON blobs in debug prose for readability.
+
+    Splits on blank lines, tries ``json.loads`` on each paragraph, and
+    replaces parseable ones with ``_readable_json`` output.
+    """
+    paragraphs = text.split("\n\n")
+    result: list[str] = []
+    for para in paragraphs:
+        stripped = para.strip()
+        if not stripped:
+            result.append(para)
+            continue
+        try:
+            obj = json.loads(stripped)
+            result.append(_readable_json(obj))
+        except (json.JSONDecodeError, ValueError):
+            result.append(para)
+    return "\n\n".join(result)
 
 
 async def _call_with_tools(

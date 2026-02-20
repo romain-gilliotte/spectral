@@ -50,7 +50,7 @@ Rules:
 Observed requests (call count shown when > 1):
 {chr(10).join(lines)}
 
-Respond with a JSON object:
+Respond with a compact JSON object (no indentation):
 {{"base_url": "https://..."}}"""
 
         text = await llm.ask(

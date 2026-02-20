@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import asyncio
-import json
 from typing import Any, TypeGuard
 from urllib.parse import urlparse
 
@@ -17,6 +16,7 @@ from cli.commands.analyze.utils import pattern_to_regex
 from cli.commands.capture.types import Trace
 from cli.helpers.console import console
 import cli.helpers.llm as llm
+from cli.helpers.llm import compact_json
 
 
 class EnrichEndpointsStep(LLMStep[EnrichmentContext, list[EndpointSpec]]):
@@ -34,7 +34,7 @@ class EnrichEndpointsStep(LLMStep[EnrichmentContext, list[EndpointSpec]]):
 
 Below is the endpoint's mechanical data as JSON Schema. Nested properties carry an "observed" array with sample values seen in real traffic — use these to understand business meaning.
 
-{json.dumps(summary, indent=1)}
+{compact_json(summary)}
 
 Provide a JSON response with these keys:
 - "description": concise description of what this endpoint does in business terms (this becomes the OpenAPI summary)
@@ -51,7 +51,7 @@ Provide a JSON response with these keys:
 - "response_details": {{status_code_string: {{"business_meaning": "...", "example_scenario": "...", "user_impact": "..." or null, "resolution": "..." or null}}}} for each observed status. For error statuses (4xx/5xx), include user_impact and resolution.
 - "discovery_notes": observations, edge cases, or dependencies worth noting about this endpoint (or null)
 
-Respond in JSON."""
+Respond in compact JSON (no indentation)."""
 
             try:
                 text = await llm.ask(prompt, model=self.model, max_tokens=2048, label=f"enrich_{ep.id}")

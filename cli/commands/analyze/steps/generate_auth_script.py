@@ -17,6 +17,7 @@ from cli.commands.analyze.tools import INVESTIGATION_TOOLS, TOOL_EXECUTORS
 from cli.commands.analyze.utils import sanitize_headers, truncate_json
 from cli.commands.capture.types import Trace
 import cli.helpers.llm as llm
+from cli.helpers.llm import compact_json
 
 
 class GenerateAuthScriptInput:
@@ -93,7 +94,7 @@ def _execute_inspect_trace(
             result["response_body_raw"] = trace.response_body.decode(
                 errors="replace"
             )[:2000]
-    return json.dumps(result, indent=2)
+    return compact_json(result)
 
 
 # -- The step ----------------------------------------------------------------
@@ -136,7 +137,7 @@ This script is called by Restish (a CLI tool) via the "external-tool" auth mecha
 
 ## Auth analysis summary
 
-{json.dumps(_auth_summary(auth), indent=2)}
+{compact_json(_auth_summary(auth))}
 
 ## Available traces
 

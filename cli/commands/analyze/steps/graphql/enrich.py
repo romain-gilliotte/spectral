@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import asyncio
-import json
 from typing import Any, cast
 
 from cli.commands.analyze.steps.base import LLMStep
@@ -15,6 +14,7 @@ from cli.commands.analyze.steps.types import Correlation
 from cli.commands.capture.types import Trace
 from cli.helpers.console import console
 import cli.helpers.llm as llm
+from cli.helpers.llm import compact_json
 
 
 class GraphQLEnrichContext:
@@ -74,7 +74,7 @@ class GraphQLEnrichStep(LLMStep[GraphQLEnrichContext, GraphQLSchemaData]):
 Below is a type reconstructed from captured traffic. The "observed_values" show sample values
 seen in real responses — use these to understand business meaning.
 
-{json.dumps(summary, indent=1)}
+{compact_json(summary)}
 
 Provide a JSON response:
 {{
@@ -85,7 +85,7 @@ Provide a JSON response:
   }}
 }}
 
-Respond in JSON only."""
+Respond in compact JSON only (no indentation)."""
 
             try:
                 text = await llm.ask(prompt, model=self.model, max_tokens=1024, label=f"enrich_gql_{type_rec.name}")
@@ -102,14 +102,14 @@ Respond in JSON only."""
             values_list = sorted(enum_values)
             prompt = f"""You are analyzing a GraphQL API discovered from "{input.app_name}".
 
-An enum type "{enum_name}" was found with these values: {json.dumps(values_list)}
+An enum type "{enum_name}" was found with these values: {compact_json(values_list)}
 
 Provide a JSON response:
 {{
   "description": "What this enum represents in business terms"
 }}
 
-Respond in JSON only."""
+Respond in compact JSON only (no indentation)."""
 
             try:
                 text = await llm.ask(prompt, model=self.model, max_tokens=256, label=f"enrich_gql_enum_{enum_name}")

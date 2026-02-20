@@ -9,6 +9,8 @@ import re
 from typing import Any
 from urllib.parse import unquote
 
+from cli.helpers.llm import compact_json
+
 INVESTIGATION_TOOLS: list[dict[str, Any]] = [
     {
         "name": "decode_base64",
@@ -92,7 +94,7 @@ def execute_decode_jwt(token: str) -> str:
         padded = part + "=" * (-len(part) % 4)
         raw = base64.urlsafe_b64decode(padded)
         decoded[label] = json.loads(raw)
-    return json.dumps(decoded, indent=2)
+    return compact_json(decoded)
 
 
 TOOL_EXECUTORS: dict[str, Callable[[dict[str, Any]], str]] = {
