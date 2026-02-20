@@ -30,6 +30,8 @@ _client: Any = None
 _semaphore: asyncio.Semaphore | None = None
 _debug_dir: Path | None = None
 _model: str | None = None
+_total_input_tokens: int = 0
+_total_output_tokens: int = 0
 
 MAX_CONCURRENT = 5
 MAX_RETRIES = 3
@@ -50,7 +52,7 @@ def init(
     saved there automatically by ``ask()``.  When *model* is set, all
     ``ask()`` calls use it by default.
     """
-    global _client, _semaphore, _debug_dir, _model
+    global _client, _semaphore, _debug_dir, _model, _total_input_tokens, _total_output_tokens
 
     if client is not None:
         _client = client
@@ -62,15 +64,24 @@ def init(
     _semaphore = asyncio.Semaphore(max_concurrent)
     _debug_dir = debug_dir
     _model = model
+    _total_input_tokens = 0
+    _total_output_tokens = 0
 
 
 def reset() -> None:
     """Clear the module-level client, semaphore, debug directory, and model (for tests)."""
-    global _client, _semaphore, _debug_dir, _model
+    global _client, _semaphore, _debug_dir, _model, _total_input_tokens, _total_output_tokens
     _client = None
     _semaphore = None
     _debug_dir = None
     _model = None
+    _total_input_tokens = 0
+    _total_output_tokens = 0
+
+
+def get_usage() -> tuple[int, int]:
+    """Return accumulated token usage as ``(input_tokens, output_tokens)``."""
+    return (_total_input_tokens, _total_output_tokens)
 
 
 # ---------------------------------------------------------------------------
@@ -172,7 +183,9 @@ async def _create(*, label: str = "", **kwargs: Any) -> Any:
     async with _semaphore:
         for attempt in range(MAX_RETRIES + 1):
             try:
-                return await _client.messages.create(**kwargs)
+                response = await _client.messages.create(**kwargs)
+                _record_usage(response, label)
+                return response
             except anthropic.RateLimitError as exc:
                 if attempt >= MAX_RETRIES:
                     tag = f" ({label})" if label else ""
@@ -214,6 +227,23 @@ def _parse_retry_after(exc: Exception) -> float | None:
         return float(value)
     except (ValueError, TypeError):
         return None
+
+
+def _record_usage(response: Any, label: str) -> None:
+    """Accumulate token counts from *response* and print a dim summary line."""
+    global _total_input_tokens, _total_output_tokens
+    usage = getattr(response, "usage", None)
+    if usage is None:
+        return
+    try:
+        inp = int(getattr(usage, "input_tokens", 0))
+        out = int(getattr(usage, "output_tokens", 0))
+    except (TypeError, ValueError):
+        return
+    _total_input_tokens += inp
+    _total_output_tokens += out
+    if label:
+        console.print(f"  [dim]{label:<30} {inp:,} in · {out:,} out[/dim]")
 
 
 def _save_debug(call_name: str, turns: list[dict[str, Any]]) -> None:
@@ -301,43 +331,39 @@ def _readable_json(obj: Any) -> str:
     """Format *obj* as semi-compact JSON for debug readability.
 
     Short inner arrays/objects (<=80 chars when collapsed) are placed on a
-    single line while larger structures remain indented.
+    single line while larger structures remain indented.  Uses compact-json
+    for reliable formatting.
     """
-    text = json.dumps(obj, indent=2, ensure_ascii=False)
-    # Iteratively collapse innermost [...] / {...} blocks that fit on one line.
-    _INNER = re.compile(r"[\[{][^{}\[\]]*[\]}]", re.DOTALL)
-    while True:
-        prev = text
+    import compact_json  # type: ignore[import-untyped]
 
-        def _collapse(m: re.Match[str]) -> str:
-            collapsed = re.sub(r"\s+", " ", m.group())
-            return collapsed if len(collapsed) <= 80 else m.group()
-
-        text = _INNER.sub(_collapse, text)
-        if text == prev:
-            break
-    return text
+    formatter = compact_json.Formatter()
+    formatter.indent_spaces = 2
+    formatter.max_inline_length = 80
+    formatter.ensure_ascii = False
+    return formatter.serialize(obj)
 
 
 def _reformat_debug_text(text: str) -> str:
     """Reformat JSON blobs in debug prose for readability.
 
-    Splits on blank lines, tries ``json.loads`` on each paragraph, and
-    replaces parseable ones with ``_readable_json`` output.
+    Splits on newlines, tries ``json.loads`` on each line, and replaces
+    parseable ones with ``_readable_json`` output.  This handles minified
+    JSON lines (including those inside markdown code fences) while leaving
+    non-JSON lines untouched.
     """
-    paragraphs = text.split("\n\n")
+    lines = text.split("\n")
     result: list[str] = []
-    for para in paragraphs:
-        stripped = para.strip()
+    for line in lines:
+        stripped = line.strip()
         if not stripped:
-            result.append(para)
+            result.append(line)
             continue
         try:
             obj = json.loads(stripped)
             result.append(_readable_json(obj))
         except (json.JSONDecodeError, ValueError):
-            result.append(para)
-    return "\n\n".join(result)
+            result.append(line)
+    return "\n".join(result)
 
 
 async def _call_with_tools(

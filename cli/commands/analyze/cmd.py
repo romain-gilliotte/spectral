@@ -67,6 +67,10 @@ def analyze(
         )
     )
 
+    inp_tok, out_tok = llm.get_usage()
+    if inp_tok or out_tok:
+        console.print(f"  LLM token usage: {inp_tok:,} input, {out_tok:,} output")
+
     # Strip any extension from the output name so it's a pure base name
     output_base = Path(output)
     output_base = output_base.parent / output_base.stem

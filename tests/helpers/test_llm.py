@@ -21,11 +21,18 @@ def _make_text_block(text: str) -> MagicMock:
     return block
 
 
-def _make_mock_response(text: str = "hello", stop_reason: str = "end_turn") -> MagicMock:
+def _make_mock_response(
+    text: str = "hello",
+    stop_reason: str = "end_turn",
+    input_tokens: int = 100,
+    output_tokens: int = 50,
+) -> MagicMock:
     """Build a mock API response containing a single text block."""
     resp = MagicMock()
     resp.content = [_make_text_block(text)]
     resp.stop_reason = stop_reason
+    resp.usage.input_tokens = input_tokens
+    resp.usage.output_tokens = output_tokens
     return resp
 
 
@@ -316,8 +323,8 @@ class TestReadableJson:
         obj = {"name": "Alice", "tags": ["admin", "user"], "address": {"city": "Paris", "zip": "75001"}}
         result = llm._readable_json(obj)  # pyright: ignore[reportPrivateUsage]
         # Short arrays/objects should be on one line
-        assert '[ "admin", "user" ]' in result
-        assert '{ "city": "Paris", "zip": "75001" }' in result
+        assert '["admin", "user"]' in result
+        assert '{"city": "Paris", "zip": "75001"}' in result
         # But the outer object should still be multi-line
         assert "\n" in result
 
@@ -345,3 +352,34 @@ class TestReformatDebugText:
         text = "Hello world.\n\nThis is not JSON.\n\nNeither is this."
         result = llm._reformat_debug_text(text)  # pyright: ignore[reportPrivateUsage]
         assert result == text
+
+
+class TestUsageTracking:
+    def test_get_usage_zero_after_init(self):
+        """get_usage() returns (0, 0) right after init()."""
+        llm.init(client=MagicMock(), model="m")
+        assert llm.get_usage() == (0, 0)
+
+    @pytest.mark.asyncio
+    async def test_tokens_accumulate_after_ask(self):
+        """Token counts accumulate across multiple ask() calls."""
+        resp1 = _make_mock_response("a", input_tokens=100, output_tokens=50)
+        resp2 = _make_mock_response("b", input_tokens=200, output_tokens=80)
+        client = MagicMock()
+        client.messages.create = AsyncMock(side_effect=[resp1, resp2])
+        llm.init(client=client, model="m")
+
+        await llm.ask("first")
+        assert llm.get_usage() == (100, 50)
+
+        await llm.ask("second")
+        assert llm.get_usage() == (300, 130)
+
+    def test_reset_clears_usage(self):
+        """reset() resets token counters to zero."""
+        llm.init(client=MagicMock(), model="m")
+        # Manually bump counters to simulate usage
+        llm._total_input_tokens = 500  # pyright: ignore[reportPrivateUsage]
+        llm._total_output_tokens = 200  # pyright: ignore[reportPrivateUsage]
+        llm.reset()
+        assert llm.get_usage() == (0, 0)
