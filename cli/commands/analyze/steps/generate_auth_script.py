@@ -7,8 +7,8 @@ follows the Restish external-tool contract (JSON on stdin/stdout).
 
 from __future__ import annotations
 
-import json
 from collections.abc import Callable
+import json
 from typing import Any
 
 from cli.commands.analyze.steps.base import LLMStep

@@ -143,10 +143,42 @@ def save_debug(call_name: str, prompt: str, response_text: str) -> None:
     """Save an LLM call's prompt and response to the debug directory."""
     if _debug_dir is None:
         return
-    debug_dir = _debug_dir
     ts = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.%f")[:-3] + "Z"
-    path = debug_dir / f"{ts}_{call_name}"
+    path = _debug_dir / f"{ts}_{call_name}"
     path.write_text(f"=== PROMPT ===\n{prompt}\n\n=== RESPONSE ===\n{response_text}\n")
+
+
+def save_debug_conversation(call_name: str, turns: list[dict[str, Any]]) -> None:
+    """Save a multi-turn tool conversation to the debug directory.
+
+    Uses the same plain-text format as ``save_debug`` with extra sections
+    for tool calls and their results.
+    """
+    if _debug_dir is None:
+        return
+    ts = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.%f")[:-3] + "Z"
+    path = _debug_dir / f"{ts}_{call_name}"
+
+    parts: list[str] = []
+    for turn in turns:
+        role = turn.get("role", "")
+        if role == "user":
+            parts.append(f"=== PROMPT ===\n{turn.get('content', '')}")
+        elif role == "assistant":
+            if "content" in turn:
+                parts.append(f"=== RESPONSE ===\n{turn['content']}")
+            if "tool_calls" in turn:
+                for tc in turn["tool_calls"]:
+                    if tc.get("type") == "text":
+                        parts.append(f"=== ASSISTANT TEXT ===\n{tc['text']}")
+                    elif tc.get("type") == "tool_use":
+                        inp = json.dumps(tc["input"], ensure_ascii=False)
+                        header = f"=== TOOL: {tc['tool']}({inp}) ==="
+                        if tc.get("error"):
+                            header += " [ERROR]"
+                        parts.append(f"{header}\n{tc['result']}")
+
+    path.write_text("\n\n".join(parts) + "\n")
 
 
 def extract_json(text: str) -> dict[str, Any] | list[Any]:
@@ -198,6 +230,12 @@ async def call_with_tools(
     call_name: str = "call",
 ) -> str:
     """Call the LLM with tool_use support, looping until a text response is produced."""
+    debug_turns: list[dict[str, Any]] = []
+
+    # Log the initial user prompt
+    if _debug_dir is not None and messages:
+        debug_turns.append({"role": "user", "content": messages[0].get("content", "")})
+
     for _ in range(max_iterations):
         response: Any = await create(
             label=call_name,
@@ -213,44 +251,74 @@ async def call_with_tools(
                 if getattr(block, "type", None) == "text":
                     parts.append(block.text)
             text = "\n".join(parts)
-            save_debug(call_name, str(messages[0].get("content", "")), text)
+            if _debug_dir is not None:
+                debug_turns.append({"role": "assistant", "content": text})
+                save_debug_conversation(call_name, debug_turns)
             return text
 
         # Process tool calls
         messages.append({"role": "assistant", "content": response.content})
         tool_results: list[dict[str, Any]] = []
+        debug_tool_calls: list[dict[str, Any]] = []
         for block in response.content:
+            if getattr(block, "type", None) == "text" and block.text.strip():
+                debug_tool_calls.append({"type": "text", "text": block.text})
             if getattr(block, "type", None) != "tool_use":
                 continue
             executor = executors.get(block.name)
             if executor is None:
+                result_str = f"Unknown tool: {block.name}"
                 tool_results.append(
                     {
                         "type": "tool_result",
                         "tool_use_id": block.id,
-                        "content": f"Unknown tool: {block.name}",
+                        "content": result_str,
                         "is_error": True,
                     }
                 )
+                debug_tool_calls.append({
+                    "type": "tool_use",
+                    "tool": block.name,
+                    "input": block.input,
+                    "result": result_str,
+                    "error": True,
+                })
                 continue
             try:
-                result = executor(block.input)
+                result_str = executor(block.input)
                 tool_results.append(
                     {
                         "type": "tool_result",
                         "tool_use_id": block.id,
-                        "content": result,
+                        "content": result_str,
                     }
                 )
+                debug_tool_calls.append({
+                    "type": "tool_use",
+                    "tool": block.name,
+                    "input": block.input,
+                    "result": result_str,
+                })
             except Exception as exc:
+                result_str = f"Error: {exc}"
                 tool_results.append(
                     {
                         "type": "tool_result",
                         "tool_use_id": block.id,
-                        "content": f"Error: {exc}",
+                        "content": result_str,
                         "is_error": True,
                     }
                 )
+                debug_tool_calls.append({
+                    "type": "tool_use",
+                    "tool": block.name,
+                    "input": block.input,
+                    "result": result_str,
+                    "error": True,
+                })
         messages.append({"role": "user", "content": tool_results})
+
+        if _debug_dir is not None:
+            debug_turns.append({"role": "assistant", "tool_calls": debug_tool_calls})
 
     raise ValueError(f"call_with_tools exceeded {max_iterations} iterations")

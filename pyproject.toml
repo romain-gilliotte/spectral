@@ -44,6 +44,7 @@ asyncio_mode = "auto"
 
 [dependency-groups]
 dev = [
+    "mkdocs-material>=9.7.2",
     "pyright>=1.1.408",
     "ruff>=0.15.1",
 ]

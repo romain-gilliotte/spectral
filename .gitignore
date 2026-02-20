@@ -15,6 +15,7 @@ capture_*
 # Debug and generated output
 debug/
 docs/
+site/
 
 # Auto-downloaded tool JARs (apktool, uber-apk-signer)
 tools/*.jar

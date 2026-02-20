@@ -1,0 +1,63 @@
+site_name: Spectral
+site_description: Automatically discover and document web application APIs
+site_url: https://romain-gilliotte.github.io/spectral/
+repo_url: https://github.com/romain-gilliotte/spectral
+repo_name: romain-gilliotte/spectral
+
+docs_dir: documentation
+
+theme:
+  name: material
+  palette:
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      primary: deep purple
+      accent: purple
+      toggle:
+        icon: material/brightness-7
+        name: Switch to dark mode
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: deep purple
+      accent: purple
+      toggle:
+        icon: material/brightness-4
+        name: Switch to light mode
+  features:
+    - navigation.sections
+    - navigation.expand
+    - navigation.top
+    - content.code.copy
+    - search.highlight
+
+nav:
+  - Home: index.md
+  - Getting started:
+      - Installation: getting-started/installation.md
+      - First capture: getting-started/first-capture.md
+      - First analysis: getting-started/first-analysis.md
+      - Calling the API: getting-started/calling-the-api.md
+  - Capture:
+      - Chrome extension: capture/chrome-extension.md
+      - MITM proxy: capture/mitm-proxy.md
+      - Android apps: capture/android.md
+      - Certificate setup: capture/certificate-setup.md
+  - Analyze:
+      - Pipeline overview: analyze/pipeline-overview.md
+      - REST output: analyze/rest-output.md
+      - GraphQL output: analyze/graphql-output.md
+      - Auth detection: analyze/auth-detection.md
+      - Debug mode: analyze/debug-mode.md
+  - Reference:
+      - CLI reference: reference/cli.md
+  - Bundle format: bundle-format.md
+
+markdown_extensions:
+  - admonition
+  - pymdownx.details
+  - pymdownx.superfences
+  - pymdownx.tabbed:
+      alternate_style: true
+  - tables
+  - toc:
+      permalink: true
