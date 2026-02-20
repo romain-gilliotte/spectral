@@ -81,19 +81,28 @@ Respond in JSON."""
         return input.endpoints
 
 
-def _strip_root_observed(schema: dict[str, Any]) -> dict[str, Any]:
-    """Return a shallow copy of *schema* with ``observed`` removed from root properties only.
+def _strip_non_leaf_observed(schema: dict[str, Any]) -> dict[str, Any]:
+    """Return a copy of *schema* with ``observed`` removed from non-leaf nodes.
 
-    Nested leaves keep their ``observed`` arrays (useful LLM context).
-    Root-level ones are redundant with the property name and type.
+    Leaf scalars keep their ``observed`` arrays (useful LLM context).
+    Intermediate objects and arrays have their ``observed`` stripped to avoid
+    duplicating all child data as serialized dicts/lists.
     """
     props = schema.get("properties")
     if not _is_json_dict(props):
         return schema
     cleaned_props: dict[str, Any] = {}
     for name, prop in props.items():
-        if _is_json_dict(prop) and "observed" in prop:
-            cleaned_props[name] = {k: v for k, v in prop.items() if k != "observed"}
+        if not _is_json_dict(prop):
+            cleaned_props[name] = prop
+            continue
+        prop_type = prop.get("type")
+        if prop_type in ("object", "array"):
+            cleaned = {k: v for k, v in prop.items() if k != "observed"}
+            # Recurse into nested objects
+            if prop_type == "object" and "properties" in cleaned:
+                cleaned = _strip_non_leaf_observed(cleaned)
+            cleaned_props[name] = cleaned
         else:
             cleaned_props[name] = prop
     return {**schema, "properties": cleaned_props}
@@ -136,14 +145,14 @@ def _build_endpoint_summary(
     if ui_triggers:
         summary["ui_triggers"] = ui_triggers[:3]
 
-    # Strip root-level observed (redundant with property name/type);
-    # nested observed are kept as useful context for the LLM.
+    # Strip observed from intermediate (object/array) nodes;
+    # leaf scalar observed are kept as useful context for the LLM.
     if ep.request.path_schema:
-        summary["path_parameters"] = _strip_root_observed(ep.request.path_schema)
+        summary["path_parameters"] = _strip_non_leaf_observed(ep.request.path_schema)
     if ep.request.query_schema:
-        summary["query_parameters"] = _strip_root_observed(ep.request.query_schema)
+        summary["query_parameters"] = _strip_non_leaf_observed(ep.request.query_schema)
     if ep.request.body_schema:
-        summary["request_body"] = _strip_root_observed(ep.request.body_schema)
+        summary["request_body"] = _strip_non_leaf_observed(ep.request.body_schema)
 
     # Response schemas (from mechanical extraction)
     if ep.responses:
@@ -153,7 +162,7 @@ def _build_endpoint_summary(
             if resp.content_type:
                 resp_info["content_type"] = resp.content_type
             if resp.schema_:
-                resp_info["schema"] = _strip_root_observed(resp.schema_)
+                resp_info["schema"] = _strip_non_leaf_observed(resp.schema_)
             responses_list.append(resp_info)
         summary["responses"] = responses_list
 

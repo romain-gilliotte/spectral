@@ -29,7 +29,7 @@ class TestObservedToExamples:
         assert "observed" not in result["properties"]["name"]
         assert result["properties"]["name"]["examples"] == ["Alice", "Bob"]
 
-    def test_nested_object(self):
+    def test_nested_object_leaf(self):
         schema = {
             "type": "object",
             "properties": {
@@ -45,6 +45,29 @@ class TestObservedToExamples:
         city = result["properties"]["address"]["properties"]["city"]
         assert "observed" not in city
         assert city["examples"] == ["Paris", "Lyon"]
+
+    def test_nested_object_intermediate_observed_becomes_examples(self):
+        """Intermediate object observed values become examples in OpenAPI output."""
+        schema: dict[str, Any] = {
+            "type": "object",
+            "properties": {
+                "address": {
+                    "type": "object",
+                    "observed": [{"city": "Paris", "zip": "75001"}],
+                    "properties": {
+                        "city": {"type": "string", "observed": ["Paris"]},
+                        "zip": {"type": "string", "observed": ["75001"]},
+                    },
+                },
+            },
+        }
+        result = _observed_to_examples(schema)
+        addr = result["properties"]["address"]
+        # Intermediate object gets examples from its observed
+        assert "observed" not in addr
+        assert addr["examples"] == [{"city": "Paris", "zip": "75001"}]
+        # Leaf properties also get their own examples
+        assert addr["properties"]["city"]["examples"] == ["Paris"]
 
     def test_array_items(self):
         schema = {

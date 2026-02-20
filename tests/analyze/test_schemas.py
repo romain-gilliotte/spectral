@@ -87,6 +87,8 @@ class TestInferSchema:
         assert addr["properties"]["zip"]["type"] == "string"
         assert "required" not in addr
         assert "Paris" in addr["properties"]["city"]["observed"]
+        # Intermediate objects carry observed (used for OpenAPI examples in assembly)
+        assert "observed" in addr
 
     def test_array_of_objects(self):
         samples = [
@@ -136,6 +138,10 @@ class TestInferSchema:
         assert inner["type"] == "object"
         assert inner["properties"]["value"]["type"] == "integer"
         assert 42 in inner["properties"]["value"]["observed"]
+        # Intermediate objects carry observed (used for OpenAPI examples in assembly)
+        outer = schema["properties"]["outer"]
+        assert "observed" in outer
+        assert "observed" in inner
 
     def test_null_then_object_infers_object_type(self):
         samples = [
@@ -148,6 +154,8 @@ class TestInferSchema:
         assert "properties" in prop
         assert prop["properties"]["lon"]["type"] == "number"
         assert prop["properties"]["lat"]["type"] == "number"
+        # Intermediate objects carry observed (used for OpenAPI examples in assembly)
+        assert "observed" in prop
 
     def test_null_then_string_infers_string_type(self):
         samples = [

@@ -4,6 +4,8 @@ from typing import Any
 
 from cli.commands.analyze.steps.rest.enrich import (
     _apply_enrichment as _apply_enrichment,  # pyright: ignore[reportPrivateUsage]
+    _build_endpoint_summary as _build_endpoint_summary,  # pyright: ignore[reportPrivateUsage]
+    _strip_non_leaf_observed as _strip_non_leaf_observed,  # pyright: ignore[reportPrivateUsage]
 )
 from cli.commands.analyze.steps.rest.types import (
     EndpointSpec,
@@ -263,3 +265,143 @@ class TestApplyEnrichment:
         ]
         assert items_props["type"]["description"] == "Category of the cost element"
         assert items_props["value"]["description"] == "Numeric value in cents"
+
+
+class TestStripNonLeafObserved:
+    def test_strips_root_object_observed(self):
+        schema: dict[str, Any] = {
+            "type": "object",
+            "properties": {
+                "address": {
+                    "type": "object",
+                    "observed": [{"city": "Paris"}],
+                    "properties": {
+                        "city": {"type": "string", "observed": ["Paris"]},
+                    },
+                },
+            },
+        }
+        result = _strip_non_leaf_observed(schema)
+        assert "observed" not in result["properties"]["address"]
+        assert result["properties"]["address"]["properties"]["city"]["observed"] == [
+            "Paris"
+        ]
+
+    def test_strips_deeply_nested_object_observed(self):
+        schema: dict[str, Any] = {
+            "type": "object",
+            "properties": {
+                "outer": {
+                    "type": "object",
+                    "observed": [{"inner": {"val": 1}}],
+                    "properties": {
+                        "inner": {
+                            "type": "object",
+                            "observed": [{"val": 1}],
+                            "properties": {
+                                "val": {"type": "integer", "observed": [1]},
+                            },
+                        },
+                    },
+                },
+            },
+        }
+        result = _strip_non_leaf_observed(schema)
+        assert "observed" not in result["properties"]["outer"]
+        assert "observed" not in result["properties"]["outer"]["properties"]["inner"]
+        assert result["properties"]["outer"]["properties"]["inner"]["properties"][
+            "val"
+        ]["observed"] == [1]
+
+    def test_strips_array_observed(self):
+        schema: dict[str, Any] = {
+            "type": "object",
+            "properties": {
+                "tags": {
+                    "type": "array",
+                    "observed": [["a", "b"]],
+                    "items": {"type": "string", "observed": ["a", "b"]},
+                },
+            },
+        }
+        result = _strip_non_leaf_observed(schema)
+        assert "observed" not in result["properties"]["tags"]
+        assert result["properties"]["tags"]["items"]["observed"] == ["a", "b"]
+
+    def test_keeps_scalar_observed(self):
+        schema: dict[str, Any] = {
+            "type": "object",
+            "properties": {
+                "name": {"type": "string", "observed": ["Alice"]},
+                "age": {"type": "integer", "observed": [30]},
+            },
+        }
+        result = _strip_non_leaf_observed(schema)
+        assert result["properties"]["name"]["observed"] == ["Alice"]
+        assert result["properties"]["age"]["observed"] == [30]
+
+
+class TestBuildEndpointSummaryObserved:
+    """Verify that _build_endpoint_summary strips intermediate observed from LLM context."""
+
+    def test_body_schema_intermediate_observed_stripped(self):
+        ep = EndpointSpec(
+            id="test",
+            path="/test",
+            method="POST",
+            request=RequestSpec(
+                body_schema={
+                    "type": "object",
+                    "properties": {
+                        "address": {
+                            "type": "object",
+                            "observed": [{"city": "Paris"}],
+                            "properties": {
+                                "city": {"type": "string", "observed": ["Paris"]},
+                            },
+                        },
+                    },
+                }
+            ),
+        )
+        summary = _build_endpoint_summary(ep, [], [])
+        body = summary["request_body"]
+        addr = body["properties"]["address"]
+        # Intermediate object observed stripped for LLM
+        assert "observed" not in addr
+        # Leaf scalar observed kept for LLM
+        assert addr["properties"]["city"]["observed"] == ["Paris"]
+
+    def test_response_schema_intermediate_observed_stripped(self):
+        ep = EndpointSpec(
+            id="test",
+            path="/test",
+            method="GET",
+            responses=[
+                ResponseSpec(
+                    status=200,
+                    schema_={
+                        "type": "object",
+                        "properties": {
+                            "locale": {
+                                "type": "object",
+                                "observed": [{"fr_FR": "Gilliotte"}],
+                                "properties": {
+                                    "fr_FR": {
+                                        "type": "string",
+                                        "observed": ["Gilliotte"],
+                                    },
+                                },
+                            },
+                        },
+                    },
+                ),
+            ],
+        )
+        summary = _build_endpoint_summary(ep, [], [])
+        resp_schema = summary["responses"][0]["schema"]
+        locale = resp_schema["properties"]["locale"]
+        # Intermediate object observed stripped for LLM
+        assert "observed" not in locale
+        # Leaf scalar observed kept for LLM
+        assert locale["properties"]["fr_FR"]["observed"] == ["Gilliotte"]
