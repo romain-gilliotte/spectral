@@ -77,9 +77,21 @@ def _strip_non_leaf_observed(schema: dict[str, Any]) -> dict[str, Any]:
     Intermediate objects and arrays have their ``observed`` stripped to avoid
     duplicating all child data as serialized dicts/lists.
     """
-    props = schema.get("properties")
+    out = dict(schema)
+
+    # Handle additionalProperties (dynamic-key schemas)
+    ap = out.get("additionalProperties")
+    if _is_json_dict(ap):
+        ap_type = ap.get("type")
+        if ap_type in ("object", "array"):
+            cleaned_ap = {k: v for k, v in ap.items() if k != "observed"}
+            if ap_type == "object":
+                cleaned_ap = _strip_non_leaf_observed(cleaned_ap)
+            out["additionalProperties"] = cleaned_ap
+
+    props = out.get("properties")
     if not _is_json_dict(props):
-        return schema
+        return out
     cleaned_props: dict[str, Any] = {}
     for name, prop in props.items():
         if not _is_json_dict(prop):
@@ -89,12 +101,13 @@ def _strip_non_leaf_observed(schema: dict[str, Any]) -> dict[str, Any]:
         if prop_type in ("object", "array"):
             cleaned = {k: v for k, v in prop.items() if k != "observed"}
             # Recurse into nested objects
-            if prop_type == "object" and "properties" in cleaned:
+            if prop_type == "object":
                 cleaned = _strip_non_leaf_observed(cleaned)
             cleaned_props[name] = cleaned
         else:
             cleaned_props[name] = prop
-    return {**schema, "properties": cleaned_props}
+    out["properties"] = cleaned_props
+    return out
 
 
 def _build_endpoint_summary(
@@ -198,6 +211,9 @@ def _apply_schema_descriptions(
             if prop_schema.get("type") == "array" and "items" in prop_schema:
                 # Array of objects: descriptions apply to item properties
                 _apply_schema_descriptions(prop_schema["items"], desc)
+            elif _is_json_dict(prop_schema.get("additionalProperties")):
+                # Dynamic-key object: descriptions apply to the value schema
+                _apply_schema_descriptions(prop_schema["additionalProperties"], desc)
             else:
                 # Nested object
                 _apply_schema_descriptions(prop_schema, desc)

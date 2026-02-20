@@ -405,3 +405,79 @@ class TestBuildEndpointSummaryObserved:
         assert "observed" not in locale
         # Leaf scalar observed kept for LLM
         assert locale["properties"]["fr_FR"]["observed"] == ["Gilliotte"]
+
+
+class TestStripNonLeafObservedAdditionalProperties:
+    def test_object_additional_properties_observed_stripped(self):
+        schema: dict[str, Any] = {
+            "type": "object",
+            "additionalProperties": {
+                "type": "object",
+                "observed": [{"total": 100}],
+                "properties": {
+                    "total": {"type": "integer", "observed": [100]},
+                },
+            },
+            "x-key-pattern": "year",
+        }
+        result = _strip_non_leaf_observed(schema)
+        ap = result["additionalProperties"]
+        assert "observed" not in ap
+        assert ap["properties"]["total"]["observed"] == [100]
+
+    def test_scalar_additional_properties_untouched(self):
+        schema: dict[str, Any] = {
+            "type": "object",
+            "additionalProperties": {
+                "type": "integer",
+                "observed": [100, 200],
+            },
+            "x-key-pattern": "date",
+        }
+        result = _strip_non_leaf_observed(schema)
+        assert result["additionalProperties"]["observed"] == [100, 200]
+
+
+class TestApplyDescriptionsAdditionalProperties:
+    def test_descriptions_applied_through_additional_properties(self):
+        endpoint = EndpointSpec(
+            id="test",
+            path="/test",
+            method="GET",
+            responses=[
+                ResponseSpec(
+                    status=200,
+                    schema_={
+                        "type": "object",
+                        "properties": {
+                            "balances": {
+                                "type": "object",
+                                "additionalProperties": {
+                                    "type": "object",
+                                    "properties": {
+                                        "total": {"type": "integer", "observed": [100]},
+                                    },
+                                },
+                                "x-key-pattern": "date",
+                            },
+                        },
+                    },
+                ),
+            ],
+        )
+        _apply_enrichment(
+            endpoint,
+            {
+                "field_descriptions": {
+                    "responses": {
+                        "200": {
+                            "balances": {"total": "Total balance in cents"},
+                        },
+                    },
+                },
+            },
+        )
+        resp_schema = endpoint.responses[0].schema_
+        assert resp_schema is not None
+        ap = resp_schema["properties"]["balances"]["additionalProperties"]
+        assert ap["properties"]["total"]["description"] == "Total balance in cents"

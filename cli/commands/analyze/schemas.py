@@ -15,6 +15,30 @@ from urllib.parse import parse_qs, urlparse
 
 from cli.commands.capture.types import Trace
 
+_DYNAMIC_KEY_PATTERNS: list[tuple[str, re.Pattern[str]]] = [
+    ("date", re.compile(r"^\d{4}-\d{2}-\d{2}")),
+    ("year-month", re.compile(r"^\d{4}-\d{2}$")),
+    ("uuid", re.compile(r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$", re.I)),
+    ("year", re.compile(r"^(?:19|20)\d{2}$")),
+    ("numeric-id", re.compile(r"^\d+$")),
+]
+
+_MIN_DYNAMIC_KEYS = 3
+
+
+def _classify_key_pattern(keys: list[str]) -> str | None:
+    """Return the pattern name if ALL *keys* match a single dynamic pattern.
+
+    Requires at least ``_MIN_DYNAMIC_KEYS`` keys.  Returns ``None`` when no
+    pattern matches every key or when the key count is too low.
+    """
+    if len(keys) < _MIN_DYNAMIC_KEYS:
+        return None
+    for name, regex in _DYNAMIC_KEY_PATTERNS:
+        if all(regex.search(k) for k in keys):
+            return name
+    return None
+
 
 def _infer_type(value: Any) -> str:
     """Infer JSON schema type from a Python value."""
@@ -131,6 +155,26 @@ def _infer_object_schema(samples: list[dict[str, Any]]) -> dict[str, Any]:
         for key, value in sample.items():
             all_keys[key].append(value)
 
+    # Check for dynamic map keys (dates, years, UUIDs, numeric IDs).
+    pattern = _classify_key_pattern(list(all_keys.keys()))
+    if pattern is not None:
+        # Verify value type uniformity (all non-null values share the same type).
+        all_values: list[Any] = []
+        for vals in all_keys.values():
+            all_values.extend(vals)
+        non_null_values = [v for v in all_values if v is not None]
+        if non_null_values:
+            types = {_infer_type(v) for v in non_null_values}
+            if len(types) == 1:
+                value_schema = _infer_property(all_values)
+                sample_keys = list(all_keys.keys())[:5]
+                return {
+                    "type": "object",
+                    "additionalProperties": value_schema,
+                    "x-key-pattern": pattern,
+                    "x-key-examples": sample_keys,
+                }
+
     properties: dict[str, Any] = {}
     for key, values in all_keys.items():
         properties[key] = _infer_property(values)
@@ -157,7 +201,9 @@ def _infer_property(values: list[Any]) -> dict[str, Any]:
         dict_values: list[dict[str, Any]] = [v for v in non_null if isinstance(v, dict)]
         if dict_values:
             nested = _infer_object_schema(dict_values)
-            prop["properties"] = nested["properties"]
+            for k, v in nested.items():
+                if k != "type":
+                    prop[k] = v
 
     if prop_type == "array":
         # Infer items schema from array contents — observed goes on items, not here

@@ -3,6 +3,7 @@
 from typing import Any
 
 from cli.commands.analyze.schemas import (
+    _classify_key_pattern as _classify_key_pattern,  # pyright: ignore[reportPrivateUsage]
     _detect_format as _detect_format,  # pyright: ignore[reportPrivateUsage]
     _infer_type as _infer_type,  # pyright: ignore[reportPrivateUsage]
     _infer_type_from_values as _infer_type_from_values,  # pyright: ignore[reportPrivateUsage]
@@ -401,3 +402,133 @@ class TestQueryParamExtraction:
         assert "page" in schema["properties"]
         assert "hello" in schema["properties"]["q"]["observed"]
         assert "world" in schema["properties"]["q"]["observed"]
+
+
+class TestDynamicKeyDetection:
+    def test_date_keys_detected(self):
+        samples = [
+            {
+                "2025-01-01": 100,
+                "2025-02-01": 200,
+                "2025-03-01": 300,
+                "2025-04-01": 400,
+                "2025-05-01": 500,
+            }
+        ]
+        schema = infer_schema(samples)
+        assert "additionalProperties" in schema
+        assert "properties" not in schema
+        assert schema["x-key-pattern"] == "date"
+        assert schema["additionalProperties"]["type"] == "integer"
+        assert len(schema["x-key-examples"]) == 5
+
+    def test_year_keys_detected(self):
+        samples = [
+            {
+                "2022": {"total": 100, "avg": 25},
+                "2023": {"total": 200, "avg": 50},
+                "2024": {"total": 300, "avg": 75},
+                "2025": {"total": 400, "avg": 100},
+            }
+        ]
+        schema = infer_schema(samples)
+        assert "additionalProperties" in schema
+        assert "properties" not in schema
+        assert schema["x-key-pattern"] == "year"
+        val_schema = schema["additionalProperties"]
+        assert val_schema["type"] == "object"
+        assert "total" in val_schema["properties"]
+        assert "avg" in val_schema["properties"]
+
+    def test_numeric_id_keys_detected(self):
+        samples = [
+            {
+                "706001": "active",
+                "706002": "inactive",
+                "706003": "active",
+            }
+        ]
+        schema = infer_schema(samples)
+        assert "additionalProperties" in schema
+        assert schema["x-key-pattern"] == "numeric-id"
+        assert schema["additionalProperties"]["type"] == "string"
+
+    def test_uuid_keys_detected(self):
+        samples = [
+            {
+                "a1b2c3d4-e5f6-7890-abcd-ef1234567890": 1,
+                "11111111-2222-3333-4444-555555555555": 2,
+                "22222222-3333-4444-5555-666666666666": 3,
+            }
+        ]
+        schema = infer_schema(samples)
+        assert "additionalProperties" in schema
+        assert schema["x-key-pattern"] == "uuid"
+
+    def test_below_threshold_not_detected(self):
+        """Two numeric keys are below the minimum threshold — stay as properties."""
+        samples = [{"100": "a", "200": "b"}]
+        schema = infer_schema(samples)
+        assert "properties" in schema
+        assert "additionalProperties" not in schema
+
+    def test_mixed_types_not_detected(self):
+        """Keys match a pattern but values have different types — stay as properties."""
+        samples = [
+            {
+                "2025-01-01": 100,
+                "2025-02-01": "hello",
+                "2025-03-01": 300,
+            }
+        ]
+        schema = infer_schema(samples)
+        assert "properties" in schema
+        assert "additionalProperties" not in schema
+
+    def test_non_matching_keys_not_detected(self):
+        """Regular field names should not trigger dynamic key detection."""
+        samples = [{"name": "Alice", "email": "a@b.com", "age": 30}]
+        schema = infer_schema(samples)
+        assert "properties" in schema
+        assert "additionalProperties" not in schema
+
+    def test_nested_dynamic_keys(self):
+        """Dynamic keys nested inside a regular object property."""
+        samples = [
+            {
+                "data": {
+                    "2025-01-01": 100,
+                    "2025-02-01": 200,
+                    "2025-03-01": 300,
+                }
+            }
+        ]
+        schema = infer_schema(samples)
+        assert "properties" in schema
+        data_prop = schema["properties"]["data"]
+        assert data_prop["type"] == "object"
+        assert "additionalProperties" in data_prop
+        assert data_prop["x-key-pattern"] == "date"
+
+    def test_key_examples_limited(self):
+        """More than 5 keys should produce at most 5 x-key-examples."""
+        samples = [{f"2025-{m:02d}-01": m for m in range(1, 13)}]
+        schema = infer_schema(samples)
+        assert "additionalProperties" in schema
+        assert len(schema["x-key-examples"]) <= 5
+
+    def test_value_schema_merged(self):
+        """Values from different keys are merged into a unified schema."""
+        samples = [
+            {
+                "2023": {"total": 100},
+                "2024": {"total": 200, "count": 5},
+                "2025": {"total": 300, "count": 10},
+            }
+        ]
+        schema = infer_schema(samples)
+        assert "additionalProperties" in schema
+        val_schema = schema["additionalProperties"]
+        assert val_schema["type"] == "object"
+        assert "total" in val_schema["properties"]
+        assert "count" in val_schema["properties"]

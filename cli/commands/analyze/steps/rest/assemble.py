@@ -205,6 +205,10 @@ def _observed_to_examples(schema: dict[str, Any]) -> dict[str, Any]:
         }
     if "items" in out and isinstance(out["items"], dict):
         out["items"] = _observed_to_examples(cast(dict[str, Any], out["items"]))
+    if "additionalProperties" in out and isinstance(out["additionalProperties"], dict):
+        out["additionalProperties"] = _observed_to_examples(
+            cast(dict[str, Any], out["additionalProperties"])
+        )
     return out
 
 

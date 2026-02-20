@@ -239,3 +239,38 @@ class TestOpenApiExamples:
         ]["schema"]
         assert body_schema["properties"]["quantity"]["examples"] == [2, 5]
         assert "observed" not in body_schema["properties"]["quantity"]
+
+
+class TestObservedToExamplesAdditionalProperties:
+    def test_additional_properties_observed_becomes_examples(self):
+        schema: dict[str, Any] = {
+            "type": "object",
+            "additionalProperties": {
+                "type": "integer",
+                "observed": [100, 200, 300],
+            },
+            "x-key-pattern": "date",
+            "x-key-examples": ["2025-01-01", "2025-02-01", "2025-03-01"],
+        }
+        result = _observed_to_examples(schema)
+        assert "observed" not in result["additionalProperties"]
+        assert result["additionalProperties"]["examples"] == [100, 200, 300]
+        # Extensions are preserved
+        assert result["x-key-pattern"] == "date"
+        assert result["x-key-examples"] == ["2025-01-01", "2025-02-01", "2025-03-01"]
+
+    def test_nested_object_additional_properties(self):
+        schema: dict[str, Any] = {
+            "type": "object",
+            "additionalProperties": {
+                "type": "object",
+                "properties": {
+                    "total": {"type": "integer", "observed": [100]},
+                },
+            },
+            "x-key-pattern": "year",
+        }
+        result = _observed_to_examples(schema)
+        ap = result["additionalProperties"]
+        assert ap["properties"]["total"]["examples"] == [100]
+        assert "observed" not in ap["properties"]["total"]
