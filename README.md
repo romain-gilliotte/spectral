@@ -8,95 +8,60 @@ Most apps sit on undocumented APIs that work perfectly well. But without a spec,
 
 Supports both **REST** (outputs OpenAPI 3.1) and **GraphQL** (outputs SDL with inferred types).
 
+**[Documentation](https://romain-gilliotte.github.io/spectral/)**
+
 ## How it works
 
 1. **Capture** — Chrome extension (web) or MITM proxy records traffic + UI actions while you browse
-2. **Analyze** — LLM correlates UI actions with API calls, infers endpoint patterns, auth flow, and business meaning. REST traces produce an OpenAPI 3.1 spec; GraphQL traces produce a typed SDL schema
+2. **Analyze** — LLM correlates UI actions with API calls, infers endpoint patterns, auth flow, and business meaning
+3. **Call** — Generated Restish config + auth helper let you call the API immediately from the command line
 
 ## Quick start
 
 Prerequisites: Python 3.11+, [uv](https://docs.astral.sh/uv/), [Anthropic API key](https://console.anthropic.com/).
 
 ```bash
-git clone https://github.com/eloims/spectral.git && cd spectral
+git clone https://github.com/romain-gilliotte/spectral.git && cd spectral
 uv sync
 echo "ANTHROPIC_API_KEY=sk-ant-..." > .env
-
-uv run spectral analyze capture.zip -o spec
 ```
 
-## Capture
-
-### Web (Chrome Extension)
-
-1. Load `extension/` as unpacked in `chrome://extensions`
-2. Start capture, browse the app, stop capture, export bundle
-
-### MITM proxy on your machine
-
-The MITM proxy works with any application or CLI that respects `HTTP_PROXY` / `HTTPS_PROXY`:
+Capture traffic with the Chrome extension or the MITM proxy:
 
 ```bash
-uv run spectral capture proxy -o capture.zip &
-HTTPS_PROXY=http://127.0.0.1:8080 curl https://api.example.com/users
+# Chrome extension: load extension/ as unpacked in chrome://extensions
+# then: Start Capture → browse → Stop Capture → Export Bundle
+
+# Or use the MITM proxy
+uv run spectral capture proxy -o capture.zip
 ```
 
-The proxy intercepts HTTPS by generating certificates on the fly. For this to work, the mitmproxy CA certificate must be trusted by your machine. On first run, mitmproxy creates its CA in `~/.mitmproxy/` — install `mitmproxy-ca-cert.pem` in your OS/browser trust store.
-
-Use `capture discover` to log domains first without intercepting, then `capture proxy -d` to target specific domains.
-
-### MITM proxy for android apps
-
-Requires `adb` (Android SDK Platform Tools) and `java` (for APK signing) on the host machine.
-
-On Android 7+, apps only trust system CA certificates by default and ignore user-installed ones. To intercept an app's HTTPS traffic, you need to patch its APK to add a network security config that trusts user CAs, then push the mitmproxy certificate to the device.
+Analyze the capture to produce an API spec:
 
 ```bash
-# Patch any app
-uv run spectral android list spotify
-uv run spectral android pull com.spotify.music
-uv run spectral android patch com.spotify.music.apk
-uv run spectral android install com.spotify.music-patched.apk
-
-# Push the certificate to the device storage
-uv run spectral android cert
+uv run spectral analyze capture.zip -o myapp-api
+# → myapp-api.yaml (OpenAPI 3.1)
+# → myapp-api.graphql (SDL schema, if GraphQL detected)
+# → myapp-api.restish.json (Restish config)
+# → myapp-api-auth.py (auth helper, if auth detected)
 ```
 
-Once the patched app is installed and the certificate is in place, configure the device to use the proxy (`Settings > Wi-Fi > proxy`) and capture traffic with `capture proxy` as usual.
+Call the API with [Restish](https://rest.sh/):
 
-## CLI reference
-
-### Analyze
-
-```
-spectral analyze <bundle> -o <name> [--model MODEL] [--debug] [--skip-enrich]
+```bash
+restish api edit < myapp-api.restish.json
+restish myapp-api get-user-profile
 ```
 
-The pipeline auto-detects the protocol from captured traces and produces `<name>.yaml` (OpenAPI 3.1) for REST and/or `<name>.graphql` (SDL) for GraphQL. A single capture can contain both.
+See the [getting started guide](https://romain-gilliotte.github.io/spectral/getting-started/installation/) for detailed setup, or the [CLI reference](https://romain-gilliotte.github.io/spectral/reference/cli/) for all commands.
 
-| Option          | Default                      | Description                      |
-| --------------- | ---------------------------- | -------------------------------- |
-| `--model`       | `claude-sonnet-4-5-20250929` | LLM model                        |
-| `--debug`       | off                          | Save LLM prompts to `debug/`     |
-| `--skip-enrich` | off                          | Skip business context enrichment |
+## Capture methods
 
-### Capture
-
-| Command                                            | Description                                 |
-| -------------------------------------------------- | ------------------------------------------- |
-| `capture inspect <bundle> [--trace ID]`            | Inspect a capture bundle                    |
-| `capture proxy [-d domain...] [-p port] [-o path]` | MITM proxy capture (all domains by default) |
-| `capture discover [-p port]`                       | Discover domains without intercepting       |
-
-### Android
-
-| Command                            | Description                      |
-| ---------------------------------- | -------------------------------- |
-| `android list [filter]`            | List packages on device          |
-| `android pull <package> [-o path]` | Pull APK(s) from device          |
-| `android patch <apk> [-o path]`    | Patch APK to trust user CA certs |
-| `android install <apk>`            | Install patched APK              |
-| `android cert [cert_path]`         | Push CA certificate to device    |
+| Method                                                                                            | Best for                | UI context                             | Needs certification installation |
+| ------------------------------------------------------------------------------------------------- | ----------------------- | -------------------------------------- | -------------------------------- |
+| [Chrome extension](https://romain-gilliotte.github.io/spectral/capture/chrome-extension/)         | Web apps                | Yes — clicks, navigation, page content | No                               |
+| [MITM proxy](https://romain-gilliotte.github.io/spectral/capture/mitm-proxy/)                     | CLI tools, desktop apps | No                                     | Yes — [setup guide](https://romain-gilliotte.github.io/spectral/capture/certificate-setup/) |
+| [Android APK patching + MITM proxy](https://romain-gilliotte.github.io/spectral/capture/android/) | Mobile apps             | No                                     | Yes — [setup guide](https://romain-gilliotte.github.io/spectral/capture/certificate-setup/) |
 
 ## License
 
