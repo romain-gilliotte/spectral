@@ -194,6 +194,505 @@ class TestDetectTraceProtocol:
         )
         assert detect_trace_protocol(trace) == "rest"
 
+    # ── Tier 1: Header-based detection ──────────────────────────────
+
+    def test_soap_by_content_type(self):
+        trace = make_trace(
+            "t_0001",
+            "POST",
+            "https://api.example.com/ws",
+            200,
+            1000,
+            request_headers=[
+                Header(name="Content-Type", value="application/soap+xml; charset=utf-8")
+            ],
+        )
+        assert detect_trace_protocol(trace) == "soap"
+
+    def test_soap_by_response_content_type(self):
+        trace = make_trace(
+            "t_0001",
+            "POST",
+            "https://api.example.com/ws",
+            200,
+            1000,
+            request_headers=[Header(name="Content-Type", value="text/xml")],
+            response_headers=[
+                Header(name="Content-Type", value="application/soap+xml")
+            ],
+        )
+        assert detect_trace_protocol(trace) == "soap"
+
+    def test_soap_by_soapaction_header(self):
+        trace = make_trace(
+            "t_0001",
+            "POST",
+            "https://api.example.com/ws",
+            200,
+            1000,
+            request_headers=[
+                Header(name="Content-Type", value="text/xml"),
+                Header(name="SOAPAction", value="urn:GetUser"),
+            ],
+        )
+        assert detect_trace_protocol(trace) == "soap"
+
+    def test_sse_by_response_content_type(self):
+        trace = make_trace(
+            "t_0001",
+            "GET",
+            "https://api.example.com/events",
+            200,
+            1000,
+            response_headers=[
+                Header(name="Content-Type", value="text/event-stream")
+            ],
+        )
+        assert detect_trace_protocol(trace) == "sse"
+
+    def test_ndjson_by_response_content_type(self):
+        trace = make_trace(
+            "t_0001",
+            "GET",
+            "https://api.example.com/stream",
+            200,
+            1000,
+            response_headers=[
+                Header(name="Content-Type", value="application/x-ndjson")
+            ],
+        )
+        assert detect_trace_protocol(trace) == "ndjson"
+
+    def test_rsc_by_response_content_type(self):
+        trace = make_trace(
+            "t_0001",
+            "GET",
+            "https://app.example.com/page",
+            200,
+            1000,
+            response_headers=[
+                Header(name="Content-Type", value="text/x-component")
+            ],
+        )
+        assert detect_trace_protocol(trace) == "rsc"
+
+    def test_rsc_by_request_header(self):
+        trace = make_trace(
+            "t_0001",
+            "GET",
+            "https://app.example.com/page",
+            200,
+            1000,
+            request_headers=[Header(name="RSC", value="1")],
+        )
+        assert detect_trace_protocol(trace) == "rsc"
+
+    def test_turbo_stream_by_response_content_type(self):
+        trace = make_trace(
+            "t_0001",
+            "POST",
+            "https://app.example.com/messages",
+            200,
+            1000,
+            response_headers=[
+                Header(
+                    name="Content-Type",
+                    value="text/vnd.turbo-stream.html; charset=utf-8",
+                )
+            ],
+        )
+        assert detect_trace_protocol(trace) == "turbo-stream"
+
+    def test_jsonapi_by_response_content_type(self):
+        trace = make_trace(
+            "t_0001",
+            "GET",
+            "https://api.example.com/articles",
+            200,
+            1000,
+            response_headers=[
+                Header(name="Content-Type", value="application/vnd.api+json")
+            ],
+        )
+        assert detect_trace_protocol(trace) == "jsonapi"
+
+    def test_hal_by_response_content_type(self):
+        trace = make_trace(
+            "t_0001",
+            "GET",
+            "https://api.example.com/orders",
+            200,
+            1000,
+            response_headers=[
+                Header(name="Content-Type", value="application/hal+json")
+            ],
+        )
+        assert detect_trace_protocol(trace) == "hal"
+
+    def test_odata_by_response_header(self):
+        trace = make_trace(
+            "t_0001",
+            "GET",
+            "https://api.example.com/Products",
+            200,
+            1000,
+            response_headers=[
+                Header(name="Content-Type", value="application/json"),
+                Header(name="OData-Version", value="4.0"),
+            ],
+        )
+        assert detect_trace_protocol(trace) == "odata"
+
+    def test_odata_by_maxversion_header(self):
+        trace = make_trace(
+            "t_0001",
+            "GET",
+            "https://api.example.com/Products",
+            200,
+            1000,
+            response_headers=[
+                Header(name="Content-Type", value="application/json"),
+                Header(name="OData-MaxVersion", value="4.0"),
+            ],
+        )
+        assert detect_trace_protocol(trace) == "odata"
+
+    def test_restli_by_response_content_type(self):
+        trace = make_trace(
+            "t_0001",
+            "GET",
+            "https://www.linkedin.com/voyager/api/feed",
+            200,
+            1000,
+            response_headers=[
+                Header(
+                    name="Content-Type",
+                    value="application/vnd.linkedin.normalized+json+2.1",
+                )
+            ],
+        )
+        assert detect_trace_protocol(trace) == "restli"
+
+    def test_restli_by_request_header(self):
+        trace = make_trace(
+            "t_0001",
+            "GET",
+            "https://www.linkedin.com/voyager/api/feed",
+            200,
+            1000,
+            request_headers=[
+                Header(name="X-RestLi-Protocol-Version", value="2.0.0")
+            ],
+        )
+        assert detect_trace_protocol(trace) == "restli"
+
+    # ── Tier 2: URL-based detection ─────────────────────────────────
+
+    def test_trpc_by_url(self):
+        trace = make_trace(
+            "t_0001",
+            "GET",
+            "https://api.example.com/trpc/user.getById?input=%7B%22id%22%3A1%7D",
+            200,
+            1000,
+        )
+        assert detect_trace_protocol(trace) == "trpc"
+
+    def test_trpc_in_query_param_is_not_trpc(self):
+        """'trpc' in a query param value should not trigger tRPC detection."""
+        trace = make_trace(
+            "t_0001",
+            "GET",
+            "https://api.example.com/search?q=trpc+guide",
+            200,
+            1000,
+        )
+        assert detect_trace_protocol(trace) == "rest"
+
+    def test_socketio_by_url(self):
+        trace = make_trace(
+            "t_0001",
+            "GET",
+            "https://app.example.com/socket.io/?EIO=4&transport=polling",
+            200,
+            1000,
+        )
+        assert detect_trace_protocol(trace) == "socketio"
+
+    def test_twirp_by_url(self):
+        trace = make_trace(
+            "t_0001",
+            "POST",
+            "https://api.example.com/twirp/example.v1.UserService/GetUser",
+            200,
+            1000,
+        )
+        assert detect_trace_protocol(trace) == "twirp"
+
+    def test_signalr_by_url(self):
+        trace = make_trace(
+            "t_0001",
+            "POST",
+            "https://app.example.com/signalr/negotiate?negotiateVersion=1",
+            200,
+            1000,
+        )
+        assert detect_trace_protocol(trace) == "signalr"
+
+    def test_odata_by_query_params(self):
+        trace = make_trace(
+            "t_0001",
+            "GET",
+            "https://api.example.com/Products?$filter=Price gt 10&$select=Name,Price",
+            200,
+            1000,
+        )
+        assert detect_trace_protocol(trace) == "odata"
+
+    def test_odata_top_skip_query_params(self):
+        trace = make_trace(
+            "t_0001",
+            "GET",
+            "https://api.example.com/Products?$top=10&$skip=20",
+            200,
+            1000,
+        )
+        assert detect_trace_protocol(trace) == "odata"
+
+    def test_dollar_sign_in_query_not_odata(self):
+        """A query param starting with $ but not an OData keyword stays REST."""
+        trace = make_trace(
+            "t_0001",
+            "GET",
+            "https://api.example.com/search?$custom=value",
+            200,
+            1000,
+        )
+        assert detect_trace_protocol(trace) == "rest"
+
+    # ── Tier 3: Body-based detection ────────────────────────────────
+
+    def test_jsonrpc_by_request_body(self):
+        body = json.dumps(
+            {"jsonrpc": "2.0", "method": "user.get", "params": {"id": 1}, "id": 1}
+        ).encode()
+        trace = make_trace(
+            "t_0001",
+            "POST",
+            "https://api.example.com/rpc",
+            200,
+            1000,
+            request_body=body,
+            request_headers=[Header(name="Content-Type", value="application/json")],
+        )
+        assert detect_trace_protocol(trace) == "jsonrpc"
+
+    def test_xmlrpc_by_request_body(self):
+        body = b"<methodCall><methodName>getUser</methodName></methodCall>"
+        trace = make_trace(
+            "t_0001",
+            "POST",
+            "https://api.example.com/xmlrpc",
+            200,
+            1000,
+            request_body=body,
+            request_headers=[Header(name="Content-Type", value="text/xml")],
+        )
+        assert detect_trace_protocol(trace) == "xmlrpc"
+
+    def test_text_xml_without_method_call_is_rest(self):
+        """text/xml without <methodCall body stays REST."""
+        body = b"<data><value>42</value></data>"
+        trace = make_trace(
+            "t_0001",
+            "POST",
+            "https://api.example.com/xml",
+            200,
+            1000,
+            request_body=body,
+            request_headers=[Header(name="Content-Type", value="text/xml")],
+        )
+        assert detect_trace_protocol(trace) == "rest"
+
+    def test_jsonapi_by_response_body(self):
+        resp = json.dumps({
+            "data": {"type": "articles", "id": "1", "attributes": {"title": "Foo"}}
+        }).encode()
+        trace = make_trace(
+            "t_0001",
+            "GET",
+            "https://api.example.com/articles/1",
+            200,
+            1000,
+            response_body=resp,
+            response_headers=[
+                Header(name="Content-Type", value="application/json")
+            ],
+        )
+        assert detect_trace_protocol(trace) == "jsonapi"
+
+    def test_jsonapi_by_response_body_array(self):
+        resp = json.dumps({
+            "data": [
+                {"type": "articles", "id": "1", "attributes": {"title": "Foo"}},
+                {"type": "articles", "id": "2", "attributes": {"title": "Bar"}},
+            ]
+        }).encode()
+        trace = make_trace(
+            "t_0001",
+            "GET",
+            "https://api.example.com/articles",
+            200,
+            1000,
+            response_body=resp,
+            response_headers=[
+                Header(name="Content-Type", value="application/json")
+            ],
+        )
+        assert detect_trace_protocol(trace) == "jsonapi"
+
+    def test_jsonapi_body_without_type_is_rest(self):
+        """A response with 'data' but no 'type'+'id' objects stays REST."""
+        resp = json.dumps({"data": [{"name": "foo"}, {"name": "bar"}]}).encode()
+        trace = make_trace(
+            "t_0001",
+            "GET",
+            "https://api.example.com/data",
+            200,
+            1000,
+            response_body=resp,
+            response_headers=[
+                Header(name="Content-Type", value="application/json")
+            ],
+        )
+        assert detect_trace_protocol(trace) == "rest"
+
+    def test_odata_by_response_body(self):
+        resp = json.dumps({
+            "@odata.context": "https://api.example.com/$metadata#Products",
+            "value": [{"Name": "Widget", "Price": 9.99}],
+        }).encode()
+        trace = make_trace(
+            "t_0001",
+            "GET",
+            "https://api.example.com/Products",
+            200,
+            1000,
+            response_body=resp,
+            response_headers=[
+                Header(name="Content-Type", value="application/json")
+            ],
+        )
+        assert detect_trace_protocol(trace) == "odata"
+
+    def test_hal_by_response_body(self):
+        resp = json.dumps({
+            "_links": {"self": {"href": "/orders/123"}},
+            "total": 42.5,
+        }).encode()
+        trace = make_trace(
+            "t_0001",
+            "GET",
+            "https://api.example.com/orders/123",
+            200,
+            1000,
+            response_body=resp,
+            response_headers=[
+                Header(name="Content-Type", value="application/json")
+            ],
+        )
+        assert detect_trace_protocol(trace) == "hal"
+
+    def test_hal_body_without_self_is_rest(self):
+        """_links without 'self' key stays REST."""
+        resp = json.dumps({
+            "_links": {"next": {"href": "/orders?page=2"}},
+            "items": [],
+        }).encode()
+        trace = make_trace(
+            "t_0001",
+            "GET",
+            "https://api.example.com/orders",
+            200,
+            1000,
+            response_body=resp,
+            response_headers=[
+                Header(name="Content-Type", value="application/json")
+            ],
+        )
+        assert detect_trace_protocol(trace) == "rest"
+
+    def test_restli_by_response_body(self):
+        resp = json.dumps({
+            "data": {"some": "data"},
+            "included": [
+                {"$type": "com.linkedin.voyager.feed.Update", "id": "urn:li:activity:123"}
+            ],
+        }).encode()
+        trace = make_trace(
+            "t_0001",
+            "GET",
+            "https://www.linkedin.com/voyager/api/feed",
+            200,
+            1000,
+            response_body=resp,
+            response_headers=[
+                Header(name="Content-Type", value="application/json")
+            ],
+        )
+        assert detect_trace_protocol(trace) == "restli"
+
+    def test_restli_body_without_dollar_type_is_rest(self):
+        """'included' + 'data' without '$type' entities stays REST."""
+        resp = json.dumps({
+            "data": {"some": "data"},
+            "included": [{"id": "123", "name": "foo"}],
+        }).encode()
+        trace = make_trace(
+            "t_0001",
+            "GET",
+            "https://api.example.com/feed",
+            200,
+            1000,
+            response_body=resp,
+            response_headers=[
+                Header(name="Content-Type", value="application/json")
+            ],
+        )
+        assert detect_trace_protocol(trace) == "rest"
+
+    # ── Tier priority tests ─────────────────────────────────────────
+
+    def test_grpc_takes_priority_over_body_checks(self):
+        """gRPC content-type wins even with a JSON body that looks like GraphQL."""
+        body = json.dumps({"query": "query { users { id } }"}).encode()
+        trace = make_trace(
+            "t_0001",
+            "POST",
+            "https://api.example.com/service",
+            200,
+            1000,
+            request_body=body,
+            request_headers=[
+                Header(name="Content-Type", value="application/grpc+json")
+            ],
+        )
+        assert detect_trace_protocol(trace) == "grpc"
+
+    def test_header_detection_beats_url_pattern(self):
+        """SSE content-type wins even with /trpc/ in the URL."""
+        trace = make_trace(
+            "t_0001",
+            "GET",
+            "https://api.example.com/trpc/updates",
+            200,
+            1000,
+            response_headers=[
+                Header(name="Content-Type", value="text/event-stream")
+            ],
+        )
+        assert detect_trace_protocol(trace) == "sse"
+
 
 class TestDetectWsProtocol:
     def test_graphql_ws_by_protocol(self):

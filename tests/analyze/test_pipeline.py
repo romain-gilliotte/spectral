@@ -7,9 +7,24 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 
 from cli.commands.analyze.pipeline import build_spec
+from cli.commands.analyze.steps.types import AnalysisResult, BranchOutput
 from cli.commands.capture.types import CaptureBundle
+from cli.formats.capture_bundle import Header
 import cli.helpers.llm as llm
 from tests.conftest import make_trace
+
+
+def _get_rest_output(result: AnalysisResult) -> BranchOutput:
+    """Get the REST output from an AnalysisResult, or fail."""
+    for o in result.outputs:
+        if o.protocol == "rest":
+            return o
+    raise AssertionError("No REST output found in result.outputs")
+
+
+def _get_openapi(result: AnalysisResult) -> dict[str, Any]:
+    """Get the OpenAPI dict from an AnalysisResult, or fail."""
+    return _get_rest_output(result).artifact
 
 
 def _make_mock_create(
@@ -106,8 +121,7 @@ class TestBuildSpec:
             source_filename="test.zip",
         )
 
-        assert result.openapi is not None
-        openapi = result.openapi
+        openapi = _get_openapi(result)
         assert openapi["openapi"] == "3.1.0"
         assert openapi["info"]["title"] == "Test App API"
         assert len(openapi["paths"]) > 0
@@ -139,8 +153,7 @@ class TestBuildSpec:
 
         result = await build_spec(sample_bundle)
 
-        assert result.openapi is not None
-        openapi = result.openapi
+        openapi = _get_openapi(result)
         assert openapi["servers"][0]["url"] == "https://api.example.com"
         # CDN trace should not appear in the output
         assert len(openapi["paths"]) >= 1
@@ -154,8 +167,7 @@ class TestBuildSpec:
 
         result = await build_spec(sample_bundle)
 
-        assert result.openapi is not None
-        openapi = result.openapi
+        openapi = _get_openapi(result)
         # At least one endpoint should have security (sample traces have Authorization)
         has_security = False
         for path_ops in openapi["paths"].values():
@@ -174,8 +186,7 @@ class TestBuildSpec:
 
         result = await build_spec(sample_bundle)
 
-        assert result.openapi is not None
-        openapi = result.openapi
+        openapi = _get_openapi(result)
         assert "openapi" in openapi
         assert "info" in openapi
         assert "title" in openapi["info"]
@@ -183,3 +194,84 @@ class TestBuildSpec:
         assert "components" in openapi
         assert "securitySchemes" in openapi["components"]
         assert "servers" in openapi
+
+    @pytest.mark.asyncio
+    async def test_non_rest_traces_excluded(
+        self, sample_bundle: CaptureBundle
+    ) -> None:
+        """Non-REST protocols (SSE, JSON-RPC, etc.) should be excluded from OpenAPI."""
+        # Add SSE and JSON-RPC traces that match the base URL
+        sse_trace = make_trace(
+            "t_sse",
+            "GET",
+            "https://api.example.com/api/events",
+            200,
+            1004000,
+            response_headers=[
+                Header(name="Content-Type", value="text/event-stream")
+            ],
+        )
+        jsonrpc_trace = make_trace(
+            "t_rpc",
+            "POST",
+            "https://api.example.com/api/rpc",
+            200,
+            1005000,
+            request_body=json.dumps(
+                {"jsonrpc": "2.0", "method": "ping", "id": 1}
+            ).encode(),
+            request_headers=[
+                Header(name="Content-Type", value="application/json")
+            ],
+        )
+        sample_bundle.traces.extend([sse_trace, jsonrpc_trace])
+
+        progress_messages: list[str] = []
+        mock_client = AsyncMock()
+        mock_client.messages.create = _make_mock_create()
+        llm.init(client=mock_client, model="test-model")
+
+        result = await build_spec(
+            sample_bundle,
+            on_progress=progress_messages.append,
+        )
+
+        # OpenAPI should still be produced from the REST traces
+        assert any(o.protocol == "rest" for o in result.outputs)
+        # The skip step should have logged the excluded protocols
+        skip_msgs = [m for m in progress_messages if "Skipped" in m]
+        assert len(skip_msgs) == 1
+        assert "Server-Sent Events" in skip_msgs[0]
+        assert "JSON-RPC" in skip_msgs[0]
+
+    @pytest.mark.asyncio
+    async def test_grpc_and_binary_excluded_from_rest(
+        self, sample_bundle: CaptureBundle
+    ) -> None:
+        """gRPC and binary traces should not leak into the REST pipeline."""
+        grpc_trace = make_trace(
+            "t_grpc",
+            "POST",
+            "https://api.example.com/api/grpc.Service/Method",
+            200,
+            1004000,
+            request_headers=[
+                Header(name="Content-Type", value="application/grpc")
+            ],
+        )
+        sample_bundle.traces.append(grpc_trace)
+
+        progress_messages: list[str] = []
+        mock_client = AsyncMock()
+        mock_client.messages.create = _make_mock_create()
+        llm.init(client=mock_client, model="test-model")
+
+        result = await build_spec(
+            sample_bundle,
+            on_progress=progress_messages.append,
+        )
+
+        assert any(o.protocol == "rest" for o in result.outputs)
+        skip_msgs = [m for m in progress_messages if "Skipped" in m]
+        assert len(skip_msgs) == 1
+        assert "gRPC" in skip_msgs[0]

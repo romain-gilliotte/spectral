@@ -1,16 +1,15 @@
 """Orchestrator for the analysis pipeline.
 
-Coordinates the Step instances to build API specs from a capture bundle.
-Supports both REST (-> OpenAPI 3.1) and GraphQL (-> SDL) traces.
-Auth analysis runs in parallel with enrichment.
+Coordinates protocol branches to build API specs from a capture bundle.
+Each protocol (REST, GraphQL, ...) is encapsulated in a ProtocolBranch;
+the pipeline dispatches traces and runs branches in parallel.
+Auth analysis runs in parallel with branch execution.
 """
 
 from __future__ import annotations
 
 import asyncio
 from collections.abc import Callable
-from dataclasses import dataclass
-from typing import Any
 
 from cli.commands.analyze.correlator import correlate
 from cli.commands.analyze.protocol import detect_trace_protocol
@@ -18,50 +17,23 @@ from cli.commands.analyze.steps.analyze_auth import (
     AnalyzeAuthStep,
     detect_auth_mechanical,
 )
+from cli.commands.analyze.steps.base import ProtocolBranch
 from cli.commands.analyze.steps.detect_base_url import DetectBaseUrlStep
 from cli.commands.analyze.steps.extract_pairs import ExtractPairsStep
 from cli.commands.analyze.steps.filter_traces import FilterTracesStep
-from cli.commands.analyze.steps.graphql.assemble import GraphQLAssembleStep
-from cli.commands.analyze.steps.graphql.enrich import (
-    GraphQLEnrichContext,
-    GraphQLEnrichStep,
-)
-from cli.commands.analyze.steps.graphql.extraction import GraphQLExtractionStep
-from cli.commands.analyze.steps.graphql.types import GraphQLSchemaData
-from cli.commands.analyze.steps.rest.assemble import AssembleStep
-from cli.commands.analyze.steps.rest.enrich import EnrichEndpointsStep
-from cli.commands.analyze.steps.rest.extraction import (
-    MechanicalExtractionStep,
-    extract_rate_limit,
-    find_traces_for_group,
-    has_auth_header_or_cookie,
-)
-from cli.commands.analyze.steps.rest.group_endpoints import GroupEndpointsStep
-from cli.commands.analyze.steps.rest.strip_prefix import StripPrefixStep
-from cli.commands.analyze.steps.rest.types import (
-    EndpointSpec,
-    EnrichmentContext,
-    GroupedTraceData,
-    GroupsWithBaseUrl,
-    SpecComponents,
-)
+from cli.commands.analyze.steps.graphql.branch import GraphQLBranch
+from cli.commands.analyze.steps.other.skip import UnsupportedBranch
+from cli.commands.analyze.steps.rest.branch import RestBranch
 from cli.commands.analyze.steps.types import (
+    AnalysisResult,
     AuthInfo,
-    MethodUrlPair,
+    BranchContext,
     TracesWithBaseUrl,
 )
 from cli.commands.capture.types import CaptureBundle, Trace
 
-
-@dataclass
-class AnalysisResult:
-    """Result of the analysis pipeline, supporting both REST and GraphQL."""
-
-    openapi: dict[str, Any] | None = None
-    graphql_sdl: str | None = None
-    auth: AuthInfo | None = None
-    base_url: str = ""
-    auth_helper_script: str | None = None
+# Branch registry — add new protocols here.
+_BRANCHES: list[ProtocolBranch] = [RestBranch(), GraphQLBranch(), UnsupportedBranch()]
 
 
 async def build_spec(
@@ -72,9 +44,7 @@ async def build_spec(
 ) -> AnalysisResult:
     """Build API specs from a capture bundle.
 
-    Returns an AnalysisResult with:
-    - openapi: OpenAPI 3.1 dict (if REST traces found)
-    - graphql_sdl: GraphQL SDL string (if GraphQL traces found)
+    Returns an AnalysisResult with outputs for each detected protocol.
     """
 
     def progress(msg: str) -> None:
@@ -108,76 +78,28 @@ async def build_spec(
     )
     progress(f"  Kept {len(filtered_traces)}/{total_before} traces under {base_url}")
 
-    # Step 4: Split by protocol
-    rest_traces: list[Trace] = []
-    graphql_traces: list[Trace] = []
+    # Step 4: Split by protocol using branch registry
+    specific_branches = {b.protocol: b for b in _BRANCHES if not b.catch_all}
+    catch_all_branch = next((b for b in _BRANCHES if b.catch_all), None)
+    traces_by_protocol: dict[str, list[Trace]] = {}
+
     for t in filtered_traces:
         protocol = detect_trace_protocol(t)
-        if protocol == "graphql":
-            graphql_traces.append(t)
-        else:
-            rest_traces.append(t)
+        if protocol in specific_branches:
+            traces_by_protocol.setdefault(protocol, []).append(t)
+        elif catch_all_branch is not None:
+            traces_by_protocol.setdefault(catch_all_branch.protocol, []).append(t)
 
-    has_rest = len(rest_traces) > 0
-    has_graphql = len(graphql_traces) > 0
+    # Progress: report counts for each specific protocol that has traces
+    active_specific = [
+        f"{specific_branches[p].label}: {len(traces_by_protocol[p])}"
+        for p in sorted(specific_branches)
+        if p in traces_by_protocol
+    ]
+    if active_specific:
+        progress(f"  {', '.join(active_specific)}")
 
-    if has_rest and has_graphql:
-        progress(f"  REST traces: {len(rest_traces)}, GraphQL traces: {len(graphql_traces)}")
-    elif has_graphql:
-        progress(f"  GraphQL traces: {len(graphql_traces)} (no REST)")
-
-    # Phase A: Mechanical extraction (can run in parallel for REST and GraphQL)
-    rest_endpoints: list[EndpointSpec] | None = None
-    graphql_schema: GraphQLSchemaData | None = None
-
-    if has_rest:
-        rest_endpoints, _ = await _rest_extract(
-            rest_traces, base_url, progress
-        )
-
-    if has_graphql:
-        progress("Extracting GraphQL schema from traces...")
-        gql_step = GraphQLExtractionStep()
-        graphql_schema = await gql_step.run(graphql_traces)
-        type_count = len(graphql_schema.registry.types)
-        enum_count = len(graphql_schema.registry.enums)
-        progress(f"  Found {type_count} types, {enum_count} enums")
-
-    # Phase B: Enrichment + Auth (parallel)
-    async def _rest_enrich() -> list[EndpointSpec] | None:
-        if not has_rest or rest_endpoints is None or skip_enrich:
-            return None
-        enrich_step = EnrichEndpointsStep()
-        try:
-            return await enrich_step.run(
-                EnrichmentContext(
-                    endpoints=rest_endpoints,
-                    traces=filtered_traces,
-                    correlations=correlations,
-                    app_name=app_name,
-                    base_url=base_url,
-                )
-            )
-        except Exception:
-            return None
-
-    async def _graphql_enrich() -> GraphQLSchemaData | None:
-        if not has_graphql or graphql_schema is None or skip_enrich:
-            return None
-        enrich_step = GraphQLEnrichStep()
-        try:
-            progress("Enriching GraphQL schema (LLM)...")
-            return await enrich_step.run(
-                GraphQLEnrichContext(
-                    schema_data=graphql_schema,
-                    traces=graphql_traces,
-                    correlations=correlations,
-                    app_name=app_name,
-                )
-            )
-        except Exception:
-            return None
-
+    # Phase B: Auth + branches in parallel
     async def _auth() -> AuthInfo:
         auth_step = AnalyzeAuthStep()
         try:
@@ -185,11 +107,32 @@ async def build_spec(
         except Exception:
             return detect_auth_mechanical(all_traces)
 
-    rest_enriched, gql_enriched, auth = await asyncio.gather(
-        _rest_enrich(), _graphql_enrich(), _auth()
+    auth_task = asyncio.create_task(_auth())
+
+    ctx = BranchContext(
+        base_url=base_url,
+        app_name=app_name,
+        source_filename=source_filename,
+        correlations=correlations,
+        all_filtered_traces=filtered_traces,
+        skip_enrich=skip_enrich,
+        on_progress=progress,
+        auth_task=auth_task,
     )
 
-    # Phase B2: Generate auth helper script (if interactive auth detected)
+    # Launch all branches with traces in parallel
+    branch_coros = [
+        branch.run(traces_by_protocol[branch.protocol], ctx)
+        for branch in _BRANCHES
+        if branch.protocol in traces_by_protocol
+    ]
+    branch_results = await asyncio.gather(*branch_coros)
+    outputs = [r for r in branch_results if r is not None]
+
+    # Resolve auth (may already be done if RestBranch awaited it)
+    auth = await auth_task
+
+    # Generate auth helper script (if interactive auth detected)
     auth_helper_script: str | None = None
     needs_script = (
         auth.type in ("bearer_token", "cookie")
@@ -213,83 +156,9 @@ async def build_spec(
         except Exception:
             progress("  Auth helper generation failed — skipping")
 
-    # Phase C: Assembly
-    openapi: dict[str, Any] | None = None
-    graphql_sdl: str | None = None
-
-    if has_rest and rest_endpoints is not None:
-        final_endpoints = rest_enriched if rest_enriched is not None else rest_endpoints
-        assemble_step = AssembleStep(traces=rest_traces)
-        openapi = await assemble_step.run(
-            SpecComponents(
-                app_name=app_name,
-                source_filename=source_filename,
-                base_url=base_url,
-                endpoints=final_endpoints,
-                auth=auth,
-            )
-        )
-
-    if has_graphql:
-        final_schema = gql_enriched if gql_enriched is not None else graphql_schema
-        if final_schema is not None:
-            progress("Assembling GraphQL SDL...")
-            gql_assemble = GraphQLAssembleStep()
-            graphql_sdl = await gql_assemble.run(final_schema)
-
     return AnalysisResult(
-        openapi=openapi,
-        graphql_sdl=graphql_sdl,
+        outputs=outputs,
         auth=auth,
         base_url=base_url,
         auth_helper_script=auth_helper_script,
     )
-
-
-async def _rest_extract(
-    rest_traces: list[Trace],
-    base_url: str,
-    on_progress: Callable[[str], None],
-) -> tuple[list[EndpointSpec], list[Any]]:
-    """Run REST extraction pipeline up to (but not including) enrichment."""
-    # Group endpoints (LLM)
-    on_progress("Grouping URLs into endpoints (LLM)...")
-    filtered_pairs = [
-        MethodUrlPair(t.meta.request.method.upper(), t.meta.request.url)
-        for t in rest_traces
-    ]
-    group_step = GroupEndpointsStep()
-    endpoint_groups = await group_step.run(filtered_pairs)
-
-    # Strip prefix
-    strip_step = StripPrefixStep()
-    endpoint_groups = await strip_step.run(
-        GroupsWithBaseUrl(groups=endpoint_groups, base_url=base_url)
-    )
-
-    # Mechanical extraction
-    on_progress(f"Extracting {len(endpoint_groups)} endpoints...")
-    mech_step = MechanicalExtractionStep()
-    endpoints = await mech_step.run(
-        GroupedTraceData(
-            groups=endpoint_groups,
-            traces=rest_traces,
-        )
-    )
-
-    # Detect auth and rate_limit per endpoint
-    _detect_auth_and_rate_limit(endpoints, endpoint_groups, rest_traces)
-
-    return endpoints, endpoint_groups
-
-
-def _detect_auth_and_rate_limit(
-    endpoints: list[EndpointSpec],
-    endpoint_groups: list[Any],
-    traces: list[Trace],
-) -> None:
-    """Detect requires_auth and rate_limit for each endpoint from traces."""
-    for ep, group in zip(endpoints, endpoint_groups):
-        group_traces = find_traces_for_group(group, traces)
-        ep.requires_auth = any(has_auth_header_or_cookie(t) for t in group_traces)
-        ep.rate_limit = extract_rate_limit(group_traces)

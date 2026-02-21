@@ -1,9 +1,12 @@
-"""Base class for analysis pipeline steps."""
+"""Base classes for analysis pipeline steps and protocol branches."""
 
 from __future__ import annotations
 
-from abc import abstractmethod
+from abc import ABC, abstractmethod
 from typing import Any, Generic, TypeVar
+
+from cli.commands.analyze.steps.types import BranchContext, BranchOutput
+from cli.commands.capture.types import Trace
 
 In = TypeVar("In")
 Out = TypeVar("Out")
@@ -43,3 +46,36 @@ class Step(Generic[In, Out]):
         output = await self._execute(input)
         self._validate_output(output)
         return output
+
+
+class ProtocolBranch(ABC):
+    """Abstract base for a protocol-specific analysis branch.
+
+    Each protocol (REST, GraphQL, ...) implements this class.
+    The pipeline orchestrates branches generically without knowing
+    protocol-specific details.
+
+    Set ``catch_all = True`` for a branch that receives all traces
+    not claimed by any specific-protocol branch (e.g. unsupported
+    protocol logging).
+    """
+
+    protocol: str
+    file_extension: str
+    label: str
+    catch_all: bool = False
+
+    def __init_subclass__(cls, **kwargs: Any) -> None:
+        super().__init_subclass__(**kwargs)
+        for attr in ("protocol", "file_extension", "label"):
+            if not hasattr(cls, attr):
+                raise TypeError(
+                    f"{cls.__name__} must define class attribute '{attr}'"
+                )
+
+    @abstractmethod
+    async def run(
+        self, traces: list[Trace], ctx: BranchContext
+    ) -> BranchOutput | None:
+        """Run the full branch pipeline and return an output, or None on failure."""
+        ...

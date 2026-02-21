@@ -7,7 +7,10 @@ types will be in ``steps.graphql.types``.
 
 from __future__ import annotations
 
+import asyncio
+from collections.abc import Callable
 from dataclasses import dataclass, field
+from typing import Any
 
 from cli.commands.capture.types import Context, Trace, WsMessage
 
@@ -80,3 +83,43 @@ class TracesWithBaseUrl:
 
     traces: list[Trace]
     base_url: str
+
+
+# -- Branch abstraction (protocol-agnostic pipeline) -------------------------
+
+
+@dataclass
+class BranchContext:
+    """Shared context passed to each protocol branch."""
+
+    base_url: str
+    app_name: str
+    source_filename: str
+    correlations: list[Correlation]
+    all_filtered_traces: list[Trace]
+    skip_enrich: bool
+    on_progress: Callable[[str], None]
+    auth_task: asyncio.Task[AuthInfo]
+
+
+@dataclass
+class BranchOutput:
+    """Result produced by a single protocol branch."""
+
+    protocol: str
+    artifact: Any
+    file_extension: str
+    label: str
+
+
+# -- Pipeline result ----------------------------------------------------------
+
+
+@dataclass
+class AnalysisResult:
+    """Result of the analysis pipeline, supporting any combination of protocols."""
+
+    outputs: list[BranchOutput] = field(default_factory=lambda: list[BranchOutput]())
+    auth: AuthInfo | None = None
+    base_url: str = ""
+    auth_helper_script: str | None = None
