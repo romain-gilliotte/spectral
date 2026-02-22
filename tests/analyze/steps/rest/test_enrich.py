@@ -1,17 +1,112 @@
 """Tests for REST enrichment application."""
 
 from typing import Any
+from unittest.mock import AsyncMock, patch
+
+import pytest
 
 from cli.commands.analyze.steps.rest.enrich import (
+    _MAX_RESPONSE_SCHEMA_CHARS as _MAX_RESPONSE_SCHEMA_CHARS,  # pyright: ignore[reportPrivateUsage]
+    _MAX_SUMMARY_CHARS as _MAX_SUMMARY_CHARS,  # pyright: ignore[reportPrivateUsage]
+    EnrichEndpointsStep,
     _apply_enrichment as _apply_enrichment,  # pyright: ignore[reportPrivateUsage]
     _build_endpoint_summary as _build_endpoint_summary,  # pyright: ignore[reportPrivateUsage]
     _strip_non_leaf_observed as _strip_non_leaf_observed,  # pyright: ignore[reportPrivateUsage]
 )
 from cli.commands.analyze.steps.rest.types import (
     EndpointSpec,
+    EnrichmentContext,
     RequestSpec,
     ResponseSpec,
 )
+
+
+class TestEnrichSizeGuard:
+    @pytest.mark.asyncio
+    async def test_skips_oversized_endpoint(self):
+        """Endpoints whose summary exceeds _MAX_SUMMARY_CHARS skip the LLM call."""
+        # Build an endpoint with a huge request body schema (many properties).
+        # Use request body rather than response schema because response schemas
+        # are individually trimmed before the overall size check.
+        big_props = {
+            f"field_{i}": {
+                "type": "string",
+                "observed": [f"value_{i}_{'x' * 200}"],
+            }
+            for i in range(2000)
+        }
+        ep = EndpointSpec(
+            id="big",
+            path="/big",
+            method="POST",
+            request=RequestSpec(
+                body_schema={"type": "object", "properties": big_props},
+            ),
+        )
+
+        ctx = EnrichmentContext(
+            endpoints=[ep],
+            traces=[],
+            correlations=[],
+            app_name="test",
+            base_url="https://api.example.com",
+        )
+
+        mock_ask = AsyncMock(return_value='{"description": "should not be called"}')
+        with patch("cli.commands.analyze.steps.rest.enrich.llm") as mock_llm:
+            mock_llm.ask = mock_ask
+            mock_llm.extract_json.return_value = {}
+            mock_llm.compact_json = __import__(
+                "cli.helpers.llm", fromlist=["compact_json"]
+            ).compact_json
+            step = EnrichEndpointsStep()
+            result = await step.run(ctx)
+
+        mock_ask.assert_not_called()
+        assert result[0].description is None
+
+    @pytest.mark.asyncio
+    async def test_enriches_normal_endpoint(self):
+        """Normal-sized endpoints are enriched as usual."""
+        ep = EndpointSpec(
+            id="small",
+            path="/small",
+            method="GET",
+            responses=[
+                ResponseSpec(
+                    status=200,
+                    schema_={
+                        "type": "object",
+                        "properties": {
+                            "name": {"type": "string", "observed": ["Alice"]},
+                        },
+                    },
+                ),
+            ],
+        )
+
+        ctx = EnrichmentContext(
+            endpoints=[ep],
+            traces=[],
+            correlations=[],
+            app_name="test",
+            base_url="https://api.example.com",
+        )
+
+        mock_ask = AsyncMock(return_value='{"description": "Returns a user"}')
+        with patch("cli.commands.analyze.steps.rest.enrich.llm") as mock_llm:
+            mock_llm.ask = mock_ask
+            mock_llm.extract_json = __import__(
+                "cli.helpers.llm", fromlist=["extract_json"]
+            ).extract_json
+            mock_llm.compact_json = __import__(
+                "cli.helpers.llm", fromlist=["compact_json"]
+            ).compact_json
+            step = EnrichEndpointsStep()
+            result = await step.run(ctx)
+
+        mock_ask.assert_called_once()
+        assert result[0].description == "Returns a user"
 
 
 class TestApplyEnrichment:
@@ -576,3 +671,56 @@ class TestApplyDescriptionsAdditionalProperties:
         assert resp_schema is not None
         ap = resp_schema["properties"]["balances"]["additionalProperties"]
         assert ap["properties"]["total"]["description"] == "Total balance in cents"
+
+
+class TestResponseSchemaTrimming:
+    def test_large_response_schema_trimmed(self):
+        """Response schema above _MAX_RESPONSE_SCHEMA_CHARS is excluded from summary."""
+        big_props = {
+            f"field_{i}": {
+                "type": "string",
+                "observed": [f"value_{i}_{'x' * 100}"],
+            }
+            for i in range(200)
+        }
+        ep = EndpointSpec(
+            id="big",
+            path="/big",
+            method="POST",
+            responses=[
+                ResponseSpec(
+                    status=200,
+                    schema_={"type": "object", "properties": big_props},
+                ),
+            ],
+        )
+        summary = _build_endpoint_summary(ep, [], [])
+        # Response entry should exist but without a schema key
+        assert len(summary["responses"]) == 1
+        assert summary["responses"][0]["status"] == 200
+        assert "schema" not in summary["responses"][0]
+
+    def test_small_response_schema_kept(self):
+        """Response schema below _MAX_RESPONSE_SCHEMA_CHARS stays in summary."""
+        ep = EndpointSpec(
+            id="small",
+            path="/small",
+            method="GET",
+            responses=[
+                ResponseSpec(
+                    status=200,
+                    schema_={
+                        "type": "object",
+                        "properties": {
+                            "name": {"type": "string", "observed": ["Alice"]},
+                        },
+                    },
+                ),
+            ],
+        )
+        summary = _build_endpoint_summary(ep, [], [])
+        assert len(summary["responses"]) == 1
+        assert "schema" in summary["responses"][0]
+        assert summary["responses"][0]["schema"]["properties"]["name"]["observed"] == [
+            "Alice"
+        ]

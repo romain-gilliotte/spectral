@@ -18,6 +18,18 @@ from cli.helpers.console import console
 import cli.helpers.llm as llm
 from cli.helpers.llm import compact_json
 
+# A JSON char is roughly 1 token per 3–4 characters.  The LLM must produce a
+# description for every leaf property, so large schemas cause output truncation
+# even before hitting the input limit.  40k chars (~10k input tokens) lets most
+# endpoints through while skipping monsters that would truncate anyway.
+_MAX_SUMMARY_CHARS = 40_000
+
+# Individual response schemas above this size are dropped from the enrichment
+# prompt.  Response schemas are less critical than request params/body — callers
+# need to know how to *call* the API, and can figure out the response shape
+# themselves.  5 000 chars ≈ 1.2k tokens, generous for simple responses.
+_MAX_RESPONSE_SCHEMA_CHARS = 5_000
+
 
 class EnrichEndpointsStep(Step[EnrichmentContext, list[EndpointSpec]]):
     """Parallel per-endpoint LLM calls to enrich each endpoint with business
@@ -30,11 +42,19 @@ class EnrichEndpointsStep(Step[EnrichmentContext, list[EndpointSpec]]):
     async def _execute(self, input: EnrichmentContext) -> list[EndpointSpec]:
         async def _enrich_one(ep: EndpointSpec) -> None:
             summary = _build_endpoint_summary(ep, input.traces, input.correlations)
+            summary_json = compact_json(summary)
+            if len(summary_json) > _MAX_SUMMARY_CHARS:
+                est_tokens = len(summary_json) // 4
+                console.print(
+                    f"  [yellow]Skipping enrichment for {ep.method} {ep.path}: "
+                    f"summary too large ({len(summary_json):,} chars, ~{est_tokens:,} tokens)[/yellow]"
+                )
+                return
             prompt = f"""You are analyzing a single API endpoint discovered from "{input.app_name}" ({input.base_url}).
 
 Below is the endpoint's mechanical data as JSON Schema. Nested properties carry an "observed" array with sample values seen in real traffic — use these to understand business meaning.
 
-{compact_json(summary)}
+{summary_json}
 
 Provide a JSON response with these keys:
 - "description": concise description of what this endpoint does in business terms (this becomes the OpenAPI summary)
@@ -42,7 +62,7 @@ Provide a JSON response with these keys:
   - "path_parameters": {{param_name: "description", ...}} (omit if no path parameters)
   - "query_parameters": {{param_name: "description", ...}} (omit if no query parameters)
   - "request_body": object mirroring the request body schema structure (omit if no request body)
-  - "responses": {{status_code_string: object mirroring the response schema structure}} (omit if no response schemas)
+  - "responses": {{status_code_string: object mirroring the response schema structure}} (omit if no response schemas; response schemas may be omitted for large endpoints — skip field_descriptions.responses for those statuses)
   Rules for field_descriptions structure:
   - Leaf values are always description strings.
   - Nested objects mirror the nesting: {{"address": {{"city": "...", "zip": "..."}}}}
@@ -54,7 +74,7 @@ Provide a JSON response with these keys:
 Respond in compact JSON (no indentation)."""
 
             try:
-                text = await llm.ask(prompt, max_tokens=2048, label=f"enrich_{ep.id}")
+                text = await llm.ask(prompt, max_tokens=4096, label=f"enrich_{ep.id}")
                 data = llm.extract_json(text)
 
                 if isinstance(data, dict):
@@ -154,7 +174,16 @@ def _build_endpoint_summary(
             if resp.content_type:
                 resp_info["content_type"] = resp.content_type
             if resp.schema_:
-                resp_info["schema"] = _strip_non_leaf_observed(resp.schema_)
+                stripped = _strip_non_leaf_observed(resp.schema_)
+                serialized = compact_json(stripped)
+                if len(serialized) <= _MAX_RESPONSE_SCHEMA_CHARS:
+                    resp_info["schema"] = stripped
+                else:
+                    console.print(
+                        f"  [yellow]Trimming response {resp.status} schema from "
+                        f"enrichment for {ep.method} {ep.path} "
+                        f"({len(serialized):,} chars)[/yellow]"
+                    )
             responses_list.append(resp_info)
         summary["responses"] = responses_list
 
