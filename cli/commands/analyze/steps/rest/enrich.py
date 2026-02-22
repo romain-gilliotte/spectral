@@ -4,15 +4,14 @@ from __future__ import annotations
 
 import asyncio
 from typing import Any, TypeGuard
-from urllib.parse import urlparse
 
 from cli.commands.analyze.steps.base import Step
+from cli.commands.analyze.steps.rest.extraction import match_traces_by_pattern
 from cli.commands.analyze.steps.rest.types import (
     EndpointSpec,
     EnrichmentContext,
 )
 from cli.commands.analyze.steps.types import Correlation
-from cli.commands.analyze.utils import pattern_to_regex
 from cli.commands.capture.types import Trace
 from cli.helpers.console import console
 import cli.helpers.llm as llm
@@ -192,15 +191,7 @@ def _build_endpoint_summary(
 
 def _find_endpoint_traces(ep: EndpointSpec, traces: list[Trace]) -> list[Trace]:
     """Find traces that match this endpoint's method and path pattern."""
-    pattern_re = pattern_to_regex(ep.path)
-    matched: list[Trace] = []
-    for t in traces:
-        if t.meta.request.method.upper() != ep.method:
-            continue
-        parsed = urlparse(t.meta.request.url)
-        if pattern_re.match(parsed.path):
-            matched.append(t)
-    return matched
+    return match_traces_by_pattern(ep.method, ep.path, traces)
 
 
 def _is_json_dict(val: object) -> TypeGuard[dict[str, Any]]:

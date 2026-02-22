@@ -14,30 +14,54 @@ from typing import Any
 from urllib.parse import parse_qs, urlparse
 
 from cli.commands.capture.types import Trace
+import cli.helpers.llm as llm
 
-_DYNAMIC_KEY_PATTERNS: list[tuple[str, re.Pattern[str]]] = [
-    ("date", re.compile(r"^\d{4}-\d{2}-\d{2}")),
-    ("year-month", re.compile(r"^\d{4}-\d{2}$")),
-    ("uuid", re.compile(r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$", re.I)),
-    ("year", re.compile(r"^(?:19|20)\d{2}$")),
-    ("numeric-id", re.compile(r"^\d+$")),
+# (name, regex, min_keys) — high-confidence patterns (uuid, hex) need only 1 key;
+# ambiguous patterns (date, year, numeric) need 3 to avoid false positives.
+_DYNAMIC_KEY_PATTERNS: list[tuple[str, re.Pattern[str], int]] = [
+    ("date", re.compile(r"^\d{4}-\d{2}-\d{2}"), 3),
+    ("year-month", re.compile(r"^\d{4}-\d{2}$"), 3),
+    ("uuid", re.compile(r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$", re.I), 1),
+    ("prefixed-uuid", re.compile(r"^.+-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$", re.I), 1),
+    ("year", re.compile(r"^(?:19|20)\d{2}$"), 3),
+    ("numeric-id", re.compile(r"^\d+$"), 3),
+    ("hex-id", re.compile(r"^[0-9a-f]{20,}$", re.I), 1),
 ]
 
-_MIN_DYNAMIC_KEYS = 3
+_MIN_STRUCTURAL_KEYS = 5
 
 
 def _classify_key_pattern(keys: list[str]) -> str | None:
     """Return the pattern name if ALL *keys* match a single dynamic pattern.
 
-    Requires at least ``_MIN_DYNAMIC_KEYS`` keys.  Returns ``None`` when no
-    pattern matches every key or when the key count is too low.
+    Each pattern carries its own minimum key count.  High-confidence patterns
+    (UUID, hex hash) trigger with a single key; ambiguous patterns (date,
+    numeric) require at least 3.  Returns ``None`` when no pattern matches.
     """
-    if len(keys) < _MIN_DYNAMIC_KEYS:
-        return None
-    for name, regex in _DYNAMIC_KEY_PATTERNS:
-        if all(regex.search(k) for k in keys):
+    for name, regex, min_keys in _DYNAMIC_KEY_PATTERNS:
+        if len(keys) >= min_keys and all(regex.search(k) for k in keys):
             return name
     return None
+
+
+def _schemas_structurally_similar(value_dicts: list[dict[str, Any]]) -> bool:
+    """Return True when all *value_dicts* are objects with >50% property overlap.
+
+    Each element must be a ``dict`` with at least one key.  Overlap is measured
+    via the Jaccard index: ``|intersection| / |union|`` of the property-name
+    sets across all dicts.
+    """
+    if not value_dicts:
+        return False
+    sets = [set(d.keys()) for d in value_dicts]
+    intersection = sets[0]
+    union = sets[0]
+    for s in sets[1:]:
+        intersection = intersection & s
+        union = union | s
+    if not union:
+        return False
+    return len(intersection) / len(union) > 0.5
 
 
 def _infer_type(value: Any) -> str:
@@ -179,7 +203,51 @@ def _infer_object_schema(samples: list[dict[str, Any]]) -> dict[str, Any]:
     for key, values in all_keys.items():
         properties[key] = _infer_property(values)
 
-    return {"type": "object", "properties": properties}
+    schema: dict[str, Any] = {"type": "object", "properties": properties}
+
+    if pattern is None:
+        candidate = _detect_map_candidate(all_keys)
+        if candidate is not None:
+            schema["x-map-candidate"] = candidate
+
+    return schema
+
+
+def _detect_map_candidate(
+    all_keys: dict[str, list[Any]],
+) -> dict[str, Any] | None:
+    """Detect a structural map candidate when regex-based detection missed.
+
+    Returns an ``x-map-candidate`` annotation dict when the object has
+    ``_MIN_STRUCTURAL_KEYS`` or more keys whose non-null values are all
+    dicts with >50% property overlap.  Returns ``None`` otherwise.
+    """
+    keys = list(all_keys.keys())
+    if len(keys) < _MIN_STRUCTURAL_KEYS:
+        return None
+
+    value_dicts: list[dict[str, Any]] = []
+    for vals in all_keys.values():
+        non_null: list[Any] = [v for v in vals if v is not None]
+        if not non_null or not all(isinstance(v, dict) and v for v in non_null):  # pyright: ignore[reportUnknownArgumentType]
+            return None
+        value_dicts.extend(v for v in non_null if isinstance(v, dict))  # pyright: ignore[reportUnknownArgumentType]
+
+    if not value_dicts or not _schemas_structurally_similar(value_dicts):
+        return None
+
+    sets = [set(d.keys()) for d in value_dicts]
+    intersection = sets[0]
+    union = sets[0]
+    for s in sets[1:]:
+        intersection = intersection & s
+        union = union | s
+
+    return {
+        "keys": keys[:10],
+        "shared_properties": sorted(intersection),
+        "extra_properties": sorted(union - intersection),
+    }
 
 
 def _infer_property(values: list[Any]) -> dict[str, Any]:
@@ -343,3 +411,138 @@ def infer_query_schema(traces: list[Trace]) -> dict[str, Any] | None:
         properties[name] = prop
 
     return {"type": "object", "properties": properties}
+
+
+# ---------------------------------------------------------------------------
+# LLM-based map candidate resolution
+# ---------------------------------------------------------------------------
+
+
+def _collect_map_candidates(
+    schema: dict[str, Any], path: str = ""
+) -> list[tuple[str, dict[str, Any], dict[str, Any]]]:
+    """Walk *schema* recursively, returning ``(path, parent, candidate)`` tuples.
+
+    Each tuple contains the dotted path to the annotated node, a reference to
+    the node itself (so it can be mutated in-place), and the ``x-map-candidate``
+    dict.
+    """
+    results: list[tuple[str, dict[str, Any], dict[str, Any]]] = []
+    candidate: dict[str, Any] | None = schema.get("x-map-candidate")  # pyright: ignore[reportAssignmentType]
+    if isinstance(candidate, dict):
+        results.append((path or "(root)", schema, candidate))
+
+    # Recurse into properties
+    for key, prop in schema.get("properties", {}).items():
+        if isinstance(prop, dict):
+            child_path = f"{path}.{key}" if path else key
+            results.extend(_collect_map_candidates(prop, child_path))  # pyright: ignore[reportUnknownArgumentType]
+
+    # Recurse into additionalProperties
+    addl: dict[str, Any] | None = schema.get("additionalProperties")  # pyright: ignore[reportAssignmentType]
+    if isinstance(addl, dict):
+        child_path = f"{path}[*]" if path else "[*]"
+        results.extend(_collect_map_candidates(addl, child_path))
+
+    # Recurse into array items
+    items: dict[str, Any] | None = schema.get("items")  # pyright: ignore[reportAssignmentType]
+    if isinstance(items, dict):
+        child_path = f"{path}[]" if path else "[]"
+        results.extend(_collect_map_candidates(items, child_path))
+
+    return results
+
+
+async def resolve_map_candidates(schemas: list[dict[str, Any]]) -> None:
+    """Resolve ``x-map-candidate`` annotations via one batched LLM call.
+
+    Walks all *schemas* (mutating them in-place), collects every
+    ``x-map-candidate`` annotation, and asks the LLM whether each group of
+    keys represents a dynamic map or fixed properties.  Confirmed maps are
+    collapsed to ``additionalProperties``; denied candidates keep their
+    ``properties`` unchanged.
+
+    Skips the LLM call entirely when no candidates are found.
+    """
+    all_candidates: list[tuple[str, dict[str, Any], dict[str, Any]]] = []
+    for schema in schemas:
+        all_candidates.extend(_collect_map_candidates(schema))
+
+    if not all_candidates:
+        return
+
+    # Build a compact prompt with one group per candidate.
+    groups: list[str] = []
+    for i, (_path, _node, candidate) in enumerate(all_candidates, 1):
+        keys_str = ", ".join(f'"{k}"' for k in candidate["keys"])
+        shared_str = ", ".join(candidate["shared_properties"])
+        extra_str = ", ".join(candidate["extra_properties"]) or "(none)"
+        groups.append(
+            f"Group {i}:\n"
+            f"  keys: [{keys_str}]\n"
+            f"  shared properties: [{shared_str}]\n"
+            f"  extra properties: [{extra_str}]"
+        )
+
+    prompt = (
+        "For each group below, determine whether the keys are dynamic IDs "
+        "(a map/dictionary where each key is a unique identifier) or fixed "
+        "property names.\n\n"
+        + "\n\n".join(groups)
+        + "\n\nRespond as a JSON array: "
+        '[{"group": 1, "is_map": true}, ...]'
+    )
+
+    raw = await llm.ask(prompt, label="resolve-map-candidates")
+    decisions: list[dict[str, Any]] = llm.extract_json(raw)  # type: ignore[assignment]
+
+    decision_map: dict[int, bool] = {}
+    for d in decisions:
+        gnum = d.get("group")
+        is_map = d.get("is_map")
+        if isinstance(gnum, int) and isinstance(is_map, bool):
+            decision_map[gnum] = is_map
+
+    for i, (_path, node, candidate) in enumerate(all_candidates, 1):
+        is_map = decision_map.get(i)
+        if is_map is True:
+            # Collapse properties into additionalProperties.
+            props = node.get("properties", {})
+            all_values: list[Any] = []
+            for prop_schema in props.values():
+                all_values.append(prop_schema)
+            value_schema = _merge_property_schemas(all_values) if all_values else {}
+            node.pop("properties", None)
+            node["additionalProperties"] = value_schema
+            node["x-key-pattern"] = "dynamic"
+            node["x-key-examples"] = candidate["keys"][:5]
+        # Always remove the temporary annotation.
+        node.pop("x-map-candidate", None)
+
+
+def _merge_property_schemas(schemas: list[dict[str, Any]]) -> dict[str, Any]:
+    """Merge multiple property schemas (from different map values) into one.
+
+    Collects all nested ``properties`` into a union and delegates to
+    ``_infer_property`` for each.  Falls back to the first schema if the
+    inputs are not objects.
+    """
+    # If any schema has "properties", merge them as objects.
+    all_have_props = all("properties" in s for s in schemas)
+    if all_have_props:
+        merged_keys: dict[str, list[Any]] = defaultdict(list)
+        for s in schemas:
+            for key, prop in s.get("properties", {}).items():
+                merged_keys[key].append(prop)
+        merged_props: dict[str, Any] = {}
+        for key, prop_list in merged_keys.items():
+            # Use the first schema as representative (they share structure).
+            merged_props[key] = prop_list[0]
+        result: dict[str, Any] = {"type": "object", "properties": merged_props}
+        # Carry over observed if present on any input.
+        for s in schemas:
+            if "observed" in s:
+                result["observed"] = s["observed"]
+                break
+        return result
+    return schemas[0] if schemas else {}

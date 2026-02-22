@@ -36,6 +36,13 @@ def load_bundle_bytes(data: bytes) -> CaptureBundle:
         return _load_from_zipfile(zf)
 
 
+def _read_zip_entry(zf: zipfile.ZipFile, path: str) -> bytes:
+    """Read a binary entry from *zf*, returning ``b""`` if it does not exist."""
+    if path in zf.namelist():
+        return zf.read(path)
+    return b""
+
+
 def _load_from_zipfile(zf: zipfile.ZipFile) -> CaptureBundle:
     """Load a capture bundle from an open ZipFile."""
     manifest = CaptureManifest.model_validate_json(zf.read("manifest.json"))
@@ -47,16 +54,16 @@ def _load_from_zipfile(zf: zipfile.ZipFile) -> CaptureBundle:
     )
     for tf in trace_files:
         trace_meta = TraceMeta.model_validate_json(zf.read(tf))
-        req_body = b""
-        resp_body = b""
-        if trace_meta.request.body_file:
-            req_path = f"traces/{trace_meta.request.body_file}"
-            if req_path in zf.namelist():
-                req_body = zf.read(req_path)
-        if trace_meta.response.body_file:
-            resp_path = f"traces/{trace_meta.response.body_file}"
-            if resp_path in zf.namelist():
-                resp_body = zf.read(resp_path)
+        req_body = (
+            _read_zip_entry(zf, f"traces/{trace_meta.request.body_file}")
+            if trace_meta.request.body_file
+            else b""
+        )
+        resp_body = (
+            _read_zip_entry(zf, f"traces/{trace_meta.response.body_file}")
+            if trace_meta.response.body_file
+            else b""
+        )
         traces.append(
             Trace(meta=trace_meta, request_body=req_body, response_body=resp_body)
         )
@@ -80,11 +87,11 @@ def _load_from_zipfile(zf: zipfile.ZipFile) -> CaptureBundle:
         )
         for mf in msg_files:
             msg_meta = WsMessageMeta.model_validate_json(zf.read(mf))
-            payload = b""
-            if msg_meta.payload_file:
-                payload_path = f"ws/{msg_meta.payload_file}"
-                if payload_path in zf.namelist():
-                    payload = zf.read(payload_path)
+            payload = (
+                _read_zip_entry(zf, f"ws/{msg_meta.payload_file}")
+                if msg_meta.payload_file
+                else b""
+            )
             messages.append(WsMessage(meta=msg_meta, payload=payload))
         ws_connections.append(WsConnection(meta=ws_meta, messages=messages))
 

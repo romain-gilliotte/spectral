@@ -125,18 +125,14 @@ async def ask(
         messages=[{"role": "user", "content": prompt}],
     )
 
-    _check_truncation(response, max_tokens=max_tokens, label=label)
-
-    parts: list[str] = []
-    for block in response.content:
-        if getattr(block, "type", None) == "text":
-            parts.append(block.text)
-    text = "\n".join(parts)
+    text = _extract_text(response.content)
 
     _save_debug(
         label or "call",
         [{"role": "user", "content": prompt}, {"role": "assistant", "content": text}],
     )
+
+    _check_truncation(response, max_tokens=max_tokens, label=label)
     return text
 
 
@@ -366,6 +362,53 @@ def _reformat_debug_text(text: str) -> str:
     return "\n".join(result)
 
 
+def _extract_text(content: list[Any]) -> str:
+    """Join all text blocks from an LLM response content list."""
+    return "\n".join(
+        block.text for block in content if getattr(block, "type", None) == "text"
+    )
+
+
+def _execute_tool(
+    block: Any,
+    executors: dict[str, Callable[[dict[str, Any]], str]],
+) -> tuple[dict[str, Any], dict[str, Any]]:
+    """Execute a single tool_use block, returning ``(tool_result, debug_entry)``.
+
+    Handles unknown tools and executor exceptions uniformly.
+    """
+    executor = executors.get(block.name)
+    if executor is None:
+        result_str = f"Unknown tool: {block.name}"
+        is_error = True
+    else:
+        try:
+            result_str = executor(block.input)
+            is_error = False
+        except Exception as exc:
+            result_str = f"Error: {exc}"
+            is_error = True
+
+    tool_result: dict[str, Any] = {
+        "type": "tool_result",
+        "tool_use_id": block.id,
+        "content": result_str,
+    }
+    if is_error:
+        tool_result["is_error"] = True
+
+    debug_entry: dict[str, Any] = {
+        "type": "tool_use",
+        "tool": block.name,
+        "input": block.input,
+        "result": result_str,
+    }
+    if is_error:
+        debug_entry["error"] = True
+
+    return tool_result, debug_entry
+
+
 async def _call_with_tools(
     model: str,
     messages: list[dict[str, Any]],
@@ -392,17 +435,19 @@ async def _call_with_tools(
         )
 
         if response.stop_reason == "max_tokens":
+            if _debug_dir is not None:
+                debug_turns.append({
+                    "role": "assistant",
+                    "content": _extract_text(response.content) + "\n[TRUNCATED]",
+                })
+                _save_debug(call_name, debug_turns)
             raise ValueError(
                 f"LLM response truncated ({call_name}, max_tokens={max_tokens}). "
                 f"The prompt or expected output is too large."
             )
 
         if response.stop_reason != "tool_use":
-            parts: list[str] = []
-            for block in response.content:
-                if getattr(block, "type", None) == "text":
-                    parts.append(block.text)
-            text = "\n".join(parts)
+            text = _extract_text(response.content)
             if _debug_dir is not None:
                 debug_turns.append({"role": "assistant", "content": text})
                 _save_debug(call_name, debug_turns)
@@ -417,57 +462,9 @@ async def _call_with_tools(
                 debug_tool_calls.append({"type": "text", "text": block.text})
             if getattr(block, "type", None) != "tool_use":
                 continue
-            executor = executors.get(block.name)
-            if executor is None:
-                result_str = f"Unknown tool: {block.name}"
-                tool_results.append(
-                    {
-                        "type": "tool_result",
-                        "tool_use_id": block.id,
-                        "content": result_str,
-                        "is_error": True,
-                    }
-                )
-                debug_tool_calls.append({
-                    "type": "tool_use",
-                    "tool": block.name,
-                    "input": block.input,
-                    "result": result_str,
-                    "error": True,
-                })
-                continue
-            try:
-                result_str = executor(block.input)
-                tool_results.append(
-                    {
-                        "type": "tool_result",
-                        "tool_use_id": block.id,
-                        "content": result_str,
-                    }
-                )
-                debug_tool_calls.append({
-                    "type": "tool_use",
-                    "tool": block.name,
-                    "input": block.input,
-                    "result": result_str,
-                })
-            except Exception as exc:
-                result_str = f"Error: {exc}"
-                tool_results.append(
-                    {
-                        "type": "tool_result",
-                        "tool_use_id": block.id,
-                        "content": result_str,
-                        "is_error": True,
-                    }
-                )
-                debug_tool_calls.append({
-                    "type": "tool_use",
-                    "tool": block.name,
-                    "input": block.input,
-                    "result": result_str,
-                    "error": True,
-                })
+            tool_result, debug_entry = _execute_tool(block, executors)
+            tool_results.append(tool_result)
+            debug_tool_calls.append(debug_entry)
         messages.append({"role": "user", "content": tool_results})
 
         if _debug_dir is not None:

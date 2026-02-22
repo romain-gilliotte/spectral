@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections import defaultdict
+from collections.abc import Callable
 import json
 import re
 from typing import Any, cast
@@ -43,6 +44,19 @@ class MechanicalExtractionStep(Step[GroupedTraceData, list[EndpointSpec]]):
         return endpoints
 
 
+def match_traces_by_pattern(
+    method: str, path_pattern: str, traces: list[Trace]
+) -> list[Trace]:
+    """Return traces whose method and URL path match *path_pattern*."""
+    pattern_re = pattern_to_regex(path_pattern)
+    return [
+        t
+        for t in traces
+        if t.meta.request.method.upper() == method
+        and pattern_re.match(urlparse(t.meta.request.url).path)
+    ]
+
+
 def find_traces_for_group(group: EndpointGroup, traces: list[Trace]) -> list[Trace]:
     """Find traces whose URLs are listed in the endpoint group."""
     url_set = set(group.urls)
@@ -54,16 +68,31 @@ def find_traces_for_group(group: EndpointGroup, traces: list[Trace]) -> list[Tra
     ]
 
     # Also try pattern matching to catch traces the LLM didn't list
-    pattern_re = pattern_to_regex(group.pattern)
-    for t in traces:
-        if t not in matched:
-            parsed = urlparse(t.meta.request.url)
-            if t.meta.request.method.upper() == group.method and pattern_re.match(
-                parsed.path
-            ):
-                matched.append(t)
+    matched_set = set(id(t) for t in matched)
+    for t in match_traces_by_pattern(group.method, group.pattern, traces):
+        if id(t) not in matched_set:
+            matched.append(t)
+            matched_set.add(id(t))
 
     return matched
+
+
+def _collect_json_bodies(
+    traces: list[Trace], get_body: Callable[[Trace], bytes]
+) -> list[dict[str, Any]]:
+    """Parse JSON bodies from *traces*, returning only ``dict`` results."""
+    results: list[dict[str, Any]] = []
+    for t in traces:
+        body = get_body(t)
+        if not body:
+            continue
+        try:
+            data: Any = json.loads(body)
+            if isinstance(data, dict):
+                results.append(cast(dict[str, Any], data))
+        except (json.JSONDecodeError, UnicodeDecodeError):
+            pass
+    return results
 
 
 def _build_endpoint_mechanical(
@@ -99,19 +128,12 @@ def _build_request_spec(traces: list[Trace], path_pattern: str) -> RequestSpec:
     query_schema = infer_query_schema(traces)
 
     content_type = None
-    body_samples: list[dict[str, Any]] = []
     for trace in traces:
         ct = get_header(trace.meta.request.headers, "content-type")
         if ct:
             content_type = ct
-        if trace.request_body:
-            try:
-                data: Any = json.loads(trace.request_body)
-                if isinstance(data, dict):
-                    body_samples.append(cast(dict[str, Any], data))
-            except (json.JSONDecodeError, UnicodeDecodeError):
-                pass
 
+    body_samples = _collect_json_bodies(traces, lambda t: t.request_body)
     body_schema = infer_schema(body_samples) if body_samples else None
 
     return RequestSpec(
@@ -134,18 +156,14 @@ def _build_response_specs(traces: list[Trace]) -> list[ResponseSpec]:
 
         schema: dict[str, Any] | None = None
         example_body: Any = None
-        body_samples: list[dict[str, Any]] = []
         for t in status_traces:
-            if t.response_body:
+            if t.response_body and example_body is None:
                 try:
-                    resp_data: Any = json.loads(t.response_body)
-                    if example_body is None:
-                        example_body = resp_data
-                    if isinstance(resp_data, dict):
-                        body_samples.append(cast(dict[str, Any], resp_data))
+                    example_body = json.loads(t.response_body)
                 except (json.JSONDecodeError, UnicodeDecodeError):
                     pass
 
+        body_samples = _collect_json_bodies(status_traces, lambda t: t.response_body)
         if body_samples:
             schema = infer_schema(body_samples)
 
