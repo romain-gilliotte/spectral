@@ -31,16 +31,39 @@ If a token refresh endpoint is detected, its URL, method, and field mapping are 
 
 ## Auth helper script
 
-When the detected auth flow is reproducible (has a clear login endpoint with known credential fields), the pipeline generates a standalone Python auth helper script. This script:
+When the detected auth flow is reproducible (has a clear login endpoint with known credential fields), the pipeline generates a standalone Python auth helper script (`<name>-auth.py`). The script is protocol-agnostic — it works for both REST and GraphQL APIs.
 
-- Follows the Restish external-tool contract: reads a JSON request from stdin, adds auth headers, writes the modified request to stdout
+### Two-layer architecture
+
+The auth helper has two clearly separated layers:
+
+| Layer | Source | Responsibility |
+|-------|--------|---------------|
+| Token acquisition | LLM-generated | Performs the actual HTTP calls to authenticate (login endpoint, OTP flow, etc.) — a pure `acquire_token(credentials)` function and optionally `refresh_token(current_refresh_token)` |
+| Framework | Static, always identical | Token caching, expiry checking, credential prompting, Restish adapter, standalone token mode |
+
+This separation means the LLM only generates the API-specific authentication logic. Caching, expiry, prompting, and output modes are handled by the framework and never vary between APIs.
+
+### Capabilities
+
+The generated script:
+
 - Uses only Python standard library modules (no pip dependencies)
-- Prompts the user interactively for credentials (via `/dev/tty`, since stdin is used by Restish)
+- Prompts the user interactively for credentials (via `/dev/tty`)
 - Performs the full authentication flow, including multi-step flows (e.g., request OTP, then verify)
 - Caches the token to `~/.cache/spectral/<api-name>/token.json`
-- Checks token expiry (JWT `exp` claim or 1-hour TTL fallback) and refreshes automatically when possible
+- Checks token expiry (JWT `exp` claim or TTL fallback) and refreshes automatically when possible
 
-The script is saved as `<name>-auth.py` alongside the other output files and is referenced by the Restish configuration.
+### Two modes
+
+The script supports two invocation modes:
+
+| Mode | Command | Behavior |
+|------|---------|----------|
+| Default (token) | `python3 <name>-auth.py` | Prints a valid token to stdout — for use with curl, GraphQL clients, scripting, any tool |
+| Restish | `python3 <name>-auth.py --restish` | Restish external-tool contract: reads JSON from stdin, injects auth header, writes JSON to stdout |
+
+The default mode makes the auth helper useful beyond Restish. Any tool or script that needs a token can call the helper and capture its stdout.
 
 ## Mechanical fallback
 
@@ -48,6 +71,6 @@ If the LLM auth analysis fails or produces invalid output, the pipeline falls ba
 
 ## Restish integration
 
-The generated Restish configuration (`<name>.restish.json`) includes the auth setup. When an auth helper script was generated, the config references it as an `external-tool` auth provider. When only static auth was detected (e.g., a fixed API key), the config includes placeholder values that the user must fill in manually.
+The generated Restish configuration (`<name>.restish.json`) includes the auth setup. When an auth helper script was generated, the config references it as an `external-tool` auth provider with the `--restish` flag. When only static auth was detected (e.g., a fixed API key), the config includes placeholder values that the user must fill in manually.
 
 See [Calling the API](../getting-started/calling-the-api.md) for details on using the generated configuration.

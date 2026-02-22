@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from typing import Any
 
+from cli.commands.analyze.schemas import resolve_map_candidates
 from cli.commands.analyze.steps.analyze_auth import detect_auth_mechanical
 from cli.commands.analyze.steps.base import ProtocolBranch
 from cli.commands.analyze.steps.rest.assemble import AssembleStep
@@ -46,6 +48,10 @@ class RestBranch(ProtocolBranch):
         endpoints, _ = await _rest_extract(
             traces, ctx.base_url, ctx.on_progress
         )
+
+        # Phase A.5: LLM map candidate resolution (before enrichment)
+        if not ctx.skip_enrich:
+            await _resolve_endpoint_maps(endpoints)
 
         # Phase B: Enrichment (optional)
         enriched: list[EndpointSpec] | None = None
@@ -94,7 +100,7 @@ class RestBranch(ProtocolBranch):
 async def _rest_extract(
     rest_traces: list[Trace],
     base_url: str,
-    on_progress: Any,
+    on_progress: Callable[[str], None],
 ) -> tuple[list[EndpointSpec], list[EndpointGroup]]:
     """Run REST extraction pipeline up to (but not including) enrichment."""
     # Group endpoints (LLM)
@@ -138,3 +144,15 @@ def _detect_auth_and_rate_limit(
         group_traces = find_traces_for_group(group, traces)
         ep.requires_auth = any(has_auth_header_or_cookie(t) for t in group_traces)
         ep.rate_limit = extract_rate_limit(group_traces)
+
+
+async def _resolve_endpoint_maps(endpoints: list[EndpointSpec]) -> None:
+    """Collect all endpoint schemas and resolve map candidates via LLM."""
+    all_schemas: list[dict[str, Any]] = []
+    for ep in endpoints:
+        if ep.request.body_schema:
+            all_schemas.append(ep.request.body_schema)
+        for resp in ep.responses:
+            if resp.schema_:
+                all_schemas.append(resp.schema_)
+    await resolve_map_candidates(all_schemas)

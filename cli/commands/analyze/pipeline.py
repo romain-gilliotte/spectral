@@ -132,8 +132,8 @@ async def build_spec(
     # Resolve auth (may already be done if RestBranch awaited it)
     auth = await auth_task
 
-    # Generate auth helper script (if interactive auth detected)
-    auth_helper_script: str | None = None
+    # Generate auth acquire script (if interactive auth detected)
+    auth_acquire_script: str | None = None
     needs_script = (
         auth.type in ("bearer_token", "cookie")
         and auth.login_config is not None
@@ -148,7 +148,7 @@ async def build_spec(
         progress("Generating auth helper script (LLM)...")
         try:
             script_step = GenerateAuthScriptStep()
-            auth_helper_script = await script_step.run(
+            auth_acquire_script = await script_step.run(
                 GenerateAuthScriptInput(
                     auth=auth, traces=all_traces, api_name=app_name
                 )
@@ -160,5 +160,5 @@ async def build_spec(
         outputs=outputs,
         auth=auth,
         base_url=base_url,
-        auth_helper_script=auth_helper_script,
+        auth_acquire_script=auth_acquire_script,
     )

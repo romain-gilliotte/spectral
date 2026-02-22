@@ -107,7 +107,7 @@ class BranchOutput:
     """Result produced by a single protocol branch."""
 
     protocol: str
-    artifact: Any
+    artifact: dict[str, Any] | str
     file_extension: str
     label: str
 
@@ -122,4 +122,4 @@ class AnalysisResult:
     outputs: list[BranchOutput] = field(default_factory=lambda: list[BranchOutput]())
     auth: AuthInfo | None = None
     base_url: str = ""
-    auth_helper_script: str | None = None
+    auth_acquire_script: str | None = None

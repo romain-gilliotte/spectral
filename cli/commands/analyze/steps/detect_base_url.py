@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 from collections import Counter
-from typing import Any
 
 from cli.commands.analyze.steps.base import Step, StepValidationError
 from cli.commands.analyze.steps.types import MethodUrlPair
@@ -62,8 +61,7 @@ Respond with a compact JSON object (no indentation):
 
         result = llm.extract_json(text)
         if isinstance(result, dict) and "base_url" in result:
-            base_url: Any = result["base_url"]
-            return str(base_url).rstrip("/")
+            return str(result["base_url"]).rstrip("/")
         raise ValueError(
             f'Expected {{"base_url": "..."}} from detect_api_base_url, got: {text[:200]}'
         )

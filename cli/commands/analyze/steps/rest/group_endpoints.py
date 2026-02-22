@@ -56,10 +56,8 @@ Decoding opaque segments will help you understand what they represent and group 
 Observed requests:
 {chr(10).join(lines)}
 
-Respond with a compact JSON array (no indentation):
-[
-  {{"method": "GET", "pattern": "/api/users/{{user_id}}/orders", "urls": ["https://example.com/api/users/123/orders", "https://example.com/api/users/456/orders"]}}
-]"""
+Your response MUST be a raw JSON array and nothing else — no explanation, no markdown fences, no text before or after. Example format:
+[{{"method": "GET", "pattern": "/api/users/{{user_id}}/orders", "urls": ["https://example.com/api/users/123/orders", "https://example.com/api/users/456/orders"]}}]"""
 
         text = await llm.ask(
             prompt,

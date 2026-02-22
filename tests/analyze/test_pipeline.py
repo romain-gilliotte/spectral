@@ -24,7 +24,9 @@ def _get_rest_output(result: AnalysisResult) -> BranchOutput:
 
 def _get_openapi(result: AnalysisResult) -> dict[str, Any]:
     """Get the OpenAPI dict from an AnalysisResult, or fail."""
-    return _get_rest_output(result).artifact
+    artifact = _get_rest_output(result).artifact
+    assert isinstance(artifact, dict)
+    return artifact
 
 
 def _make_mock_create(

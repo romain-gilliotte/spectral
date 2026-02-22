@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from collections import defaultdict
 import re
-from typing import Any
+from typing import Any, cast
 from urllib.parse import parse_qs, urlparse
 
 from cli.commands.capture.types import Trace
@@ -129,10 +129,12 @@ def _detect_format(values: list[Any]) -> str | None:
 def _collect_observed(values: list[Any], max_count: int = 5) -> list[Any]:
     """Collect up to *max_count* distinct observed values."""
     seen: list[Any] = []
-    seen_set: set[Any] = set()
+    seen_set: set[str | int | float | bool | None] = set()
     for v in values:
         try:
-            hashable: Any = v if not isinstance(v, (dict, list)) else str(v)  # pyright: ignore[reportUnknownArgumentType]
+            hashable: str | int | float | bool | None = (
+                v if not isinstance(v, (dict, list)) else str(v)  # pyright: ignore[reportUnknownArgumentType]
+            )
             if hashable not in seen_set:
                 seen_set.add(hashable)
                 seen.append(v)
@@ -436,7 +438,7 @@ def _collect_map_candidates(
     for key, prop in schema.get("properties", {}).items():
         if isinstance(prop, dict):
             child_path = f"{path}.{key}" if path else key
-            results.extend(_collect_map_candidates(prop, child_path))  # pyright: ignore[reportUnknownArgumentType]
+            results.extend(_collect_map_candidates(cast(dict[str, Any], prop), child_path))
 
     # Recurse into additionalProperties
     addl: dict[str, Any] | None = schema.get("additionalProperties")  # pyright: ignore[reportAssignmentType]
@@ -445,10 +447,10 @@ def _collect_map_candidates(
         results.extend(_collect_map_candidates(addl, child_path))
 
     # Recurse into array items
-    items: dict[str, Any] | None = schema.get("items")  # pyright: ignore[reportAssignmentType]
-    if isinstance(items, dict):
+    items_val: dict[str, Any] | None = schema.get("items")  # pyright: ignore[reportAssignmentType]
+    if isinstance(items_val, dict):
         child_path = f"{path}[]" if path else "[]"
-        results.extend(_collect_map_candidates(items, child_path))
+        results.extend(_collect_map_candidates(items_val, child_path))
 
     return results
 
@@ -494,7 +496,8 @@ async def resolve_map_candidates(schemas: list[dict[str, Any]]) -> None:
     )
 
     raw = await llm.ask(prompt, label="resolve-map-candidates")
-    decisions: list[dict[str, Any]] = llm.extract_json(raw)  # type: ignore[assignment]
+    parsed = llm.extract_json(raw)
+    decisions: list[dict[str, Any]] = parsed if isinstance(parsed, list) else [parsed]
 
     decision_map: dict[int, bool] = {}
     for d in decisions:

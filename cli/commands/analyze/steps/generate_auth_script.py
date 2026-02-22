@@ -1,8 +1,9 @@
-"""Step: Generate a self-contained auth helper script using LLM.
+"""Step: Generate token acquisition functions using LLM.
 
 The LLM receives auth-related trace summaries and can inspect full
-request/response bodies via tools.  It produces a Python script that
-follows the Restish external-tool contract (JSON on stdin/stdout).
+request/response bodies via tools.  It produces only the ``acquire_token``
+(and optionally ``refresh_token``) functions — pure stdlib, no caching,
+no Restish awareness.  The framework code is stitched on by the caller.
 """
 
 from __future__ import annotations
@@ -101,10 +102,11 @@ def _execute_inspect_trace(
 
 
 class GenerateAuthScriptStep(Step[GenerateAuthScriptInput, str]):
-    """Generate a self-contained Python auth helper script using LLM.
+    """Generate token acquisition functions using LLM.
 
     Input: GenerateAuthScriptInput (AuthInfo + traces + api_name).
-    Output: Complete Python script source code (string).
+    Output: Python source code containing ``acquire_token()`` and
+            optionally ``refresh_token()`` (string).
     """
 
     name = "generate_auth_script"
@@ -126,14 +128,30 @@ class GenerateAuthScriptStep(Step[GenerateAuthScriptInput, str]):
             ),
         }
 
-        prompt = f"""You are generating a self-contained Python auth helper script for the "{input.api_name}" API.
+        prompt = f"""You are generating Python token acquisition functions for the "{input.api_name}" API.
 
 ## Context
 
-This script is called by Restish (a CLI tool) via the "external-tool" auth mechanism:
-- Restish pipes a JSON request to stdin: {{"method": "GET", "uri": "/some/path", "headers": {{}}, "body": ""}}
-- The script must add authentication headers and write the modified JSON to stdout
-- The script must handle token caching so the user isn't prompted on every request
+You must produce ONLY two functions (the second is optional):
+
+1. `acquire_token(credentials: dict[str, str]) -> dict[str, str]` — **required**
+2. `refresh_token(current_refresh_token: str) -> dict[str, str]` — only if a refresh endpoint was detected
+
+These functions will be embedded in a larger script that handles caching, expiry, user prompting, and Restish integration. You do NOT need to handle any of that.
+
+## Function contracts
+
+### acquire_token(credentials)
+- Receives a dict with credential field values: {_credential_fields_hint(auth)}
+- Must perform the FULL authentication flow (all steps: OTP request, then verify, etc.)
+- Returns a dict with at minimum: {{"token": "the_access_token"}}
+- May also include: "refresh_token", "expires_in" (seconds as string or int)
+- Raises Exception on failure
+
+### refresh_token(current_refresh_token) — optional
+- Receives the current refresh token string
+- Returns the same dict format as acquire_token
+- Raises Exception on failure
 
 ## Auth analysis summary
 
@@ -148,22 +166,22 @@ Use the `inspect_trace` tool to examine any trace in detail (request/response bo
 ## Your task
 
 1. First, use `inspect_trace` to examine the auth-related endpoints in detail. Understand the full authentication flow (all steps: OTP request, login, token extraction, etc.)
-2. Then generate a complete Python script that replicates this auth flow.
+2. Then generate the function(s).
 
-## Script requirements
+## Rules
 
-- **Shebang**: `#!/usr/bin/env python3`
-- **Stdlib only**: only use `base64`, `getpass`, `json`, `re`, `sys`, `time`, `urllib.parse`, `urllib.request`, `pathlib` — zero pip dependencies
-- **Token caching**: cache tokens in `~/.cache/spectral/{input.api_name}/token.json`. Include `acquired_at` timestamp. Check JWT `exp` claim if present, else use 1h TTL.
-- **Restish contract**: read JSON from stdin, add auth to `headers` dict, write JSON to stdout. IMPORTANT: Restish expects header values as arrays of strings, not plain strings. Example: `request["headers"]["Authorization"] = ["Bearer " + token]` (note the list wrapper).
-- **Interactive prompts**: since stdin is consumed by the Restish JSON request and stderr may be captured by Restish, you MUST both write prompts AND read input from `/dev/tty`. Open `/dev/tty` in write mode for prompts, and in read mode for reading user input. Do NOT use `input()` or `sys.stdin`. For passwords/secrets, use `getpass.getpass(prompt, stream=open('/dev/tty', 'w'))` (getpass already reads from /dev/tty by default). Debug/error messages should also go to `/dev/tty` so the user can see them.
-- **Handle the FULL auth flow**: if auth requires multiple steps (e.g., request OTP, then verify), the script must handle ALL steps.
-- **Token refresh**: if a refresh mechanism was detected, implement it.
-- **Error handling**: print clear error messages to stderr on failure.
+- **Stdlib only**: only use `base64`, `json`, `re`, `time`, `urllib.parse`, `urllib.request` — zero pip dependencies
+- **No caching**: do not cache tokens, do not read/write files
+- **No user prompting**: credentials are passed as a parameter, do not use input() or getpass
+- **No stdin/stdout interaction**: no Restish contract, no JSON piping
+- **Include necessary imports** at the top of your code (before the function definitions)
+- **Handle the FULL auth flow**: if auth requires multiple steps (e.g., request OTP then verify), acquire_token must handle ALL steps
+- For mid-flow interactive prompts (e.g., OTP code the user must enter), you MAY read from `/dev/tty` as a special case
+- **Error handling**: raise clear exceptions on failure
 
 ## Output format
 
-Respond with ONLY the Python script inside a ```python code block. No explanation before or after."""
+Respond with ONLY the Python code inside a ```python code block. No explanation before or after."""
 
         text = await llm.ask(
             prompt,
@@ -178,7 +196,7 @@ Respond with ONLY the Python script inside a ```python code block. No explanatio
     def _validate_output(self, output: str) -> None:
         # Must compile as valid Python
         try:
-            compile(output, "<auth-helper>", "exec")
+            compile(output, "<auth-acquire>", "exec")
         except SyntaxError as e:
             from cli.commands.analyze.steps.base import StepValidationError
 
@@ -186,6 +204,23 @@ Respond with ONLY the Python script inside a ```python code block. No explanatio
                 f"Generated script has syntax error: {e}",
                 {"error": str(e)},
             )
+
+        # Must define acquire_token
+        if "def acquire_token" not in output:
+            from cli.commands.analyze.steps.base import StepValidationError
+
+            raise StepValidationError(
+                "Generated code must define an acquire_token() function",
+                {"error": "missing acquire_token"},
+            )
+
+
+def _credential_fields_hint(auth: AuthInfo) -> str:
+    """Build a hint about expected credential field keys for the prompt."""
+    if auth.login_config and auth.login_config.credential_fields:
+        fields = auth.login_config.credential_fields
+        return ", ".join(f'"{k}": "{v}"' for k, v in fields.items())
+    return '"username": "...", "password": "..."'
 
 
 def _auth_summary(auth: AuthInfo) -> dict[str, Any]:
@@ -251,7 +286,8 @@ def _extract_script(text: str) -> str:
     match = re.search(r"```python\s*\n(.*?)```", text, re.DOTALL)
     if match:
         return match.group(1).strip() + "\n"
-    # Fallback: if the response starts with a shebang, take it as-is
-    if text.strip().startswith("#!/"):
-        return text.strip() + "\n"
-    raise ValueError("Could not extract Python script from LLM response")
+    # Fallback: if the response starts with an import or def, take it as-is
+    stripped = text.strip()
+    if stripped.startswith(("import ", "from ", "def ")):
+        return stripped + "\n"
+    raise ValueError("Could not extract Python code from LLM response")

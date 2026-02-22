@@ -88,7 +88,7 @@ def map_auth(
             "auth": {
                 "name": "external-tool",
                 "params": {
-                    "commandline": f"python3 {auth_helper_path}",
+                    "commandline": f"python3 {auth_helper_path} --restish",
                 },
             }
         }

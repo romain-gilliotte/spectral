@@ -7,12 +7,27 @@ from datetime import datetime, timezone
 import json
 from pathlib import Path
 import re
-from typing import Any, cast
 
 import click
 import yaml
 
 from cli.helpers.console import console
+
+# Per-million-token pricing: (input_$/M, output_$/M)
+_MODEL_PRICING: dict[str, tuple[float, float]] = {
+    "claude-sonnet-4-5-20250929": (3.0, 15.0),
+    "claude-sonnet-4-20250514": (3.0, 15.0),
+    "claude-haiku-3-5-20241022": (0.80, 4.0),
+}
+
+
+def _estimate_cost(model: str, input_tokens: int, output_tokens: int) -> float | None:
+    """Return estimated USD cost, or None if model pricing is unknown."""
+    pricing = _MODEL_PRICING.get(model)
+    if pricing is None:
+        return None
+    inp_rate, out_rate = pricing
+    return (input_tokens * inp_rate + output_tokens * out_rate) / 1_000_000
 
 
 @click.command()
@@ -70,11 +85,41 @@ def analyze(
 
     inp_tok, out_tok = llm.get_usage()
     if inp_tok or out_tok:
-        console.print(f"  LLM token usage: {inp_tok:,} input, {out_tok:,} output")
+        cost = _estimate_cost(model, inp_tok, out_tok)
+        cost_str = f" (~${cost:.2f})" if cost else ""
+        console.print(f"  LLM token usage: {inp_tok:,} input, {out_tok:,} output{cost_str}")
 
     # Strip any extension from the output name so it's a pure base name
     output_base = Path(output)
     output_base = output_base.parent / output_base.stem
+
+    # Write auth helper script (protocol-agnostic — works for REST and GraphQL)
+    from cli.commands.analyze.steps.types import AuthInfo
+
+    auth = result.auth or AuthInfo()
+    auth_helper_path: str | None = None
+
+    if result.auth_acquire_script:
+        from cli.helpers.auth_framework import generate_auth_script
+
+        login_config = auth.login_config
+        credential_fields = (
+            login_config.credential_fields if login_config else {}
+        )
+        api_name = output_base.stem
+
+        full_script = generate_auth_script(
+            acquire_source=result.auth_acquire_script,
+            api_name=api_name,
+            credential_fields=credential_fields,
+            token_header=auth.token_header or "Authorization",
+            token_prefix=auth.token_prefix or "Bearer",
+        )
+        helper_file = output_base.with_name(f"{output_base.stem}-auth.py")
+        with open(helper_file, "w") as f:
+            f.write(full_script)
+        auth_helper_path = str(helper_file.resolve())
+        console.print(f"[green]Auth helper written to {helper_file}[/green]")
 
     # Write each branch output
     for branch_output in result.outputs:
@@ -84,10 +129,9 @@ def analyze(
         artifact = branch_output.artifact
         if isinstance(artifact, dict):
             # Dict artifact (e.g. OpenAPI) → YAML
-            artifact_dict = cast(dict[str, Any], artifact)
             with open(out_path, "w") as f:
                 yaml.dump(
-                    artifact_dict, f,
+                    artifact, f,
                     default_flow_style=False, sort_keys=False, allow_unicode=True,
                 )
         else:
@@ -97,25 +141,12 @@ def analyze(
 
         console.print(f"[green]{branch_output.label} written to {out_path}[/green]")
 
-        # REST-specific: Restish config + auth helper
+        # REST-specific: Restish config
         if branch_output.protocol == "rest" and isinstance(artifact, dict):
-            artifact_dict = cast(dict[str, Any], artifact)
-            endpoint_count = len(artifact_dict.get("paths", {}))
+            endpoint_count = len(artifact.get("paths", {}))
             console.print(f"  Found {endpoint_count} REST paths")
 
             from cli.commands.analyze.restish import generate_restish_entry
-            from cli.commands.analyze.steps.types import AuthInfo
-
-            auth = result.auth or AuthInfo()
-
-            # Write auth helper script if the pipeline generated one
-            auth_helper_path: str | None = None
-            if result.auth_helper_script:
-                helper_file = output_base.with_name(f"{output_base.stem}-auth.py")
-                with open(helper_file, "w") as f:
-                    f.write(result.auth_helper_script)
-                auth_helper_path = str(helper_file.resolve())
-                console.print(f"[green]Auth helper written to {helper_file}[/green]")
 
             restish_entry = generate_restish_entry(
                 base_url=result.base_url,
@@ -129,7 +160,7 @@ def analyze(
                 f.write("\n")
             console.print(f"[green]Restish config written to {restish_path}[/green]")
 
-            # Print usage instructions
+            # Print Restish usage instructions
             api_name = output_base.stem
             console.print()
             console.print("[bold]Restish setup:[/bold]")
@@ -140,6 +171,19 @@ def analyze(
             placeholders = _find_placeholders(restish_entry)
             if placeholders:
                 console.print(f"  Fill in placeholder values: {', '.join(placeholders)}")
+
+        # GraphQL-specific: auth helper usage instructions
+        if branch_output.protocol == "graphql" and auth_helper_path:
+            console.print()
+            console.print("[bold]GraphQL auth usage:[/bold]")
+            helper_name = Path(auth_helper_path).name
+            console.print(
+                f"  Get a token:  [cyan]python3 {helper_name}[/cyan]"
+            )
+            console.print(
+                f"  With curl:    [cyan]curl -H \"Authorization: "
+                f"{auth.token_prefix or 'Bearer'} $(python3 {helper_name})\" ...[/cyan]"
+            )
 
     if not result.outputs:
         console.print("[yellow]No API traces found in the capture bundle.[/yellow]")

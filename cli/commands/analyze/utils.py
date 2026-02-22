@@ -50,10 +50,11 @@ def compact_url(url: str) -> str:
 def truncate_json(obj: Any, max_keys: int = 10) -> Any:
     """Truncate a JSON-like object for LLM consumption."""
     if isinstance(obj, dict):
-        items: list[tuple[Any, Any]] = list(obj.items())[:max_keys]  # pyright: ignore[reportUnknownVariableType, reportUnknownArgumentType]
+        items: list[tuple[str, Any]] = list(obj.items())[:max_keys]  # pyright: ignore[reportUnknownVariableType, reportUnknownArgumentType]
         return {k: truncate_json(v, max_keys) for k, v in items}
     if isinstance(obj, list):
-        return [truncate_json(item, max_keys) for item in obj[:3]]  # pyright: ignore[reportUnknownVariableType]
+        items_list: list[Any] = obj[:3]  # pyright: ignore[reportUnknownVariableType]
+        return [truncate_json(item, max_keys) for item in items_list]
     if isinstance(obj, str) and len(obj) > 200:
         return obj[:200] + "..."
     return obj

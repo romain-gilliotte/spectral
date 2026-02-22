@@ -87,7 +87,7 @@ class TestMapAuth:
             "auth": {
                 "name": "external-tool",
                 "params": {
-                    "commandline": "python3 /tmp/myapi-auth.py",
+                    "commandline": "python3 /tmp/myapi-auth.py --restish",
                 },
             }
         }
@@ -105,7 +105,7 @@ class TestMapAuth:
             "auth": {
                 "name": "external-tool",
                 "params": {
-                    "commandline": "python3 /tmp/myapi-auth.py",
+                    "commandline": "python3 /tmp/myapi-auth.py --restish",
                 },
             }
         }
