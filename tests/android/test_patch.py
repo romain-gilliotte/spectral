@@ -1,4 +1,5 @@
 """Tests for APK patching (manifest, signing, directory patching)."""
+# pyright: reportPrivateUsage=false
 
 from __future__ import annotations
 
@@ -11,7 +12,7 @@ import pytest
 from cli.commands.android.patch import (
     NETWORK_SECURITY_CONFIG,
     PatchError,
-    _patch_manifest,  # pyright: ignore[reportPrivateUsage]
+    _patch_manifest,
     patch_apk_dir,
     sign_apk,
 )
@@ -31,7 +32,7 @@ class TestPatchManifest:
         manifest_path = tmp_path / "AndroidManifest.xml"
         manifest_path.write_text(manifest_content)
 
-        _patch_manifest(manifest_path)  # pyright: ignore[reportPrivateUsage]
+        _patch_manifest(manifest_path)
 
         result = manifest_path.read_text()
         assert "networkSecurityConfig" in result
@@ -51,7 +52,7 @@ class TestPatchManifest:
         manifest_path = tmp_path / "AndroidManifest.xml"
         manifest_path.write_text(manifest_content)
 
-        _patch_manifest(manifest_path)  # pyright: ignore[reportPrivateUsage]
+        _patch_manifest(manifest_path)
 
         result = manifest_path.read_text()
         assert "@xml/network_security_config" in result
@@ -63,7 +64,7 @@ class TestPatchManifest:
         manifest_path.write_text(manifest_content)
 
         with pytest.raises(PatchError, match="No <application> element"):
-            _patch_manifest(manifest_path)  # pyright: ignore[reportPrivateUsage]
+            _patch_manifest(manifest_path)
 
     def test_network_security_config_content(self) -> None:
         """Verify the injected XML trusts both system and user CAs."""

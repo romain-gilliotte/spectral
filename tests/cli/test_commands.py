@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from typing import cast
 from unittest.mock import MagicMock, patch
 
 from click.testing import CliRunner
@@ -70,10 +71,8 @@ def _make_mock_anthropic_module() -> MagicMock:
         mock_content.type = "text"
         mock_response.stop_reason = "end_turn"
         messages_raw = kwargs.get("messages")
-        messages: list[dict[str, str]] = (  # pyright: ignore[reportUnknownVariableType]
-            messages_raw if isinstance(messages_raw, list) else []
-        )
-        first_msg: dict[str, str] = messages[0] if len(messages) > 0 else {}  # pyright: ignore[reportUnknownArgumentType, reportUnknownMemberType]
+        messages = cast(list[dict[str, str]], messages_raw if isinstance(messages_raw, list) else [])
+        first_msg = messages[0] if len(messages) > 0 else {}
         msg: str = str(first_msg.get("content", ""))
         if "base URL" in msg and "business API" in msg:
             mock_content.text = base_url_response

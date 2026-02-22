@@ -1,15 +1,19 @@
 """Tests for schema inference utilities."""
+# pyright: reportPrivateUsage=false
 
 from typing import Any
+from unittest.mock import AsyncMock, patch
+
+import pytest
 
 from cli.commands.analyze.schemas import (
-    _classify_key_pattern as _classify_key_pattern,  # pyright: ignore[reportPrivateUsage]
-    _detect_format as _detect_format,  # pyright: ignore[reportPrivateUsage]
-    _infer_type as _infer_type,  # pyright: ignore[reportPrivateUsage]
-    _infer_type_from_values as _infer_type_from_values,  # pyright: ignore[reportPrivateUsage]
+    _detect_format,
+    _infer_type,
+    _infer_type_from_values,
     infer_path_schema,
     infer_query_schema,
     infer_schema,
+    resolve_map_candidates,
 )
 from tests.conftest import make_trace
 
@@ -532,3 +536,223 @@ class TestDynamicKeyDetection:
         assert val_schema["type"] == "object"
         assert "total" in val_schema["properties"]
         assert "count" in val_schema["properties"]
+
+    def test_prefixed_uuid_keys_detected(self):
+        """Prefixed UUID keys like journey-<uuid> should be detected."""
+        samples = [
+            {
+                "journey-fd5d0e39-1234-5678-abcd-ef1234567890": {"id": 1},
+                "journey-5877976c-abcd-1234-5678-abcdef123456": {"id": 2},
+                "fare-a1b2c3d4-e5f6-7890-abcd-ef1234567890": {"id": 3},
+            }
+        ]
+        schema = infer_schema(samples)
+        assert "additionalProperties" in schema
+        assert schema["x-key-pattern"] == "prefixed-uuid"
+
+    def test_hex_id_keys_detected(self):
+        """40-char hex hashes (SHA-1) should be detected as hex-id."""
+        samples = [
+            {
+                "c202a8d532e84f5ab1e9d3c5a7f6e8d2b4a1c3e5": "val1",
+                "a8db3ba5cc46f7e2d1b9a3c5e7f6d8b2a4c1e3f5": "val2",
+                "f1e2d3c4b5a697081234567890abcdef12345678": "val3",
+            }
+        ]
+        schema = infer_schema(samples)
+        assert "additionalProperties" in schema
+        assert schema["x-key-pattern"] == "hex-id"
+
+    def test_short_hex_not_detected(self):
+        """Hex strings under 20 chars should not be detected as hex-id."""
+        samples = [
+            {
+                "abc123": "val1",
+                "def456": "val2",
+                "789abc": "val3",
+            }
+        ]
+        schema = infer_schema(samples)
+        assert "properties" in schema
+        assert "additionalProperties" not in schema
+
+    def test_single_hex_id_detected(self):
+        """A single 40-char hex key is enough to trigger hex-id detection."""
+        samples = [
+            {
+                "87b3bf6d86db3c23bda9321ac4699132dfbc9f28": {
+                    "id": "87b3bf6d86db3c23bda9321ac4699132dfbc9f28",
+                    "name": "Train",
+                }
+            }
+        ]
+        schema = infer_schema(samples)
+        assert "additionalProperties" in schema
+        assert schema["x-key-pattern"] == "hex-id"
+
+    def test_single_uuid_key_detected(self):
+        """A single UUID key is enough to trigger uuid detection."""
+        samples = [
+            {
+                "a1b2c3d4-e5f6-7890-abcd-ef1234567890": {"status": "active"}
+            }
+        ]
+        schema = infer_schema(samples)
+        assert "additionalProperties" in schema
+        assert schema["x-key-pattern"] == "uuid"
+
+
+class TestStructuralAnnotation:
+    def test_structural_candidate_annotated(self):
+        """5+ keys with same-shape object values should get x-map-candidate."""
+        samples = [
+            {
+                f"key-{i}": {"id": i, "name": f"item-{i}", "active": True}
+                for i in range(6)
+            }
+        ]
+        schema = infer_schema(samples)
+        assert "x-map-candidate" in schema
+        assert "properties" in schema  # properties preserved
+        candidate = schema["x-map-candidate"]
+        assert len(candidate["keys"]) <= 10
+        assert "id" in candidate["shared_properties"]
+        assert "name" in candidate["shared_properties"]
+
+    def test_structural_ignores_scalars(self):
+        """5+ keys with scalar values should not be annotated."""
+        samples = [
+            {f"key-{i}": f"value-{i}" for i in range(6)}
+        ]
+        schema = infer_schema(samples)
+        assert "x-map-candidate" not in schema
+        assert "properties" in schema
+
+    def test_structural_below_threshold(self):
+        """4 keys same shape should not be annotated (below _MIN_STRUCTURAL_KEYS)."""
+        samples = [
+            {
+                f"key-{i}": {"id": i, "name": f"item-{i}"}
+                for i in range(4)
+            }
+        ]
+        schema = infer_schema(samples)
+        assert "x-map-candidate" not in schema
+
+    def test_structural_low_overlap(self):
+        """5+ keys with <50% property overlap should not be annotated."""
+        samples = [
+            {
+                "key-0": {"a": 1, "b": 2},
+                "key-1": {"c": 3, "d": 4},
+                "key-2": {"e": 5, "f": 6},
+                "key-3": {"g": 7, "h": 8},
+                "key-4": {"i": 9, "j": 10},
+            }
+        ]
+        schema = infer_schema(samples)
+        assert "x-map-candidate" not in schema
+
+
+class TestResolveMapCandidates:
+    @pytest.mark.asyncio
+    async def test_resolve_confirmed_map(self):
+        """LLM confirms is_map → properties collapsed to additionalProperties."""
+        schema: dict[str, Any] = {
+            "type": "object",
+            "properties": {
+                "key-0": {"type": "object", "properties": {"id": {"type": "integer", "observed": [0]}, "name": {"type": "string", "observed": ["item-0"]}}, "observed": [{"id": 0, "name": "item-0"}]},
+                "key-1": {"type": "object", "properties": {"id": {"type": "integer", "observed": [1]}, "name": {"type": "string", "observed": ["item-1"]}}, "observed": [{"id": 1, "name": "item-1"}]},
+            },
+            "x-map-candidate": {
+                "keys": ["key-0", "key-1", "key-2", "key-3", "key-4"],
+                "shared_properties": ["id", "name"],
+                "extra_properties": [],
+            },
+        }
+
+        mock_ask = AsyncMock(return_value='[{"group": 1, "is_map": true}]')
+        with patch("cli.commands.analyze.schemas.llm") as mock_llm:
+            mock_llm.ask = mock_ask
+            mock_llm.extract_json = __import__("cli.helpers.llm", fromlist=["extract_json"]).extract_json
+            await resolve_map_candidates([schema])
+
+        assert "additionalProperties" in schema
+        assert "properties" not in schema
+        assert schema["x-key-pattern"] == "dynamic"
+        assert "x-map-candidate" not in schema
+
+    @pytest.mark.asyncio
+    async def test_resolve_denied_map(self):
+        """LLM denies is_map → annotation removed, properties kept."""
+        schema: dict[str, Any] = {
+            "type": "object",
+            "properties": {
+                "config": {"type": "object", "properties": {"a": {"type": "string"}}, "observed": [{"a": "x"}]},
+                "status": {"type": "object", "properties": {"a": {"type": "string"}}, "observed": [{"a": "y"}]},
+            },
+            "x-map-candidate": {
+                "keys": ["config", "status", "meta", "info", "extra"],
+                "shared_properties": ["a"],
+                "extra_properties": [],
+            },
+        }
+
+        mock_ask = AsyncMock(return_value='[{"group": 1, "is_map": false}]')
+        with patch("cli.commands.analyze.schemas.llm") as mock_llm:
+            mock_llm.ask = mock_ask
+            mock_llm.extract_json = __import__("cli.helpers.llm", fromlist=["extract_json"]).extract_json
+            await resolve_map_candidates([schema])
+
+        assert "properties" in schema
+        assert "additionalProperties" not in schema
+        assert "x-map-candidate" not in schema
+
+    @pytest.mark.asyncio
+    async def test_resolve_no_candidates_skips_llm(self):
+        """No x-map-candidate → no LLM call."""
+        schema: dict[str, Any] = {
+            "type": "object",
+            "properties": {"name": {"type": "string"}},
+        }
+
+        mock_ask = AsyncMock()
+        with patch("cli.commands.analyze.schemas.llm") as mock_llm:
+            mock_llm.ask = mock_ask
+            await resolve_map_candidates([schema])
+
+        mock_ask.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_resolve_nested_candidates(self):
+        """Candidate inside a nested property is correctly found and resolved."""
+        inner: dict[str, Any] = {
+            "type": "object",
+            "properties": {
+                "k0": {"type": "object", "properties": {"id": {"type": "integer", "observed": [0]}}, "observed": [{"id": 0}]},
+                "k1": {"type": "object", "properties": {"id": {"type": "integer", "observed": [1]}}, "observed": [{"id": 1}]},
+            },
+            "x-map-candidate": {
+                "keys": ["k0", "k1", "k2", "k3", "k4"],
+                "shared_properties": ["id"],
+                "extra_properties": [],
+            },
+        }
+        schema: dict[str, Any] = {
+            "type": "object",
+            "properties": {
+                "data": inner,
+            },
+        }
+
+        mock_ask = AsyncMock(return_value='[{"group": 1, "is_map": true}]')
+        with patch("cli.commands.analyze.schemas.llm") as mock_llm:
+            mock_llm.ask = mock_ask
+            mock_llm.extract_json = __import__("cli.helpers.llm", fromlist=["extract_json"]).extract_json
+            await resolve_map_candidates([schema])
+
+        # The inner schema should be collapsed
+        data_prop = schema["properties"]["data"]
+        assert "additionalProperties" in data_prop
+        assert "x-map-candidate" not in data_prop
+        assert data_prop["x-key-pattern"] == "dynamic"

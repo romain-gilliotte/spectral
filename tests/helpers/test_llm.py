@@ -1,4 +1,5 @@
 """Tests for the centralized LLM helper (cli/helpers/llm.py)."""
+# pyright: reportPrivateUsage=false
 
 from __future__ import annotations
 
@@ -66,32 +67,32 @@ class TestInit:
     def test_init_with_mock_client(self):
         mock = MagicMock()
         llm.init(client=mock, model="m")
-        assert llm._client is mock  # pyright: ignore[reportPrivateUsage]
-        assert llm._semaphore is not None  # pyright: ignore[reportPrivateUsage]
+        assert llm._client is mock
+        assert llm._semaphore is not None
 
     def test_init_stores_model(self):
         llm.init(client=MagicMock(), model="claude-test-model")
-        assert llm._model == "claude-test-model"  # pyright: ignore[reportPrivateUsage]
+        assert llm._model == "claude-test-model"
 
     def test_init_custom_concurrency(self):
         llm.init(client=MagicMock(), max_concurrent=3, model="m")
-        sem = llm._semaphore  # pyright: ignore[reportPrivateUsage]
+        sem = llm._semaphore
         assert sem is not None
-        assert sem._value == 3  # pyright: ignore[reportPrivateUsage]
+        assert sem._value == 3
 
     def test_init_debug_dir(self, tmp_path: Path):
         debug_dir = tmp_path / "debug"
         debug_dir.mkdir()
         llm.init(client=MagicMock(), debug_dir=debug_dir, model="m")
-        assert llm._debug_dir is debug_dir  # pyright: ignore[reportPrivateUsage]
+        assert llm._debug_dir is debug_dir
 
     def test_reset_clears_all(self, tmp_path: Path):
         debug_dir = tmp_path / "debug"
         debug_dir.mkdir()
         llm.init(client=MagicMock(), debug_dir=debug_dir, model="m")
         llm.reset()
-        assert llm._debug_dir is None  # pyright: ignore[reportPrivateUsage]
-        assert llm._model is None  # pyright: ignore[reportPrivateUsage]
+        assert llm._debug_dir is None
+        assert llm._model is None
 
 
 class TestInternalCreate:
@@ -102,7 +103,7 @@ class TestInternalCreate:
         client = _make_mock_client(expected)
         llm.init(client=client, model="m")
 
-        result = await llm._create(model="m", max_tokens=10, messages=[])  # pyright: ignore[reportPrivateUsage]
+        result = await llm._create(model="m", max_tokens=10, messages=[])
         assert result is expected
         client.messages.create.assert_awaited_once()
 
@@ -116,7 +117,7 @@ class TestInternalCreate:
         client.messages.create = AsyncMock(side_effect=[error, expected])
         llm.init(client=client, model="m")
 
-        result = await llm._create(model="m", max_tokens=10, messages=[])  # pyright: ignore[reportPrivateUsage]
+        result = await llm._create(model="m", max_tokens=10, messages=[])
         assert result is expected
         assert client.messages.create.await_count == 2
 
@@ -133,7 +134,7 @@ class TestInternalCreate:
         llm.FALLBACK_BACKOFF = 0.01
         try:
             llm.init(client=client, model="m")
-            result = await llm._create(model="m", max_tokens=10, messages=[])  # pyright: ignore[reportPrivateUsage]
+            result = await llm._create(model="m", max_tokens=10, messages=[])
             assert result is expected
         finally:
             llm.FALLBACK_BACKOFF = original_backoff
@@ -152,7 +153,7 @@ class TestInternalCreate:
         llm.init(client=client, model="m")
 
         with pytest.raises(anthropic.RateLimitError):
-            await llm._create(model="m", max_tokens=10, messages=[])  # pyright: ignore[reportPrivateUsage]
+            await llm._create(model="m", max_tokens=10, messages=[])
         assert client.messages.create.await_count == llm.MAX_RETRIES + 1
 
     @pytest.mark.asyncio
@@ -163,7 +164,7 @@ class TestInternalCreate:
         llm.init(client=client, model="m")
 
         with pytest.raises(ValueError, match="boom"):
-            await llm._create(model="m", max_tokens=10, messages=[])  # pyright: ignore[reportPrivateUsage]
+            await llm._create(model="m", max_tokens=10, messages=[])
         client.messages.create.assert_awaited_once()
 
     @pytest.mark.asyncio
@@ -186,7 +187,7 @@ class TestInternalCreate:
         llm.init(client=client, max_concurrent=max_concurrent, model="m")
 
         await asyncio.gather(*[
-            llm._create(model="m", max_tokens=10, messages=[])  # pyright: ignore[reportPrivateUsage]
+            llm._create(model="m", max_tokens=10, messages=[])
             for _ in range(6)
         ])
         assert peak_concurrent <= max_concurrent
@@ -195,7 +196,7 @@ class TestInternalCreate:
     async def test_not_initialized_raises(self):
         """Calling _create() before init() raises RuntimeError."""
         with pytest.raises(RuntimeError, match="not initialized"):
-            await llm._create(model="m", max_tokens=10, messages=[])  # pyright: ignore[reportPrivateUsage]
+            await llm._create(model="m", max_tokens=10, messages=[])
 
 
 class TestAsk:
@@ -321,7 +322,7 @@ class TestCompactJson:
 class TestReadableJson:
     def test_collapses_short_blocks(self):
         obj = {"name": "Alice", "tags": ["admin", "user"], "address": {"city": "Paris", "zip": "75001"}}
-        result = llm._readable_json(obj)  # pyright: ignore[reportPrivateUsage]
+        result = llm._readable_json(obj)
         # Short arrays/objects should be on one line
         assert '["admin", "user"]' in result
         assert '{"city": "Paris", "zip": "75001"}' in result
@@ -330,7 +331,7 @@ class TestReadableJson:
 
     def test_expands_large_blocks(self):
         obj = {"data": ["a" * 30, "b" * 30, "c" * 30]}
-        result = llm._readable_json(obj)  # pyright: ignore[reportPrivateUsage]
+        result = llm._readable_json(obj)
         # The inner array is too wide to collapse (>80 chars), so it stays multi-line
         lines = result.strip().splitlines()
         assert len(lines) > 2
@@ -340,7 +341,7 @@ class TestReformatDebugText:
     def test_json_paragraphs_reformatted(self):
         blob = '{"key":"value","list":[1,2,3]}'
         text = f"Some preamble text.\n\n{blob}\n\nMore text after."
-        result = llm._reformat_debug_text(text)  # pyright: ignore[reportPrivateUsage]
+        result = llm._reformat_debug_text(text)
         # The JSON paragraph should be reformatted (readable style)
         assert "Some preamble text." in result
         assert "More text after." in result
@@ -350,7 +351,7 @@ class TestReformatDebugText:
 
     def test_non_json_paragraphs_untouched(self):
         text = "Hello world.\n\nThis is not JSON.\n\nNeither is this."
-        result = llm._reformat_debug_text(text)  # pyright: ignore[reportPrivateUsage]
+        result = llm._reformat_debug_text(text)
         assert result == text
 
 
@@ -379,7 +380,7 @@ class TestUsageTracking:
         """reset() resets token counters to zero."""
         llm.init(client=MagicMock(), model="m")
         # Manually bump counters to simulate usage
-        llm._total_input_tokens = 500  # pyright: ignore[reportPrivateUsage]
-        llm._total_output_tokens = 200  # pyright: ignore[reportPrivateUsage]
+        llm._total_input_tokens = 500
+        llm._total_output_tokens = 200
         llm.reset()
         assert llm.get_usage() == (0, 0)

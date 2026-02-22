@@ -1,16 +1,17 @@
 """Tests for GraphQL type extraction from traces."""
+# pyright: reportPrivateUsage=false
 
 from __future__ import annotations
 
 import pytest
 
 from cli.commands.analyze.steps.graphql.extraction import (
-    _capitalize_field_name,  # pyright: ignore[reportPrivateUsage]
-    _infer_literal_type,  # pyright: ignore[reportPrivateUsage]
-    _infer_scalar,  # pyright: ignore[reportPrivateUsage]
-    _is_enum_literal,  # pyright: ignore[reportPrivateUsage]
-    _resolve_from_variable,  # pyright: ignore[reportPrivateUsage]
-    _strip_type_modifiers,  # pyright: ignore[reportPrivateUsage]
+    _capitalize_field_name,
+    _infer_literal_type,
+    _infer_scalar,
+    _is_enum_literal,
+    _resolve_from_variable,
+    _strip_type_modifiers,
     extract_graphql_schema,
 )
 from tests.analyze.steps.graphql.conftest import gql_trace

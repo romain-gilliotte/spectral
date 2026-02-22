@@ -1,4 +1,5 @@
 """Tests for REST enrichment application."""
+# pyright: reportPrivateUsage=false
 
 from typing import Any
 from unittest.mock import AsyncMock, patch
@@ -6,12 +7,10 @@ from unittest.mock import AsyncMock, patch
 import pytest
 
 from cli.commands.analyze.steps.rest.enrich import (
-    _MAX_RESPONSE_SCHEMA_CHARS as _MAX_RESPONSE_SCHEMA_CHARS,  # pyright: ignore[reportPrivateUsage]
-    _MAX_SUMMARY_CHARS as _MAX_SUMMARY_CHARS,  # pyright: ignore[reportPrivateUsage]
     EnrichEndpointsStep,
-    _apply_enrichment as _apply_enrichment,  # pyright: ignore[reportPrivateUsage]
-    _build_endpoint_summary as _build_endpoint_summary,  # pyright: ignore[reportPrivateUsage]
-    _strip_non_leaf_observed as _strip_non_leaf_observed,  # pyright: ignore[reportPrivateUsage]
+    _apply_enrichment,
+    _build_endpoint_summary,
+    _strip_non_leaf_observed,
 )
 from cli.commands.analyze.steps.rest.types import (
     EndpointSpec,

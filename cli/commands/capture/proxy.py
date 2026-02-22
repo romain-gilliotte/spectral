@@ -9,6 +9,8 @@ from typing import TYPE_CHECKING, Any, cast
 import uuid
 
 if TYPE_CHECKING:
+    from types import FrameType
+
     from mitmproxy.http import Headers as mitmproxy_Headers, HTTPFlow
     from mitmproxy.tls import ClientHelloData
 
@@ -424,7 +426,10 @@ def _run_mitmproxy(
         loop.call_soon_threadsafe(master.shutdown)
         proxy_thread.join(timeout=10)
 
-    signal.signal(signal.SIGINT, lambda *_: _shutdown())  # pyright: ignore[reportUnknownLambdaType, reportUnknownArgumentType]
+    def _sigint_handler(signum: int, frame: FrameType | None) -> None:
+        _shutdown()
+
+    signal.signal(signal.SIGINT, _sigint_handler)
 
     while proxy_thread.is_alive():
         proxy_thread.join(timeout=1)

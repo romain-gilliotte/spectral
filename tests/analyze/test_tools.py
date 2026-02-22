@@ -1,4 +1,5 @@
 """Tests for LLM investigation tools and the tool_use conversation loop."""
+# pyright: reportPrivateUsage=false
 
 import base64
 import json
@@ -136,7 +137,7 @@ class TestCallWithTools:
         client.messages.create = mock_create
         llm.init(client=client)
 
-        result = await llm._call_with_tools(  # pyright: ignore[reportPrivateUsage]
+        result = await llm._call_with_tools(
             "model",
             [{"role": "user", "content": "hi"}],
             INVESTIGATION_TOOLS,
@@ -166,7 +167,7 @@ class TestCallWithTools:
         client.messages.create = mock_create
         llm.init(client=client)
 
-        result = await llm._call_with_tools(  # pyright: ignore[reportPrivateUsage]
+        result = await llm._call_with_tools(
             "model",
             [{"role": "user", "content": "analyze"}],
             INVESTIGATION_TOOLS,
@@ -200,7 +201,7 @@ class TestCallWithTools:
         client.messages.create = mock_create
         llm.init(client=client)
 
-        result = await llm._call_with_tools(  # pyright: ignore[reportPrivateUsage]
+        result = await llm._call_with_tools(
             "model",
             [{"role": "user", "content": "go"}],
             INVESTIGATION_TOOLS,
@@ -221,7 +222,7 @@ class TestCallWithTools:
         llm.init(client=client)
 
         with pytest.raises(ValueError, match="exceeded 3 iterations"):
-            await llm._call_with_tools(  # pyright: ignore[reportPrivateUsage]
+            await llm._call_with_tools(
                 "model",
                 [{"role": "user", "content": "go"}],
                 INVESTIGATION_TOOLS,
@@ -251,7 +252,7 @@ class TestCallWithTools:
         client.messages.create = mock_create
         llm.init(client=client)
 
-        result = await llm._call_with_tools(  # pyright: ignore[reportPrivateUsage]
+        result = await llm._call_with_tools(
             "model",
             [{"role": "user", "content": "go"}],
             INVESTIGATION_TOOLS,

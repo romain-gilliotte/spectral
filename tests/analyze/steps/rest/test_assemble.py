@@ -1,9 +1,10 @@
 """Tests for REST OpenAPI assembly."""
+# pyright: reportPrivateUsage=false
 
 from typing import Any
 
 from cli.commands.analyze.steps.rest.assemble import (
-    _observed_to_examples as _observed_to_examples,  # pyright: ignore[reportPrivateUsage]
+    _observed_to_examples,
     build_openapi_dict,
 )
 from cli.commands.analyze.steps.rest.types import (

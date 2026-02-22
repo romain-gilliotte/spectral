@@ -1,10 +1,11 @@
 """Tests for REST mechanical extraction."""
+# pyright: reportPrivateUsage=false
 
 import json
 
 from cli.commands.analyze.steps.rest.extraction import (
-    _build_endpoint_mechanical as _build_endpoint_mechanical,  # pyright: ignore[reportPrivateUsage]
-    _make_endpoint_id as _make_endpoint_id,  # pyright: ignore[reportPrivateUsage]
+    _build_endpoint_mechanical,
+    _make_endpoint_id,
     extract_rate_limit,
     find_traces_for_group,
 )
