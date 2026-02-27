@@ -52,7 +52,7 @@ The pipeline recognizes three shapes of GraphQL requests:
 |---------|---------------------|------------------------|-----------------|
 | Normal query | Yes | Yes | Most GraphQL clients |
 | Persisted query (APQ hash) | Only if APQ rejection forces fallback | Depends on fallback | Apollo clients |
-| Named operation | No (name only) | No | Reddit |
+| Named operation | No (name only) | No | Some proprietary clients |
 
 For the best results, enable both `__typename` injection and persisted query blocking in the Chrome extension. See [Chrome extension](../capture/chrome-extension.md) for details on these toggles.
 

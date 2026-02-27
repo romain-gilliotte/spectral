@@ -186,9 +186,9 @@ capture_<timestamp>.zip
   "capture_id": "a1b2c3d4-...",
   "created_at": "2026-02-13T15:30:00Z",
   "app": {
-    "name": "EDF Customer Portal",
-    "base_url": "https://www.edf.fr",
-    "title": "EDF - Mon espace client"
+    "name": "Acme Customer Portal",
+    "base_url": "https://www.acme-corp.example.com",
+    "title": "Acme — My Account"
   },
   "browser": {
     "name": "Chrome",
@@ -214,7 +214,7 @@ capture_<timestamp>.zip
   "type": "http",
   "request": {
     "method": "POST",
-    "url": "https://api.edf.fr/api/consumption/monthly",
+    "url": "https://api.acme-corp.example.com/api/consumption/monthly",
     "headers": [
       { "name": "Content-Type", "value": "application/json" },
       { "name": "Authorization", "value": "Bearer ey..." }
@@ -244,7 +244,7 @@ capture_<timestamp>.zip
   },
   "initiator": {
     "type": "script",
-    "url": "https://www.edf.fr/assets/app.js",
+    "url": "https://www.acme-corp.example.com/assets/app.js",
     "line": 1234
   },
   "context_refs": ["c_0003"]
@@ -264,7 +264,7 @@ Key design decisions:
 {
   "id": "ws_0001",
   "timestamp": 1739456400500,
-  "url": "wss://realtime.edf.fr/socket",
+  "url": "wss://realtime.acme-corp.example.com/socket",
   "handshake_trace_ref": "t_0015",
   "protocols": ["graphql-ws"],
   "message_count": 34,
@@ -299,23 +299,23 @@ Key design decisions:
   "timestamp": 1739456399800,
   "action": "click",
   "element": {
-    "selector": "nav[data-tab='consumption']",
+    "selector": "nav[data-tab='usage']",
     "tag": "NAV",
-    "text": "Ma consommation",
+    "text": "My usage",
     "attributes": {
-      "data-tab": "consumption"
+      "data-tab": "usage"
     },
     "xpath": "/html/body/div[2]/nav/div[3]"
   },
   "page": {
-    "url": "https://www.edf.fr/dashboard",
-    "title": "Mon espace client - EDF",
+    "url": "https://www.acme-corp.example.com/dashboard",
+    "title": "My Account — Acme",
     "content": {
-      "headings": ["Mon espace client", "Ma consommation", "Mes factures"],
-      "navigation": ["Accueil", "Consommation", "Factures", "Contrat"],
-      "main_text": "Bienvenue sur votre espace client EDF...",
-      "forms": [{ "id": "search-form", "fields": ["query"], "submitLabel": "Rechercher" }],
-      "tables": ["Mois | Consommation | Coût"],
+      "headings": ["My Account", "My Usage", "My Invoices"],
+      "navigation": ["Home", "Usage", "Invoices", "Contract"],
+      "main_text": "Welcome to your Acme customer portal...",
+      "forms": [{ "id": "search-form", "fields": ["query"], "submitLabel": "Search" }],
+      "tables": ["Month | Usage | Cost"],
       "alerts": []
     }
   },
@@ -387,11 +387,11 @@ Everything else is mechanical (headers, schemas, status codes, URLs, timing).
 ## CLI commands
 
 ```bash
-# Analyze a capture bundle → edf-api.yaml and/or edf-api.graphql (requires ANTHROPIC_API_KEY)
-spectral analyze capture_20260213.zip -o edf-api
-spectral analyze capture_20260213.zip -o edf-api --model claude-sonnet-4-5-20250929
-spectral analyze capture_20260213.zip -o edf-api --skip-enrich  # skip LLM enrichment
-spectral analyze capture_20260213.zip -o edf-api --debug        # save LLM prompts to debug/
+# Analyze a capture bundle → my-api.yaml and/or my-api.graphql (requires ANTHROPIC_API_KEY)
+spectral analyze capture_20260213.zip -o my-api
+spectral analyze capture_20260213.zip -o my-api --model claude-sonnet-4-5-20250929
+spectral analyze capture_20260213.zip -o my-api --skip-enrich  # skip LLM enrichment
+spectral analyze capture_20260213.zip -o my-api --debug        # save LLM prompts to debug/
 
 # Capture: inspect bundles, run MITM proxy
 spectral capture inspect capture_20260213.zip                    # summary stats
@@ -401,14 +401,14 @@ spectral capture proxy -d "api\.example\.com" -o capture.zip     # MITM matching
 spectral capture discover                                        # log domains without MITM
 
 # Android: APK tools
-spectral android list spotify
-spectral android pull com.spotify.music
-spectral android patch com.spotify.music.apk
-spectral android install com.spotify.music-patched.apk
+spectral android list myapp
+spectral android pull com.example.myapp
+spectral android patch com.example.myapp.apk
+spectral android install com.example.myapp-patched.apk
 spectral android cert                                            # push mitmproxy CA cert to device
 ```
 
-Note: `analyze` requires `ANTHROPIC_API_KEY`. The `-o` flag takes a base name (e.g. `-o edf-api` produces `edf-api.yaml` and/or `edf-api.graphql`). Default model is `claude-sonnet-4-5-20250929`.
+Note: `analyze` requires `ANTHROPIC_API_KEY`. The `-o` flag takes a base name (e.g. `-o my-api` produces `my-api.yaml` and/or `my-api.graphql`). Default model is `claude-sonnet-4-5-20250929`.
 
 ---
 
@@ -636,12 +636,12 @@ Both the Python protocol detector (`_is_graphql_item` in `protocol.py`) and the 
 | Pattern | Shape | Query text available | Extension can inject `__typename` | Example |
 |---|---|---|---|---|
 | **Normal query** | `{"query": "query { ... }", ...}` | Yes | Yes | Most GraphQL clients |
-| **Persisted query (hash)** | `{"extensions": {"persistedQuery": {...}}, ...}` | No (hash only) | Only if APQ rejection forces a retry with full query | Apollo APQ, Spotify |
-| **Named operation** | `{"operation": "FetchUsers", "variables": {...}}` | No (name only) | No | Reddit |
+| **Persisted query (hash)** | `{"extensions": {"persistedQuery": {...}}, ...}` | No (hash only) | Only if APQ rejection forces a retry with full query | Apollo APQ |
+| **Named operation** | `{"operation": "FetchUsers", "variables": {...}}` | No (name only) | No | Some proprietary clients |
 
 The `operationName` key (standard GraphQL) is also accepted in place of `operation` for the named operation pattern. Both require a `variables` dict to distinguish from arbitrary JSON.
 
-APQ rejection (returning `PersistedQueryNotFound`) works with standard Apollo clients that hold the full query as a fallback. It does not work with clients that only have the hash (Spotify) or only the operation name (Reddit) — these break with errors like "Fallback query not available". The popup exposes toggles for both `__typename` injection and APQ rejection so users can disable them per-site.
+APQ rejection (returning `PersistedQueryNotFound`) works with standard Apollo clients that hold the full query as a fallback. It does not work with clients that only have the hash or only the operation name — these break with errors like "Fallback query not available". The popup exposes toggles for both `__typename` injection and APQ rejection so users can disable them per-site.
 
 ### GraphQL analysis strategy
 The GraphQL pipeline is mechanical-first with LLM enrichment:

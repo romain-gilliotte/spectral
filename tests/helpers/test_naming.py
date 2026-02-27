@@ -47,10 +47,10 @@ class TestToClassName:
         assert to_class_name("my cool api") == "MyCoolApi"
 
     def test_suffix_appended(self) -> None:
-        assert to_class_name("EDF Portal", suffix="Client") == "EdfPortalClient"
+        assert to_class_name("Acme Portal", suffix="Client") == "AcmePortalClient"
 
     def test_suffix_already_present(self) -> None:
-        assert to_class_name("EDF Client", suffix="Client") == "EdfClient"
+        assert to_class_name("Acme Client", suffix="Client") == "AcmeClient"
 
     def test_empty_with_suffix(self) -> None:
         assert to_class_name("", suffix="Client") == "ApiClient"

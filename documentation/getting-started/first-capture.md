@@ -31,7 +31,7 @@ If the application uses GraphQL, the extension can automatically inject `__typen
 | Block persisted queries | On | Rejects Apollo APQ hashes to force clients to send full query text |
 
 !!! warning
-    Blocking persisted queries may break applications that do not hold the full query as a fallback (notably Spotify and Reddit). Disable this toggle if the app stops working after starting capture.
+    Blocking persisted queries may break applications that do not hold the full query as a fallback. Disable this toggle if the app stops working after starting capture.
 
 ## Stop and export
 
