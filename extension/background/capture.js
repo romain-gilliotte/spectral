@@ -115,7 +115,7 @@ export async function startCapture(tabId) {
     // Enable Fetch domain to intercept POST requests for GraphQL handling
     // (persisted query rejection + __typename injection).
     // We intercept all URLs because GraphQL endpoints don't always have
-    // "graphql" in their path (e.g. Spotify uses /pathfinder/v1/query).
+    // "graphql" in their path (e.g. some apps use custom paths like /pathfinder/v1/query).
     // The handler filters out non-GraphQL requests quickly (non-POST,
     // non-JSON, no query/persistedQuery field).
     await chrome.debugger.sendCommand({ tabId }, 'Fetch.enable', {
