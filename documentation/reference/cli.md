@@ -10,37 +10,82 @@ spectral [--version] [--help] <command>
 
 ## analyze
 
-Analyze a capture bundle and produce API specifications.
+Analyze all captures for an app and produce API specifications.
 
 ```
-spectral analyze <capture_path> -o <name> [--model MODEL] [--debug] [--skip-enrich]
+spectral analyze <app_name> -o <name> [--model MODEL] [--debug] [--skip-enrich]
 ```
 
 | Argument / Option | Required | Default | Description |
 |-------------------|----------|---------|-------------|
-| `capture_path` | Yes | — | Path to the capture bundle (.zip) |
+| `app_name` | Yes | — | Name of the app in managed storage |
 | `-o, --output` | Yes | — | Output base name (produces `<name>.yaml`, `<name>.graphql`, `<name>.restish.json`, `<name>-auth.py` as appropriate) |
 | `--model` | No | `claude-sonnet-4-5-20250929` | Anthropic model to use for LLM steps |
 | `--debug` | No | Off | Save LLM prompts and responses to `debug/<timestamp>/` |
 | `--skip-enrich` | No | Off | Skip LLM enrichment (faster, but no business descriptions) |
 
-The command auto-detects the protocol from captured traces. REST traces produce an OpenAPI 3.1 YAML file; GraphQL traces produce an SDL schema. A single capture can contain both protocols.
+The command loads all captures for the app and merges them into a single bundle before analysis. It auto-detects the protocol from captured traces. REST traces produce an OpenAPI 3.1 YAML file; GraphQL traces produce an SDL schema. A single capture can contain both protocols.
 
 Requires the `ANTHROPIC_API_KEY` environment variable (loaded automatically from `.env`).
 
 ---
 
-## capture inspect
+## capture add
 
-Display summary or detailed information about a capture bundle.
+Import a ZIP bundle from the Chrome extension into managed storage.
 
 ```
-spectral capture inspect <capture_path> [--trace ID]
+spectral capture add <zip_file> [-a APP]
 ```
 
 | Argument / Option | Required | Default | Description |
 |-------------------|----------|---------|-------------|
-| `capture_path` | Yes | — | Path to the capture bundle (.zip) |
+| `zip_file` | Yes | — | Path to the capture bundle (.zip) |
+| `-a, --app` | No | (prompted) | App name for storage. If omitted, prompted interactively with a suggestion derived from the bundle's app name. |
+
+Duplicate captures (same `capture_id`) are detected and skipped. Multiple captures can be imported into the same app and are merged automatically during analysis.
+
+---
+
+## capture list
+
+List all known apps with capture counts.
+
+```
+spectral capture list
+```
+
+Shows a table of all apps in managed storage with their display name, number of captures, and last update time.
+
+---
+
+## capture show
+
+Show captures for an app.
+
+```
+spectral capture show <app_name>
+```
+
+| Argument | Required | Default | Description |
+|----------|----------|---------|-------------|
+| `app_name` | Yes | — | Name of the app in managed storage |
+
+Lists each capture under the app with its creation time, capture method (extension or proxy), and statistics.
+
+---
+
+## capture inspect
+
+Inspect the latest capture for an app.
+
+```
+spectral capture inspect <app_name> [--trace ID]
+```
+
+| Argument / Option | Required | Default | Description |
+|-------------------|----------|---------|-------------|
+| `app_name` | Yes | — | Name of the app in managed storage |
 | `--trace` | No | — | Show detailed info for a specific trace (e.g., `t_0001`) |
 
 Without `--trace`, shows a summary: capture metadata, statistics (trace/WS/context counts), and a table of all traces with method, URL, status, and timing.
@@ -51,19 +96,19 @@ With `--trace`, shows the full detail for one trace: request headers and decoded
 
 ## capture proxy
 
-Run a MITM proxy that captures traffic into a bundle.
+Run a MITM proxy that captures traffic into managed storage.
 
 ```
-spectral capture proxy [-p PORT] [-o PATH] [-d DOMAIN ...]
+spectral capture proxy [-a APP] [-p PORT] [-d DOMAIN ...]
 ```
 
 | Option | Required | Default | Description |
 |--------|----------|---------|-------------|
+| `-a, --app` | No | (prompted) | App name for storage |
 | `-p, --port` | No | 8080 | Proxy listen port |
-| `-o, --output` | No | `capture.zip` | Output bundle path |
 | `-d, --domain` | No | (all domains) | Only intercept matching domains; repeatable. Supports glob patterns (e.g., `*.example.com`). |
 
-Press `Ctrl+C` to stop the proxy. The bundle is written on exit with summary statistics.
+Press `Ctrl+C` to stop the proxy. The capture is stored in managed storage on exit with summary statistics.
 
 The proxy requires the mitmproxy CA certificate to be trusted by the client. See [Certificate setup](../capture/certificate-setup.md).
 

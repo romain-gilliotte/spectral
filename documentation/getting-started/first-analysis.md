@@ -4,19 +4,19 @@ This guide turns a capture bundle into an API specification.
 
 ## Run the analysis
 
-Pass your capture bundle to the `analyze` command with an output base name:
+Pass the app name to the `analyze` command with an output base name:
 
 ```bash
-uv run spectral analyze capture_20260213.zip -o myapp-api
+uv run spectral analyze myapp -o myapp-api
 ```
 
-The pipeline auto-detects whether the captured traffic is REST, GraphQL, or both, and produces the appropriate output files.
+The command loads all captures for the app, merges them into a single bundle, then auto-detects whether the captured traffic is REST, GraphQL, or both, and produces the appropriate output files.
 
 ## What happens during analysis
 
 The pipeline runs several steps, printing progress along the way:
 
-1. **Load** — Reads the bundle and reports trace, WebSocket, and context counts
+1. **Load** — Loads and merges all captures for the app, reports trace, WebSocket, and context counts
 2. **Detect base URL** — The LLM identifies the business API origin, filtering out CDN, analytics, and tracker domains
 3. **Filter** — Keeps only the traces that match the detected base URL
 4. **Protocol split** — Separates REST and GraphQL traces
@@ -41,19 +41,19 @@ Depending on the protocols detected, the command produces some or all of these f
 Skip the LLM enrichment step to get a faster but less detailed spec:
 
 ```bash
-uv run spectral analyze capture.zip -o myapp-api --skip-enrich
+uv run spectral analyze myapp -o myapp-api --skip-enrich
 ```
 
 Use a different model:
 
 ```bash
-uv run spectral analyze capture.zip -o myapp-api --model claude-sonnet-4-5-20250929
+uv run spectral analyze myapp -o myapp-api --model claude-sonnet-4-5-20250929
 ```
 
 Save all LLM prompts and responses for inspection:
 
 ```bash
-uv run spectral analyze capture.zip -o myapp-api --debug
+uv run spectral analyze myapp -o myapp-api --debug
 ```
 
 See [Debug mode](../analyze/debug-mode.md) for details on reading the debug output.

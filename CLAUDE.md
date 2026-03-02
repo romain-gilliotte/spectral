@@ -59,14 +59,14 @@ spectral/
 │   ├── main.py             # Entry point: commands (analyze, capture, android)
 │   ├── commands/
 │   │   ├── capture/         # Capture: bundle parsing, inspect, MITM proxy
-│   │   │   ├── cmd.py       # CLI group: capture inspect, capture proxy, capture discover
+│   │   │   ├── cmd.py       # CLI group: capture add, list, show, inspect, proxy, discover
 │   │   │   ├── inspect.py   # Inspect implementation: summary + per-trace detail views
-│   │   │   ├── proxy.py     # Generic MITM proxy engine (mitmproxy addons, run_proxy, run_discover)
-│   │   │   ├── loader.py    # Unzips and loads a capture bundle (+ write_bundle)
+│   │   │   ├── proxy.py     # MITM proxy engine (mitmproxy addons, run_proxy_to_storage, run_discover)
+│   │   │   ├── loader.py    # Load/write capture bundles (ZIP files and flat directories)
 │   │   │   ├── graphql_utils.py # GraphQL __typename injection (AST visitor via graphql-core)
-│   │   │   └── types.py     # Data classes for traces, contexts, timeline (wraps Pydantic + binary)
+│   │   │   └── types.py     # Data classes for traces, contexts, timeline, bundle merging
 │   │   ├── analyze/         # Analysis engine
-│   │   │   ├── cmd.py       # CLI command: analyze <bundle> -o <name> [--model] [--debug] [--skip-enrich]
+│   │   │   ├── cmd.py       # CLI command: analyze <app_name> -o <name> [--model] [--debug] [--skip-enrich]
 │   │   │   ├── pipeline.py  # Orchestrator: build_spec() → REST (OpenAPI) and/or GraphQL (SDL)
 │   │   │   ├── correlator.py# Time-window correlation: UI action → API calls
 │   │   │   ├── protocol.py  # Protocol detection (REST, GraphQL, WebSocket, gRPC, binary)
@@ -98,13 +98,15 @@ spectral/
 │   │       ├── adb.py       # ADB wrapper: list, pull, install, push cert
 │   │       └── patch.py     # APK patching: network security config, signing
 │   ├── formats/             # Shared format definitions
-│   │   └── capture_bundle.py   # Capture bundle Pydantic models (17 models)
+│   │   ├── capture_bundle.py   # Capture bundle Pydantic models (17 models)
+│   │   └── app_meta.py         # Per-app metadata model (AppMeta)
 │   └── helpers/             # Shared utilities
 │       ├── console.py       # Rich console instance
 │       ├── llm.py           # Centralized LLM helper (rate-limit retry, concurrency control)
 │       ├── naming.py        # safe_name(), to_identifier()
 │       ├── subprocess.py    # run_subprocess() helper
-│       └── http.py          # HTTP helpers
+│       ├── http.py          # HTTP helpers
+│       └── storage.py       # Managed storage layer (apps, captures, import, merge)
 ├── tests/                     # Mirrors cli/ directory structure
 │   ├── conftest.py            # Shared fixtures (sample_bundle, make_trace, make_context, etc.)
 │   ├── analyze/               # Tests for analyze command
@@ -122,7 +124,7 @@ spectral/
 │   ├── capture/               # Loader, proxy, graphql_utils tests
 │   ├── cli/                   # CLI command tests
 │   ├── formats/               # Pydantic model roundtrip tests
-│   └── helpers/               # Naming, subprocess, HTTP, LLM helper tests
+│   └── helpers/               # Naming, subprocess, HTTP, LLM, storage helper tests
 ├── pyproject.toml
 └── README.md
 ```
@@ -186,9 +188,9 @@ capture_<timestamp>.zip
   "capture_id": "a1b2c3d4-...",
   "created_at": "2026-02-13T15:30:00Z",
   "app": {
-    "name": "Acme Customer Portal",
-    "base_url": "https://www.acme-corp.example.com",
-    "title": "Acme — My Account"
+    "name": "EDF Customer Portal",
+    "base_url": "https://www.edf.fr",
+    "title": "EDF - Mon espace client"
   },
   "browser": {
     "name": "Chrome",
@@ -214,7 +216,7 @@ capture_<timestamp>.zip
   "type": "http",
   "request": {
     "method": "POST",
-    "url": "https://api.acme-corp.example.com/api/consumption/monthly",
+    "url": "https://api.edf.fr/api/consumption/monthly",
     "headers": [
       { "name": "Content-Type", "value": "application/json" },
       { "name": "Authorization", "value": "Bearer ey..." }
@@ -244,7 +246,7 @@ capture_<timestamp>.zip
   },
   "initiator": {
     "type": "script",
-    "url": "https://www.acme-corp.example.com/assets/app.js",
+    "url": "https://www.edf.fr/assets/app.js",
     "line": 1234
   },
   "context_refs": ["c_0003"]
@@ -264,7 +266,7 @@ Key design decisions:
 {
   "id": "ws_0001",
   "timestamp": 1739456400500,
-  "url": "wss://realtime.acme-corp.example.com/socket",
+  "url": "wss://realtime.edf.fr/socket",
   "handshake_trace_ref": "t_0015",
   "protocols": ["graphql-ws"],
   "message_count": 34,
@@ -299,23 +301,23 @@ Key design decisions:
   "timestamp": 1739456399800,
   "action": "click",
   "element": {
-    "selector": "nav[data-tab='usage']",
+    "selector": "nav[data-tab='consumption']",
     "tag": "NAV",
-    "text": "My usage",
+    "text": "Ma consommation",
     "attributes": {
-      "data-tab": "usage"
+      "data-tab": "consumption"
     },
     "xpath": "/html/body/div[2]/nav/div[3]"
   },
   "page": {
-    "url": "https://www.acme-corp.example.com/dashboard",
-    "title": "My Account — Acme",
+    "url": "https://www.edf.fr/dashboard",
+    "title": "Mon espace client - EDF",
     "content": {
-      "headings": ["My Account", "My Usage", "My Invoices"],
-      "navigation": ["Home", "Usage", "Invoices", "Contract"],
-      "main_text": "Welcome to your Acme customer portal...",
-      "forms": [{ "id": "search-form", "fields": ["query"], "submitLabel": "Search" }],
-      "tables": ["Month | Usage | Cost"],
+      "headings": ["Mon espace client", "Ma consommation", "Mes factures"],
+      "navigation": ["Accueil", "Consommation", "Factures", "Contrat"],
+      "main_text": "Bienvenue sur votre espace client EDF...",
+      "forms": [{ "id": "search-form", "fields": ["query"], "submitLabel": "Rechercher" }],
+      "tables": ["Mois | Consommation | Coût"],
       "alerts": []
     }
   },
@@ -387,28 +389,31 @@ Everything else is mechanical (headers, schemas, status codes, URLs, timing).
 ## CLI commands
 
 ```bash
-# Analyze a capture bundle → my-api.yaml and/or my-api.graphql (requires ANTHROPIC_API_KEY)
-spectral analyze capture_20260213.zip -o my-api
-spectral analyze capture_20260213.zip -o my-api --model claude-sonnet-4-5-20250929
-spectral analyze capture_20260213.zip -o my-api --skip-enrich  # skip LLM enrichment
-spectral analyze capture_20260213.zip -o my-api --debug        # save LLM prompts to debug/
+# Analyze all captures for an app → edf-api.yaml and/or edf-api.graphql (requires ANTHROPIC_API_KEY)
+spectral analyze edf -o edf-api
+spectral analyze edf -o edf-api --model claude-sonnet-4-5-20250929
+spectral analyze edf -o edf-api --skip-enrich                   # skip LLM enrichment
+spectral analyze edf -o edf-api --debug                         # save LLM prompts to debug/
 
-# Capture: inspect bundles, run MITM proxy
-spectral capture inspect capture_20260213.zip                    # summary stats
-spectral capture inspect capture_20260213.zip --trace t_0001     # details of one trace
-spectral capture proxy -o capture.zip                            # MITM all domains
-spectral capture proxy -d "api\.example\.com" -o capture.zip     # MITM matching domains only
+# Capture: import, list, show, inspect, proxy, discover
+spectral capture add capture_20260213.zip -a edf                 # import ZIP into managed storage
+spectral capture list                                            # list all known apps
+spectral capture show edf                                        # show captures for an app
+spectral capture inspect edf                                     # summary of latest capture
+spectral capture inspect edf --trace t_0001                      # details of one trace
+spectral capture proxy -a edf                                    # MITM all domains → managed storage
+spectral capture proxy -a edf -d "api\.example\.com"             # MITM matching domains only
 spectral capture discover                                        # log domains without MITM
 
 # Android: APK tools
-spectral android list myapp
-spectral android pull com.example.myapp
-spectral android patch com.example.myapp.apk
-spectral android install com.example.myapp-patched.apk
+spectral android list spotify
+spectral android pull com.spotify.music
+spectral android patch com.spotify.music.apk
+spectral android install com.spotify.music-patched.apk
 spectral android cert                                            # push mitmproxy CA cert to device
 ```
 
-Note: `analyze` requires `ANTHROPIC_API_KEY`. The `-o` flag takes a base name (e.g. `-o my-api` produces `my-api.yaml` and/or `my-api.graphql`). Default model is `claude-sonnet-4-5-20250929`.
+Note: `analyze` requires `ANTHROPIC_API_KEY`. The `-o` flag takes a base name (e.g. `-o edf-api` produces `edf-api.yaml` and/or `edf-api.graphql`). Default model is `claude-sonnet-4-5-20250929`. Captures are stored in managed storage (`~/.local/share/spectral/`, overridable with `SPECTRAL_HOME`).
 
 ---
 
@@ -580,7 +585,7 @@ Pipeline steps exchange typed dataclasses. Shared types live in `steps/types.py`
 - [ ] Prompt tuning for better enrichment quality
 
 ### Phase 3: Capture tools
-- [x] MITM proxy engine (`cli/commands/capture/proxy.py`) — mitmproxy addons, flow conversion, bundle output
+- [x] MITM proxy engine (`cli/commands/capture/proxy.py`) — mitmproxy addons, flow conversion, managed storage output
 - [x] Bundle inspect command (`cli/commands/capture/inspect.py`) — summary + per-trace detail views
 - [x] Domain discovery mode — log domains without intercepting
 - [x] Android APK tools (`cli/commands/android/`) — list, pull, patch, install, cert
@@ -588,12 +593,15 @@ Pipeline steps exchange typed dataclasses. Shared types live in `steps/types.py`
 
 ### Phase 4: Polish
 - [x] Full CLI (`cli/main.py`) — commands: `analyze`, `capture`, `android`
-- [x] Shared helpers (`cli/helpers/`) — naming, subprocess, http, console
-- [ ] Bundle merging (combine multiple capture sessions for the same app)
+- [x] Shared helpers (`cli/helpers/`) — naming, subprocess, http, console, storage
+- [x] Managed storage layer (`cli/helpers/storage.py`) — per-app directory layout, import, dedup, flat-directory format
+- [x] Bundle merging (`cli/commands/capture/types.py`) — ID-prefixed merge of multiple capture sessions
+- [x] Capture CLI commands — `capture add`, `capture list`, `capture show` for managed storage
+- [x] Flat-directory bundle loader/writer (`cli/commands/capture/loader.py`) — `load_bundle_dir`, `write_bundle_dir`
 - [ ] Privacy controls: exclude domains, redact headers/cookies
 
 ### Test coverage
-377 tests across 25 test files in 8 subdirectories, all passing. Test structure mirrors `cli/commands/`:
+Tests across test files in subdirectories, all passing. Test structure mirrors `cli/commands/`:
 - `tests/formats/` — Pydantic model roundtrips and defaults
 - `tests/capture/` — Bundle loader, MITM proxy engine, GraphQL utils
 - `tests/analyze/` — Protocol detection, correlator, pipeline, schemas, tools
@@ -602,7 +610,7 @@ Pipeline steps exchange typed dataclasses. Shared types live in `steps/types.py`
 - `tests/analyze/steps/graphql/` — GraphQL parser, extraction, enrichment, SDL assembly
 - `tests/android/` — ADB, patch, android CLI (list, pull, patch, install, cert)
 - `tests/cli/` — All CLI commands via Click test runner
-- `tests/helpers/` — Naming, subprocess, HTTP, LLM helper
+- `tests/helpers/` — Naming, subprocess, HTTP, LLM, storage helper
 
 ---
 
@@ -636,12 +644,12 @@ Both the Python protocol detector (`_is_graphql_item` in `protocol.py`) and the 
 | Pattern | Shape | Query text available | Extension can inject `__typename` | Example |
 |---|---|---|---|---|
 | **Normal query** | `{"query": "query { ... }", ...}` | Yes | Yes | Most GraphQL clients |
-| **Persisted query (hash)** | `{"extensions": {"persistedQuery": {...}}, ...}` | No (hash only) | Only if APQ rejection forces a retry with full query | Apollo APQ |
-| **Named operation** | `{"operation": "FetchUsers", "variables": {...}}` | No (name only) | No | Some proprietary clients |
+| **Persisted query (hash)** | `{"extensions": {"persistedQuery": {...}}, ...}` | No (hash only) | Only if APQ rejection forces a retry with full query | Apollo APQ, Spotify |
+| **Named operation** | `{"operation": "FetchUsers", "variables": {...}}` | No (name only) | No | Reddit |
 
 The `operationName` key (standard GraphQL) is also accepted in place of `operation` for the named operation pattern. Both require a `variables` dict to distinguish from arbitrary JSON.
 
-APQ rejection (returning `PersistedQueryNotFound`) works with standard Apollo clients that hold the full query as a fallback. It does not work with clients that only have the hash or only the operation name — these break with errors like "Fallback query not available". The popup exposes toggles for both `__typename` injection and APQ rejection so users can disable them per-site.
+APQ rejection (returning `PersistedQueryNotFound`) works with standard Apollo clients that hold the full query as a fallback. It does not work with clients that only have the hash (Spotify) or only the operation name (Reddit) — these break with errors like "Fallback query not available". The popup exposes toggles for both `__typename` injection and APQ rejection so users can disable them per-site.
 
 ### GraphQL analysis strategy
 The GraphQL pipeline is mechanical-first with LLM enrichment:
@@ -696,8 +704,31 @@ pyright        # Type checking
 ruff           # Linting (isort)
 ```
 
+## Managed storage
+
+Captures are stored in a structured directory layout under `~/.local/share/spectral/` (overridable with `SPECTRAL_HOME`):
+
+```
+~/.local/share/spectral/
+└── apps/
+    └── <name>/
+        ├── app.json              # AppMeta (name, display_name, timestamps)
+        └── captures/
+            └── <timestamp>_<source>_<id-prefix>/
+                ├── manifest.json
+                ├── traces/ ...
+                ├── ws/ ...
+                ├── contexts/ ...
+                └── timeline.json
+```
+
+The storage layer (`cli/helpers/storage.py`) provides: `import_capture` (ZIP → flat dir), `store_capture` (bundle → flat dir), `list_apps`, `list_captures`, `load_app_bundle` (load + merge all captures for an app). Duplicate captures (same `capture_id`) are rejected. The `AppMeta` Pydantic model lives in `cli/formats/app_meta.py`.
+
+Bundle merging (`merge_bundles` in `cli/commands/capture/types.py`) prefixes IDs with a 3-digit capture index to avoid collisions across sessions (e.g. `t_0001` from capture 2 → `t_002_0001`). A single-capture list is returned as-is without renaming.
+
 ## Environment variables
 
 ```
 ANTHROPIC_API_KEY=sk-ant-...    # Required for analyze command
+SPECTRAL_HOME=/path/to/dir     # Override managed storage root (default: ~/.local/share/spectral)
 ```

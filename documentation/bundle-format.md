@@ -4,7 +4,7 @@ This page documents the capture bundle format for contributors and advanced user
 
 ## Overview
 
-A capture bundle is a ZIP file containing network traces, WebSocket data, UI context events, and a timeline that ties everything together. The format was designed specifically for Spectral because existing formats like HAR have significant limitations:
+A capture bundle contains network traces, WebSocket data, UI context events, and a timeline that ties everything together. The Chrome extension exports bundles as ZIP files; internally, managed storage stores them as flat directories with the same layout. The format was designed specifically for Spectral because existing formats like HAR have significant limitations:
 
 - HAR is JSON/UTF-8 only — no native binary support (would need base64 encoding, adding 33% overhead)
 - HAR has no standard WebSocket support (Chrome uses non-standard `_webSocketMessages`)

@@ -1,6 +1,6 @@
 # Pipeline overview
 
-The `spectral analyze` command runs a multi-step pipeline that transforms a raw capture bundle into structured API specifications. The pipeline auto-detects the protocol (REST, GraphQL, or both) and processes each branch independently.
+The `spectral analyze` command loads all captures for an app, merges them into a single bundle, then runs a multi-step pipeline that transforms it into structured API specifications. The pipeline auto-detects the protocol (REST, GraphQL, or both) and processes each branch independently.
 
 ## Architecture
 

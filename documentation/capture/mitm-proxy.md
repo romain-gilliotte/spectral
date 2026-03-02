@@ -1,30 +1,30 @@
 # MITM proxy
 
-The MITM proxy captures traffic from any application that respects `HTTP_PROXY` / `HTTPS_PROXY` environment variables. It produces the same capture bundle format as the Chrome extension.
+The MITM proxy captures traffic from any application that respects `HTTP_PROXY` / `HTTPS_PROXY` environment variables. It stores captures directly into managed storage using the same bundle format as the Chrome extension.
 
 ## Basic usage
 
 Start the proxy and point your application at it:
 
 ```bash
-uv run spectral capture proxy -o capture.zip &
+uv run spectral capture proxy -a myapp &
 HTTPS_PROXY=http://127.0.0.1:8080 curl https://api.example.com/users
 ```
 
-Press `Ctrl+C` to stop the proxy. It writes the capture bundle and prints summary statistics (trace count, WebSocket connections, messages).
+Press `Ctrl+C` to stop the proxy. It stores the capture in managed storage and prints summary statistics (trace count, WebSocket connections, messages).
 
 ## Domain filtering
 
 By default the proxy intercepts all HTTPS traffic. To target specific domains, use the `-d` flag (repeatable):
 
 ```bash
-uv run spectral capture proxy -d "api.example.com" -d "auth.example.com" -o capture.zip
+uv run spectral capture proxy -a myapp -d "api.example.com" -d "auth.example.com"
 ```
 
 Glob-style patterns are supported:
 
 ```bash
-uv run spectral capture proxy -d "*.example.com" -o capture.zip
+uv run spectral capture proxy -a myapp -d "*.example.com"
 ```
 
 Traffic to non-matching domains passes through without interception.
@@ -45,8 +45,8 @@ Use the output to build your `-d` filter list for the actual capture.
 
 | Option | Default | Description |
 |--------|---------|-------------|
+| `-a, --app` | (prompted) | App name for managed storage |
 | `-p, --port` | 8080 | Proxy listen port |
-| `-o, --output` | `capture.zip` | Output bundle path |
 | `-d, --domain` | (all) | Domain filter pattern (repeatable) |
 
 ## Certificate trust
@@ -57,6 +57,6 @@ On first run, mitmproxy creates its CA in `~/.mitmproxy/`. See [Certificate setu
 
 ## Limitations
 
-The MITM proxy does not capture UI context (clicks, page content, etc.) — that information only comes from the Chrome extension. Bundles produced by the proxy contain network traces and WebSocket data but no context events.
+The MITM proxy does not capture UI context (clicks, page content, etc.) — that information only comes from the Chrome extension. Captures produced by the proxy contain network traces and WebSocket data but no context events.
 
-The analysis pipeline still works on proxy-only bundles, but the LLM has less context to infer business semantics. For the best results, use the Chrome extension for web applications and reserve the proxy for non-browser traffic (mobile apps, CLI tools, desktop applications).
+The analysis pipeline still works on proxy-only captures, but the LLM has less context to infer business semantics. For the best results, use the Chrome extension for web applications and reserve the proxy for non-browser traffic (mobile apps, CLI tools, desktop applications).

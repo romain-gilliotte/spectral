@@ -38,8 +38,18 @@ If the application uses GraphQL, the extension can automatically inject `__typen
 1. Click **Stop Capture** in the popup. The extension detaches the debugger.
 2. Click **Export Bundle**. The extension assembles a ZIP file and triggers a download.
 
-The bundle file is named `capture_<timestamp>.zip` and contains all recorded data in Spectral's custom format. This is the input for the analysis step.
+The bundle file is named `capture_<timestamp>.zip` and contains all recorded data in Spectral's custom format.
+
+## Import into managed storage
+
+Import the exported bundle into Spectral's managed storage so the analysis commands can find it:
+
+```bash
+uv run spectral capture add capture_20260213.zip -a myapp
+```
+
+If you omit `-a`, Spectral prompts for an app name (suggesting one from the bundle metadata). You can import multiple captures into the same app — they are merged automatically during analysis.
 
 ## Next steps
 
-Take the exported bundle to [First analysis](first-analysis.md) to generate an API spec.
+Take the imported captures to [First analysis](first-analysis.md) to generate an API spec.

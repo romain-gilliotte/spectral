@@ -78,7 +78,7 @@ Configure the device to use the proxy. Go to **Settings > Wi-Fi**, long-press yo
 Then start the proxy as usual:
 
 ```bash
-uv run spectral capture proxy -d "*.spotify.com" -o spotify-capture.zip
+uv run spectral capture proxy -a spotify -d "*.spotify.com"
 ```
 
-Use the app on the device. The proxy captures all traffic from the patched app. Press `Ctrl+C` to stop and export the bundle.
+Use the app on the device. The proxy captures all traffic from the patched app. Press `Ctrl+C` to stop. The capture is stored in managed storage.

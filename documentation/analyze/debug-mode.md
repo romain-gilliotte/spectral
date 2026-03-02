@@ -5,7 +5,7 @@ The `--debug` flag saves all LLM interactions to disk so you can inspect what th
 ## Usage
 
 ```bash
-uv run spectral analyze capture.zip -o myapp-api --debug
+uv run spectral analyze myapp -o myapp-api --debug
 ```
 
 ## Output location

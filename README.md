@@ -26,20 +26,21 @@ uv sync
 echo "ANTHROPIC_API_KEY=sk-ant-..." > .env
 ```
 
-Capture traffic with the Chrome extension or the MITM proxy:
+Capture traffic with the Chrome extension or the MITM proxy, then import into managed storage:
 
 ```bash
 # Chrome extension: load extension/ as unpacked in chrome://extensions
 # then: Start Capture → browse → Stop Capture → Export Bundle
+uv run spectral capture add capture_20260213.zip -a myapp
 
-# Or use the MITM proxy
-uv run spectral capture proxy -o capture.zip
+# Or use the MITM proxy (stores directly)
+uv run spectral capture proxy -a myapp
 ```
 
-Analyze the capture to produce an API spec:
+Analyze all captures for an app to produce an API spec:
 
 ```bash
-uv run spectral analyze capture.zip -o myapp-api
+uv run spectral analyze myapp -o myapp-api
 # → myapp-api.yaml (OpenAPI 3.1)
 # → myapp-api.graphql (SDL schema, if GraphQL detected)
 # → myapp-api.restish.json (Restish config)

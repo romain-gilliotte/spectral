@@ -8,9 +8,9 @@ Most apps sit on undocumented APIs that work perfectly well. But without a spec,
 
 Spectral is a two-stage pipeline:
 
-1. **Capture** — A Chrome extension or MITM proxy records network traffic and UI actions while you browse the app normally. The output is a portable ZIP bundle containing every HTTP request/response, WebSocket message, and UI interaction.
+1. **Capture** — A Chrome extension or MITM proxy records network traffic and UI actions while you browse the app normally. Captures are imported into managed storage, where multiple sessions for the same app can be accumulated and merged.
 
-2. **Analyze** — A CLI tool correlates what you clicked with what the app sent over the network, using an LLM to understand the business meaning of each API call. REST traces produce an OpenAPI 3.1 spec; GraphQL traces produce a typed SDL schema.
+2. **Analyze** — A CLI tool loads all captures for an app, merges them, then correlates what you clicked with what the app sent over the network, using an LLM to understand the business meaning of each API call. REST traces produce an OpenAPI 3.1 spec; GraphQL traces produce a typed SDL schema.
 
 The key innovation is the correlation of UI actions with network traffic. Instead of just recording technical shapes, Spectral understands *why* each API call exists — what business operation it represents, what the parameters mean, how authentication works.
 
