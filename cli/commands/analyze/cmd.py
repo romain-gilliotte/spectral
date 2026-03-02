@@ -31,7 +31,7 @@ def _estimate_cost(model: str, input_tokens: int, output_tokens: int) -> float |
 
 
 @click.command()
-@click.argument("capture_path", type=click.Path(exists=True))
+@click.argument("app_name")
 @click.option(
     "-o", "--output", required=True, help="Output base name (produces <name>.yaml and/or <name>.graphql)"
 )
@@ -46,17 +46,19 @@ def _estimate_cost(model: str, input_tokens: int, output_tokens: int) -> float |
     help="Skip LLM enrichment step (business context, glossary, etc.)",
 )
 def analyze(
-    capture_path: str, output: str, model: str, debug: bool, skip_enrich: bool
+    app_name: str, output: str, model: str, debug: bool, skip_enrich: bool
 ) -> None:
-    """Analyze a capture bundle and produce an API spec."""
+    """Analyze captures for an app and produce an API spec."""
     from cli.commands.analyze.pipeline import build_spec
-    from cli.commands.capture.loader import load_bundle
     import cli.helpers.llm as llm
+    from cli.helpers.storage import list_captures, load_app_bundle
 
-    console.print(f"[bold]Loading capture bundle:[/bold] {capture_path}")
-    bundle = load_bundle(capture_path)
+    cap_count = len(list_captures(app_name))
+    console.print(f"[bold]Loading captures for app:[/bold] {app_name}")
+    bundle = load_app_bundle(app_name)
     console.print(
-        f"  Loaded {len(bundle.traces)} traces, "
+        f"  Loaded {cap_count} capture(s): "
+        f"{len(bundle.traces)} traces, "
         f"{len(bundle.ws_connections)} WS connections, "
         f"{len(bundle.contexts)} contexts"
     )
@@ -77,7 +79,7 @@ def analyze(
     result = asyncio.run(
         build_spec(
             bundle,
-            source_filename=Path(capture_path).name,
+            source_filename=app_name,
             on_progress=on_progress,
             skip_enrich=skip_enrich,
         )

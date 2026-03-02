@@ -98,10 +98,14 @@ def _make_mock_anthropic_module() -> MagicMock:
 
 
 class TestAnalyzeCommand:
-    def test_analyze_basic(self, sample_bundle: CaptureBundle, tmp_path: Path) -> None:
+    def test_analyze_basic(
+        self, sample_bundle: CaptureBundle, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ) -> None:
         """Test the analyze command with mocked LLM."""
-        bundle_path = tmp_path / "capture.zip"
-        write_bundle(sample_bundle, bundle_path)
+        from cli.helpers.storage import store_capture
+
+        monkeypatch.setenv("SPECTRAL_HOME", str(tmp_path / "store"))
+        store_capture(sample_bundle, "testapp")
 
         output_path = tmp_path / "spec.yaml"
         runner = CliRunner()
@@ -110,12 +114,7 @@ class TestAnalyzeCommand:
         with patch.dict("sys.modules", {"anthropic": mock_anthropic}):
             result = runner.invoke(
                 cli,
-                [
-                    "analyze",
-                    str(bundle_path),
-                    "-o",
-                    str(output_path),
-                ],
+                ["analyze", "testapp", "-o", str(output_path)],
             )
 
         assert result.exit_code == 0, result.output
@@ -126,10 +125,12 @@ class TestAnalyzeCommand:
         assert openapi["info"]["title"] == "Test App API"
 
     def test_analyze_produces_endpoints(
-        self, sample_bundle: CaptureBundle, tmp_path: Path
+        self, sample_bundle: CaptureBundle, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
     ) -> None:
-        bundle_path = tmp_path / "capture.zip"
-        write_bundle(sample_bundle, bundle_path)
+        from cli.helpers.storage import store_capture
+
+        monkeypatch.setenv("SPECTRAL_HOME", str(tmp_path / "store"))
+        store_capture(sample_bundle, "testapp")
 
         output_path = tmp_path / "spec.yaml"
         runner = CliRunner()
@@ -138,12 +139,7 @@ class TestAnalyzeCommand:
         with patch.dict("sys.modules", {"anthropic": mock_anthropic}):
             result = runner.invoke(
                 cli,
-                [
-                    "analyze",
-                    str(bundle_path),
-                    "-o",
-                    str(output_path),
-                ],
+                ["analyze", "testapp", "-o", str(output_path)],
             )
 
         assert result.exit_code == 0
