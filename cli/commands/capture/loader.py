@@ -119,7 +119,12 @@ def _load_from_zipfile(zf: zipfile.ZipFile) -> CaptureBundle:
 
 
 def write_bundle(bundle: CaptureBundle, path: str | Path) -> None:
-    """Write a capture bundle to a .zip file."""
+    """Write a capture bundle to a .zip file.
+
+    No longer used in production (the proxy and CLI commands write flat
+    directories via ``write_bundle_dir``), but still needed by tests that
+    create ZIP fixtures simulating bundles produced by the Chrome extension.
+    """
     path = Path(path)
     with zipfile.ZipFile(path, "w", zipfile.ZIP_DEFLATED) as zf:
         _write_to_zipfile(bundle, zf)

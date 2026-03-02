@@ -14,7 +14,6 @@ if TYPE_CHECKING:
     from mitmproxy.http import Headers as mitmproxy_Headers, HTTPFlow
     from mitmproxy.tls import ClientHelloData
 
-from cli.commands.capture.loader import write_bundle
 from cli.commands.capture.types import CaptureBundle, Trace, WsConnection, WsMessage
 from cli.formats.capture_bundle import (
     AppInfo,
@@ -436,40 +435,6 @@ def _run_mitmproxy(
 
     end_time = time.time()
     return start_time, end_time
-
-
-def run_proxy(
-    port: int,
-    output_path: Path,
-    app_name: str,
-    allow_hosts: list[str] | None = None,
-) -> CaptureStats:
-    """Start a MITM proxy, capture traffic, and write a bundle on stop.
-
-    Always captures — when allow_hosts is None, MITMs all domains.
-    When provided, MITMs only matching hosts.
-
-    Args:
-        port: Proxy listen port.
-        output_path: Path to write the capture bundle .zip.
-        app_name: Name for the captured app in the manifest.
-        allow_hosts: Only intercept these host patterns (regex).
-            Other traffic passes through without MITM.
-
-    Returns:
-        CaptureStats on success.
-    """
-    _ensure_mitmproxy()
-
-    addon = CaptureAddon()
-    start_time, end_time = _run_mitmproxy(port, [addon], allow_hosts=allow_hosts)
-
-    bundle = addon.build_bundle(app_name, start_time, end_time)
-
-    output_path.parent.mkdir(parents=True, exist_ok=True)
-    write_bundle(bundle, output_path)
-
-    return bundle.manifest.stats
 
 
 def run_proxy_to_storage(
