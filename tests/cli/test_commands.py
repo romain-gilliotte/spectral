@@ -8,6 +8,7 @@ from typing import cast
 from unittest.mock import MagicMock, patch
 
 from click.testing import CliRunner
+import pytest
 import yaml
 
 from cli.commands.capture.loader import write_bundle
@@ -150,50 +151,180 @@ class TestAnalyzeCommand:
         assert len(openapi["paths"]) > 0
 
 
-class TestInspectCommand:
-    def test_inspect_summary(
-        self, sample_bundle: CaptureBundle, tmp_path: Path
+class TestAddCommand:
+    def test_add_with_app_flag(
+        self, sample_bundle: CaptureBundle, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
     ) -> None:
-        bundle_path = tmp_path / "capture.zip"
-        write_bundle(sample_bundle, bundle_path)
+        monkeypatch.setenv("SPECTRAL_HOME", str(tmp_path / "store"))
+        zip_path = tmp_path / "capture.zip"
+        write_bundle(sample_bundle, zip_path)
 
         runner = CliRunner()
-        result = runner.invoke(cli, ["capture", "inspect", str(bundle_path)])
+        result = runner.invoke(
+            cli, ["capture", "add", str(zip_path), "--app", "myapp"]
+        )
+
+        assert result.exit_code == 0, result.output
+        assert "Imported into app 'myapp'" in result.output
+        assert "Total captures: 1" in result.output
+
+    def test_add_prompts_for_app(
+        self, sample_bundle: CaptureBundle, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ) -> None:
+        monkeypatch.setenv("SPECTRAL_HOME", str(tmp_path / "store"))
+        zip_path = tmp_path / "capture.zip"
+        write_bundle(sample_bundle, zip_path)
+
+        runner = CliRunner()
+        result = runner.invoke(
+            cli, ["capture", "add", str(zip_path)], input="testapp\n"
+        )
+
+        assert result.exit_code == 0, result.output
+        assert "Imported into app 'testapp'" in result.output
+
+    def test_add_duplicate_prints_warning(
+        self, sample_bundle: CaptureBundle, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ) -> None:
+        monkeypatch.setenv("SPECTRAL_HOME", str(tmp_path / "store"))
+        zip_path = tmp_path / "capture.zip"
+        write_bundle(sample_bundle, zip_path)
+
+        runner = CliRunner()
+        result1 = runner.invoke(
+            cli, ["capture", "add", str(zip_path), "--app", "myapp"]
+        )
+        assert result1.exit_code == 0
+
+        result2 = runner.invoke(
+            cli, ["capture", "add", str(zip_path), "--app", "myapp"]
+        )
+        assert result2.exit_code == 0
+        assert "already imported" in result2.output
+        assert "Skipping" in result2.output
+
+
+class TestListCommand:
+    def test_list_empty(self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+        monkeypatch.setenv("SPECTRAL_HOME", str(tmp_path / "store"))
+        runner = CliRunner()
+        result = runner.invoke(cli, ["capture", "list"])
+
+        assert result.exit_code == 0
+        assert "No apps found" in result.output
+
+    def test_list_with_apps(
+        self, sample_bundle: CaptureBundle, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ) -> None:
+        from cli.helpers.storage import store_capture
+
+        monkeypatch.setenv("SPECTRAL_HOME", str(tmp_path / "store"))
+        store_capture(sample_bundle, "alfa")
+        store_capture(sample_bundle, "bravo")
+
+        runner = CliRunner()
+        result = runner.invoke(cli, ["capture", "list"])
+
+        assert result.exit_code == 0
+        assert "alfa" in result.output
+        assert "bravo" in result.output
+
+
+class TestShowCommand:
+    def test_show_captures(
+        self, sample_bundle: CaptureBundle, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ) -> None:
+        from cli.helpers.storage import store_capture
+
+        monkeypatch.setenv("SPECTRAL_HOME", str(tmp_path / "store"))
+        store_capture(sample_bundle, "myapp")
+
+        runner = CliRunner()
+        result = runner.invoke(cli, ["capture", "show", "myapp"])
+
+        assert result.exit_code == 0
+        assert "myapp" in result.output
+        assert "1 capture(s)" in result.output
+
+    def test_show_nonexistent_app(self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+        monkeypatch.setenv("SPECTRAL_HOME", str(tmp_path / "store"))
+        runner = CliRunner()
+        result = runner.invoke(cli, ["capture", "show", "nope"])
+
+        assert result.exit_code != 0
+        assert "not found" in result.output
+
+
+class TestInspectCommand:
+    def test_inspect_summary(
+        self, sample_bundle: CaptureBundle, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ) -> None:
+        from cli.helpers.storage import store_capture
+
+        monkeypatch.setenv("SPECTRAL_HOME", str(tmp_path / "store"))
+        store_capture(sample_bundle, "myapp")
+
+        runner = CliRunner()
+        result = runner.invoke(cli, ["capture", "inspect", "myapp"])
 
         assert result.exit_code == 0
         assert "Test App" in result.output
         assert "test-capture-001" in result.output
 
-    def test_inspect_trace(self, sample_bundle: CaptureBundle, tmp_path: Path) -> None:
-        bundle_path = tmp_path / "capture.zip"
-        write_bundle(sample_bundle, bundle_path)
+    def test_inspect_trace(
+        self, sample_bundle: CaptureBundle, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ) -> None:
+        from cli.helpers.storage import store_capture
+
+        monkeypatch.setenv("SPECTRAL_HOME", str(tmp_path / "store"))
+        store_capture(sample_bundle, "myapp")
 
         runner = CliRunner()
-        result = runner.invoke(cli, ["capture", "inspect", str(bundle_path), "--trace", "t_0001"])
+        result = runner.invoke(
+            cli, ["capture", "inspect", "myapp", "--trace", "t_0001"]
+        )
 
         assert result.exit_code == 0
         assert "t_0001" in result.output
         assert "GET" in result.output
 
     def test_inspect_trace_not_found(
-        self, sample_bundle: CaptureBundle, tmp_path: Path
+        self, sample_bundle: CaptureBundle, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
     ) -> None:
-        bundle_path = tmp_path / "capture.zip"
-        write_bundle(sample_bundle, bundle_path)
+        from cli.helpers.storage import store_capture
+
+        monkeypatch.setenv("SPECTRAL_HOME", str(tmp_path / "store"))
+        store_capture(sample_bundle, "myapp")
 
         runner = CliRunner()
-        result = runner.invoke(cli, ["capture", "inspect", str(bundle_path), "--trace", "t_9999"])
+        result = runner.invoke(
+            cli, ["capture", "inspect", "myapp", "--trace", "t_9999"]
+        )
 
         assert result.exit_code == 0
         assert "not found" in result.output
 
+    def test_inspect_nonexistent_app(self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+        monkeypatch.setenv("SPECTRAL_HOME", str(tmp_path / "store"))
+        runner = CliRunner()
+        result = runner.invoke(cli, ["capture", "inspect", "nope"])
+
+        assert result.exit_code != 0
+        assert "not found" in result.output
+
 
 class TestProxyCommand:
-    @patch("cli.commands.capture.proxy.run_proxy")
-    def test_proxy_default_intercepts_all(self, mock_run: MagicMock) -> None:
-        mock_run.return_value = CaptureStats(trace_count=5, ws_connection_count=1, ws_message_count=10)
+    @patch("cli.commands.capture.proxy.run_proxy_to_storage")
+    def test_proxy_default_intercepts_all(
+        self, mock_run: MagicMock, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ) -> None:
+        monkeypatch.setenv("SPECTRAL_HOME", str(tmp_path / "store"))
+        mock_run.return_value = (
+            CaptureStats(trace_count=5, ws_connection_count=1, ws_message_count=10),
+            tmp_path / "store" / "apps" / "myapp" / "captures" / "test",
+        )
         runner = CliRunner()
-        result = runner.invoke(cli, ["capture", "proxy"])
+        result = runner.invoke(cli, ["capture", "proxy", "-a", "myapp"])
 
         assert result.exit_code == 0
         assert "Intercepting all domains" in result.output
@@ -201,11 +332,19 @@ class TestProxyCommand:
         _, kwargs = mock_run.call_args
         assert kwargs.get("allow_hosts") is None
 
-    @patch("cli.commands.capture.proxy.run_proxy")
-    def test_proxy_with_domains(self, mock_run: MagicMock) -> None:
-        mock_run.return_value = CaptureStats(trace_count=3)
+    @patch("cli.commands.capture.proxy.run_proxy_to_storage")
+    def test_proxy_with_domains(
+        self, mock_run: MagicMock, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ) -> None:
+        monkeypatch.setenv("SPECTRAL_HOME", str(tmp_path / "store"))
+        mock_run.return_value = (
+            CaptureStats(trace_count=3),
+            tmp_path / "store" / "apps" / "myapp" / "captures" / "test",
+        )
         runner = CliRunner()
-        result = runner.invoke(cli, ["capture", "proxy", "-d", "api\\.example\\.com"])
+        result = runner.invoke(
+            cli, ["capture", "proxy", "-a", "myapp", "-d", "api\\.example\\.com"]
+        )
 
         assert result.exit_code == 0
         assert "api\\.example\\.com" in result.output

@@ -472,6 +472,34 @@ def run_proxy(
     return bundle.manifest.stats
 
 
+def run_proxy_to_storage(
+    port: int,
+    app_name: str,
+    allow_hosts: list[str] | None = None,
+) -> tuple[CaptureStats, Path]:
+    """Start a MITM proxy, capture traffic, and store in managed storage.
+
+    Args:
+        port: Proxy listen port.
+        app_name: App name for managed storage.
+        allow_hosts: Only intercept these host patterns (regex).
+
+    Returns:
+        (CaptureStats, capture_dir) on success.
+    """
+    from cli.helpers.storage import store_capture
+
+    _ensure_mitmproxy()
+
+    addon = CaptureAddon()
+    start_time, end_time = _run_mitmproxy(port, [addon], allow_hosts=allow_hosts)
+
+    bundle = addon.build_bundle(app_name, start_time, end_time)
+    cap_dir = store_capture(bundle, app_name)
+
+    return bundle.manifest.stats, cap_dir
+
+
 def run_discover(port: int) -> dict[str, int]:
     """Start a proxy in discovery mode: log domains without MITM.
 

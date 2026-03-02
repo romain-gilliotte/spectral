@@ -1,4 +1,4 @@
-"""Load and write capture bundles (.zip files)."""
+"""Load and write capture bundles (.zip files and flat directories)."""
 
 from __future__ import annotations
 
@@ -163,3 +163,125 @@ def _write_to_zipfile(bundle: CaptureBundle, zf: zipfile.ZipFile) -> None:
 
     # Timeline
     zf.writestr("timeline.json", bundle.timeline.model_dump_json(indent=2))
+
+
+# ---------------------------------------------------------------------------
+# Flat-directory format (same layout as inside the ZIP, but on disk)
+# ---------------------------------------------------------------------------
+
+
+def write_bundle_dir(bundle: CaptureBundle, directory: str | Path) -> None:
+    """Write a capture bundle as flat files in *directory*."""
+    d = Path(directory)
+    d.mkdir(parents=True, exist_ok=True)
+
+    (d / "manifest.json").write_text(bundle.manifest.model_dump_json(indent=2))
+
+    # Traces
+    traces_dir = d / "traces"
+    if bundle.traces:
+        traces_dir.mkdir(exist_ok=True)
+    for trace in bundle.traces:
+        meta = trace.meta
+        (traces_dir / f"{meta.id}.json").write_text(meta.model_dump_json(indent=2))
+        if meta.request.body_file:
+            (traces_dir / meta.request.body_file).write_bytes(trace.request_body)
+        if meta.response.body_file:
+            (traces_dir / meta.response.body_file).write_bytes(trace.response_body)
+
+    # WebSocket
+    ws_dir = d / "ws"
+    if bundle.ws_connections:
+        ws_dir.mkdir(exist_ok=True)
+    for ws_conn in bundle.ws_connections:
+        ws_meta = ws_conn.meta
+        (ws_dir / f"{ws_meta.id}.json").write_text(ws_meta.model_dump_json(indent=2))
+        for msg in ws_conn.messages:
+            msg_meta = msg.meta
+            (ws_dir / f"{msg_meta.id}.json").write_text(msg_meta.model_dump_json(indent=2))
+            if msg_meta.payload_file:
+                (ws_dir / msg_meta.payload_file).write_bytes(msg.payload)
+
+    # Contexts
+    ctx_dir = d / "contexts"
+    if bundle.contexts:
+        ctx_dir.mkdir(exist_ok=True)
+    for ctx in bundle.contexts:
+        (ctx_dir / f"{ctx.meta.id}.json").write_text(ctx.meta.model_dump_json(indent=2))
+
+    # Timeline
+    (d / "timeline.json").write_text(bundle.timeline.model_dump_json(indent=2))
+
+
+def load_bundle_dir(directory: str | Path) -> CaptureBundle:
+    """Load a capture bundle from a flat-file directory."""
+    d = Path(directory)
+    manifest = CaptureManifest.model_validate_json((d / "manifest.json").read_text())
+
+    # Traces
+    traces: list[Trace] = []
+    traces_dir = d / "traces"
+    if traces_dir.is_dir():
+        trace_files = sorted(traces_dir.glob("*.json"))
+        for tf in trace_files:
+            trace_meta = TraceMeta.model_validate_json(tf.read_text())
+            req_body = (
+                (traces_dir / trace_meta.request.body_file).read_bytes()
+                if trace_meta.request.body_file
+                and (traces_dir / trace_meta.request.body_file).exists()
+                else b""
+            )
+            resp_body = (
+                (traces_dir / trace_meta.response.body_file).read_bytes()
+                if trace_meta.response.body_file
+                and (traces_dir / trace_meta.response.body_file).exists()
+                else b""
+            )
+            traces.append(
+                Trace(meta=trace_meta, request_body=req_body, response_body=resp_body)
+            )
+
+    # WebSocket
+    ws_connections: list[WsConnection] = []
+    ws_dir = d / "ws"
+    if ws_dir.is_dir():
+        ws_conn_files = sorted(
+            f for f in ws_dir.glob("*.json") if "_m" not in f.name
+        )
+        for wf in ws_conn_files:
+            ws_meta = WsConnectionMeta.model_validate_json(wf.read_text())
+            messages: list[WsMessage] = []
+            ws_id = ws_meta.id
+            msg_files = sorted(ws_dir.glob(f"{ws_id}_m*.json"))
+            for mf in msg_files:
+                msg_meta = WsMessageMeta.model_validate_json(mf.read_text())
+                payload = (
+                    (ws_dir / msg_meta.payload_file).read_bytes()
+                    if msg_meta.payload_file
+                    and (ws_dir / msg_meta.payload_file).exists()
+                    else b""
+                )
+                messages.append(WsMessage(meta=msg_meta, payload=payload))
+            ws_connections.append(WsConnection(meta=ws_meta, messages=messages))
+
+    # Contexts
+    contexts: list[Context] = []
+    ctx_dir = d / "contexts"
+    if ctx_dir.is_dir():
+        for cf in sorted(ctx_dir.glob("*.json")):
+            ctx_meta = ContextMeta.model_validate_json(cf.read_text())
+            contexts.append(Context(meta=ctx_meta))
+
+    # Timeline
+    timeline = Timeline()
+    timeline_path = d / "timeline.json"
+    if timeline_path.exists():
+        timeline = Timeline.model_validate_json(timeline_path.read_text())
+
+    return CaptureBundle(
+        manifest=manifest,
+        traces=traces,
+        ws_connections=ws_connections,
+        contexts=contexts,
+        timeline=timeline,
+    )

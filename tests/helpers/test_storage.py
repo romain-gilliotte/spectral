@@ -1,0 +1,283 @@
+"""Tests for managed storage and flat-directory bundle I/O."""
+
+from __future__ import annotations
+
+from pathlib import Path
+
+import pytest
+
+from cli.commands.capture.loader import load_bundle_dir, write_bundle_dir
+from cli.commands.capture.types import CaptureBundle
+from cli.formats.app_meta import AppMeta
+from cli.formats.capture_bundle import (
+    AppInfo,
+    BrowserInfo,
+    CaptureManifest,
+    CaptureStats,
+)
+from cli.helpers.storage import (
+    DuplicateCaptureError,
+    capture_dirname,
+    ensure_app,
+    import_capture,
+    latest_capture,
+    list_apps,
+    list_captures,
+    resolve_app,
+    slugify,
+    store_capture,
+    store_root,
+)
+
+# ---------------------------------------------------------------------------
+# Flat-directory bundle roundtrip
+# ---------------------------------------------------------------------------
+
+
+class TestBundleDirRoundtrip:
+    def test_write_and_load(
+        self, sample_bundle: CaptureBundle, tmp_path: Path
+    ) -> None:
+        d = tmp_path / "cap"
+        write_bundle_dir(sample_bundle, d)
+
+        loaded = load_bundle_dir(d)
+        assert loaded.manifest.capture_id == sample_bundle.manifest.capture_id
+        assert len(loaded.traces) == len(sample_bundle.traces)
+        assert len(loaded.ws_connections) == len(sample_bundle.ws_connections)
+        assert len(loaded.contexts) == len(sample_bundle.contexts)
+        assert len(loaded.timeline.events) == len(sample_bundle.timeline.events)
+
+    def test_trace_bodies_preserved(
+        self, sample_bundle: CaptureBundle, tmp_path: Path
+    ) -> None:
+        d = tmp_path / "cap"
+        write_bundle_dir(sample_bundle, d)
+        loaded = load_bundle_dir(d)
+
+        for orig, loaded_trace in zip(sample_bundle.traces, loaded.traces):
+            assert loaded_trace.request_body == orig.request_body
+            assert loaded_trace.response_body == orig.response_body
+
+    def test_ws_messages_preserved(
+        self, sample_bundle: CaptureBundle, tmp_path: Path
+    ) -> None:
+        d = tmp_path / "cap"
+        write_bundle_dir(sample_bundle, d)
+        loaded = load_bundle_dir(d)
+
+        assert len(loaded.ws_connections) == 1
+        ws = loaded.ws_connections[0]
+        assert ws.meta.id == "ws_0001"
+        assert len(ws.messages) == 2
+        assert ws.messages[0].payload == b'{"type":"subscribe","id":"1"}'
+
+    def test_empty_bundle(self, tmp_path: Path) -> None:
+        bundle = CaptureBundle(
+            manifest=CaptureManifest(
+                capture_id="empty",
+                created_at="2026-01-01T00:00:00Z",
+                app=AppInfo(name="Empty", base_url="http://localhost", title="Empty"),
+                browser=BrowserInfo(name="Chrome", version="1.0"),
+                duration_ms=0,
+                stats=CaptureStats(),
+            ),
+        )
+        d = tmp_path / "cap"
+        write_bundle_dir(bundle, d)
+        loaded = load_bundle_dir(d)
+
+        assert loaded.manifest.capture_id == "empty"
+        assert len(loaded.traces) == 0
+
+    def test_binary_body_roundtrip(self, tmp_path: Path) -> None:
+        from tests.conftest import make_trace
+
+        binary_body = bytes(range(256))
+        trace = make_trace(
+            "t_0001", "POST", "http://localhost/bin", 200,
+            timestamp=1000, request_body=binary_body, response_body=binary_body,
+        )
+        bundle = CaptureBundle(
+            manifest=CaptureManifest(
+                capture_id="bin",
+                created_at="2026-01-01T00:00:00Z",
+                app=AppInfo(name="Bin", base_url="http://localhost", title="Bin"),
+                duration_ms=0,
+                stats=CaptureStats(trace_count=1),
+            ),
+            traces=[trace],
+        )
+        d = tmp_path / "cap"
+        write_bundle_dir(bundle, d)
+        loaded = load_bundle_dir(d)
+        assert loaded.traces[0].request_body == binary_body
+        assert loaded.traces[0].response_body == binary_body
+
+
+# ---------------------------------------------------------------------------
+# Slugify + capture dirname
+# ---------------------------------------------------------------------------
+
+
+class TestSlugify:
+    def test_basic(self) -> None:
+        assert slugify("EDF Portal") == "edf-portal"
+
+    def test_special_chars(self) -> None:
+        assert slugify("My App (v2)") == "my-app-v2"
+
+    def test_empty(self) -> None:
+        assert slugify("") == "app"
+
+    def test_already_slug(self) -> None:
+        assert slugify("my-app") == "my-app"
+
+
+class TestCaptureDirname:
+    def test_extension(self) -> None:
+        m = CaptureManifest(
+            capture_id="a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+            created_at="2026-02-13T15:30:00Z",
+            app=AppInfo(name="EDF", base_url="https://edf.fr", title="EDF"),
+            duration_ms=1000,
+            stats=CaptureStats(),
+            capture_method="chrome_extension",
+        )
+        assert capture_dirname(m) == "2026-02-13T15-30-00_ext_a1b2c3d4"
+
+    def test_proxy(self) -> None:
+        m = CaptureManifest(
+            capture_id="deadbeef-0000-0000-0000-000000000000",
+            created_at="2026-03-01T10:05:30Z",
+            app=AppInfo(name="App", base_url="https://app.com", title="App"),
+            duration_ms=500,
+            stats=CaptureStats(),
+            capture_method="proxy",
+        )
+        assert capture_dirname(m) == "2026-03-01T10-05-30_proxy_deadbeef"
+
+    def test_non_utc_normalized(self) -> None:
+        m = CaptureManifest(
+            capture_id="a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+            created_at="2026-02-13T17:30:00+02:00",
+            app=AppInfo(name="EDF", base_url="https://edf.fr", title="EDF"),
+            duration_ms=1000,
+            stats=CaptureStats(),
+        )
+        assert capture_dirname(m) == "2026-02-13T15-30-00_ext_a1b2c3d4"
+
+
+# ---------------------------------------------------------------------------
+# Storage functions (use SPECTRAL_HOME → tmp_path)
+# ---------------------------------------------------------------------------
+
+
+class TestStorageFunctions:
+    def test_store_root_default(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.delenv("SPECTRAL_HOME", raising=False)
+        root = store_root()
+        assert root == Path.home() / ".local" / "share" / "spectral"
+
+    def test_store_root_env(self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+        monkeypatch.setenv("SPECTRAL_HOME", str(tmp_path / "custom"))
+        assert store_root() == tmp_path / "custom"
+
+    def test_ensure_app_creates_structure(self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+        monkeypatch.setenv("SPECTRAL_HOME", str(tmp_path))
+        d = ensure_app("edf", "EDF")
+        assert (d / "app.json").is_file()
+        assert (d / "captures").is_dir()
+
+        meta = AppMeta.model_validate_json((d / "app.json").read_text())
+        assert meta.name == "edf"
+        assert meta.display_name == "EDF"
+
+    def test_ensure_app_idempotent(self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+        monkeypatch.setenv("SPECTRAL_HOME", str(tmp_path))
+        ensure_app("edf", "EDF")
+        meta1 = AppMeta.model_validate_json(
+            (tmp_path / "apps" / "edf" / "app.json").read_text()
+        )
+        ensure_app("edf")
+        meta2 = AppMeta.model_validate_json(
+            (tmp_path / "apps" / "edf" / "app.json").read_text()
+        )
+        assert meta2.name == "edf"
+        assert meta2.display_name == "EDF"  # preserved
+        assert meta2.created_at == meta1.created_at
+
+    def test_store_and_list_captures(
+        self, sample_bundle: CaptureBundle, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ) -> None:
+        monkeypatch.setenv("SPECTRAL_HOME", str(tmp_path))
+        cap_dir = store_capture(sample_bundle, "myapp")
+        assert cap_dir.is_dir()
+        assert (cap_dir / "manifest.json").is_file()
+
+        caps = list_captures("myapp")
+        assert len(caps) == 1
+        assert caps[0] == cap_dir
+
+    def test_import_capture_from_zip(
+        self, sample_bundle: CaptureBundle, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ) -> None:
+        from cli.commands.capture.loader import write_bundle
+
+        monkeypatch.setenv("SPECTRAL_HOME", str(tmp_path))
+        zip_path = tmp_path / "upload.zip"
+        write_bundle(sample_bundle, zip_path)
+
+        cap_dir = import_capture(zip_path, "imported")
+        assert cap_dir.is_dir()
+
+        loaded = load_bundle_dir(cap_dir)
+        assert loaded.manifest.capture_id == sample_bundle.manifest.capture_id
+        assert len(loaded.traces) == len(sample_bundle.traces)
+
+    def test_list_apps(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ) -> None:
+        monkeypatch.setenv("SPECTRAL_HOME", str(tmp_path))
+        ensure_app("alfa")
+        ensure_app("bravo")
+        apps = list_apps()
+        assert len(apps) == 2
+        assert apps[0].name == "alfa"
+        assert apps[1].name == "bravo"
+
+    def test_latest_capture(
+        self, sample_bundle: CaptureBundle, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ) -> None:
+        monkeypatch.setenv("SPECTRAL_HOME", str(tmp_path))
+        store_capture(sample_bundle, "myapp")
+        latest = latest_capture("myapp")
+        assert latest is not None
+        assert (latest / "manifest.json").is_file()
+
+    def test_latest_capture_none(self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+        monkeypatch.setenv("SPECTRAL_HOME", str(tmp_path))
+        ensure_app("empty")
+        assert latest_capture("empty") is None
+
+    def test_resolve_app_missing(self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+        import click
+
+        monkeypatch.setenv("SPECTRAL_HOME", str(tmp_path))
+        with pytest.raises(click.ClickException, match="not found"):
+            resolve_app("nonexistent")
+
+    def test_resolve_app_exists(self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+        monkeypatch.setenv("SPECTRAL_HOME", str(tmp_path))
+        ensure_app("myapp")
+        d = resolve_app("myapp")
+        assert d.is_dir()
+
+    def test_store_capture_duplicate_raises(
+        self, sample_bundle: CaptureBundle, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ) -> None:
+        monkeypatch.setenv("SPECTRAL_HOME", str(tmp_path))
+        store_capture(sample_bundle, "myapp")
+        with pytest.raises(DuplicateCaptureError) as exc_info:
+            store_capture(sample_bundle, "myapp")
+        assert exc_info.value.capture_id == sample_bundle.manifest.capture_id
