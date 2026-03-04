@@ -6,12 +6,13 @@ import json
 
 from cli.commands.analyze.steps.mcp.tools import (
     _execute_infer_request_schema,
+    _execute_inspect_context,
     _execute_inspect_request,
     _execute_query_traces,
     make_mcp_tools,
 )
 from cli.commands.analyze.utils import sanitize_headers
-from tests.conftest import make_trace
+from tests.conftest import make_context, make_trace
 
 
 def _sample_traces():
@@ -157,6 +158,66 @@ class TestQueryTraces:
         assert "more selective query" in result
 
 
+class TestInspectContext:
+    def test_found_context(self) -> None:
+        ctx = make_context(
+            "c_0001", 1000, action="click", text="Search",
+            page_url="https://example.com/home",
+        )
+        index = {ctx.meta.id: ctx}
+        result = _execute_inspect_context({"context_id": "c_0001"}, index)
+        parsed = json.loads(result)
+        assert parsed["action"] == "click"
+        assert parsed["element"]["text"] == "Search"
+        assert parsed["element"]["tag"] == "BUTTON"
+        assert parsed["page"]["url"] == "https://example.com/home"
+
+    def test_not_found(self) -> None:
+        result = _execute_inspect_context({"context_id": "c_9999"}, {})
+        assert "not found" in result
+
+    def test_page_content_included(self) -> None:
+        from cli.commands.capture.types import Context
+        from cli.formats.capture_bundle import (
+            ContextMeta,
+            ElementInfo,
+            PageContent,
+            PageInfo,
+            ViewportInfo,
+        )
+
+        ctx = Context(
+            meta=ContextMeta(
+                id="c_0010",
+                timestamp=5000,
+                action="click",
+                element=ElementInfo(selector="button", tag="BUTTON", text="Go"),
+                page=PageInfo(
+                    url="https://example.com",
+                    title="Home",
+                    content=PageContent(
+                        headings=["Welcome", "Features"],
+                        navigation=["Home", "About"],
+                        main_text="Main content here",
+                        forms=[],
+                        tables=[],
+                        alerts=["Sale today!"],
+                    ),
+                ),
+                viewport=ViewportInfo(width=1440, height=900),
+            )
+        )
+        index = {ctx.meta.id: ctx}
+        result = _execute_inspect_context({"context_id": "c_0010"}, index)
+        parsed = json.loads(result)
+        assert "page_content" in parsed
+        pc = parsed["page_content"]
+        assert pc["headings"] == ["Welcome", "Features"]
+        assert pc["navigation"] == ["Home", "About"]
+        assert pc["main_text"] == "Main content here"
+        assert pc["alerts"] == ["Sale today!"]
+
+
 class TestMakeMcpTools:
     def test_tool_set_completeness(self) -> None:
         traces = _sample_traces()
@@ -170,7 +231,18 @@ class TestMakeMcpTools:
         assert "decode_base64" in tool_names
         assert "decode_url" in tool_names
         assert "decode_jwt" in tool_names
+        # No inspect_context without contexts
+        assert "inspect_context" not in tool_names
 
+        assert set(tool_names) == set(executors.keys())
+
+    def test_includes_inspect_context_with_contexts(self) -> None:
+        traces = _sample_traces()
+        contexts = [make_context("c_0001", 1000)]
+        tools, executors = make_mcp_tools(traces, contexts=contexts)
+
+        tool_names = {t["name"] for t in tools}
+        assert "inspect_context" in tool_names
         assert set(tool_names) == set(executors.keys())
 
 

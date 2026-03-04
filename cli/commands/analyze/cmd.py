@@ -14,22 +14,6 @@ import yaml
 
 from cli.helpers.console import console
 
-# Per-million-token pricing: (input_$/M, output_$/M)
-_MODEL_PRICING: dict[str, tuple[float, float]] = {
-    "claude-sonnet-4-5-20250929": (3.0, 15.0),
-    "claude-sonnet-4-20250514": (3.0, 15.0),
-    "claude-haiku-3-5-20241022": (0.80, 4.0),
-}
-
-
-def _estimate_cost(model: str, input_tokens: int, output_tokens: int) -> float | None:
-    """Return estimated USD cost, or None if model pricing is unknown."""
-    pricing = _MODEL_PRICING.get(model)
-    if pricing is None:
-        return None
-    inp_rate, out_rate = pricing
-    return (input_tokens * inp_rate + output_tokens * out_rate) / 1_000_000
-
 
 @click.command()
 @click.argument("app_name")
@@ -103,8 +87,9 @@ def analyze(
 
     inp_tok, out_tok = llm.get_usage()
     if inp_tok or out_tok:
-        cost = _estimate_cost(model, inp_tok, out_tok)
-        cost_str = f" (~${cost:.2f})" if cost else ""
+        cache_read, cache_create = llm.get_cache_usage()
+        cost = llm.estimate_cost(model, inp_tok, out_tok, cache_read, cache_create)
+        cost_str = f" (~${cost:.2f})" if cost is not None else ""
         console.print(f"  LLM token usage: {inp_tok:,} input, {out_tok:,} output{cost_str}")
 
     # Strip any extension from the output name so it's a pure base name
@@ -239,8 +224,9 @@ def _analyze_mcp(
 
     inp_tok, out_tok = llm.get_usage()
     if inp_tok or out_tok:
-        cost = _estimate_cost(model, inp_tok, out_tok)
-        cost_str = f" (~${cost:.2f})" if cost else ""
+        cache_read, cache_create = llm.get_cache_usage()
+        cost = llm.estimate_cost(model, inp_tok, out_tok, cache_read, cache_create)
+        cost_str = f" (~${cost:.2f})" if cost is not None else ""
         console.print(f"  LLM token usage: {inp_tok:,} input, {out_tok:,} output{cost_str}")
 
     # Write tools

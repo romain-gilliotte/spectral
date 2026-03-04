@@ -20,7 +20,7 @@ from cli.commands.analyze.steps.generate_auth_script import (
 )
 from cli.commands.analyze.tools import INVESTIGATION_TOOLS, TOOL_EXECUTORS
 from cli.commands.analyze.utils import sanitize_headers, truncate_json
-from cli.commands.capture.types import Trace
+from cli.commands.capture.types import Context, Trace
 from cli.helpers.llm import compact_json
 
 
@@ -200,12 +200,72 @@ def _execute_query_traces(
     return output
 
 
+def _make_inspect_context_tool() -> dict[str, Any]:
+    return {
+        "name": "inspect_context",
+        "description": (
+            "Get full details for a UI context event: action, element "
+            "(tag, text, selector, attributes), page (url, title), "
+            "and rich page content (headings, navigation, main text, "
+            "forms, tables, alerts)."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "context_id": {
+                    "type": "string",
+                    "description": "The context ID (e.g., 'c_0001').",
+                },
+            },
+            "required": ["context_id"],
+        },
+    }
+
+
+def _execute_inspect_context(
+    inp: dict[str, Any], index: dict[str, Context]
+) -> str:
+    ctx = index.get(inp["context_id"])
+    if ctx is None:
+        return f"Context {inp['context_id']} not found"
+
+    result: dict[str, Any] = {
+        "action": ctx.meta.action,
+        "element": {
+            "tag": ctx.meta.element.tag,
+            "text": ctx.meta.element.text,
+            "selector": ctx.meta.element.selector,
+            "attributes": ctx.meta.element.attributes,
+        },
+        "page": {
+            "url": ctx.meta.page.url,
+            "title": ctx.meta.page.title,
+        },
+    }
+    if ctx.meta.page.content is not None:
+        content = ctx.meta.page.content
+        result["page_content"] = truncate_json(
+            {
+                "headings": content.headings,
+                "navigation": content.navigation,
+                "main_text": content.main_text,
+                "forms": content.forms,
+                "tables": content.tables,
+                "alerts": content.alerts,
+            },
+            max_keys=20,
+        )
+    return compact_json(result)
+
+
 def make_mcp_tools(
     traces: list[Trace],
+    contexts: list[Context] | None = None,
 ) -> tuple[list[dict[str, Any]], dict[str, Callable[[dict[str, Any]], str]]]:
     """Build the full set of investigation tools for MCP pipeline LLM steps.
 
     Returns ``(tool_definitions, executors)`` for use with ``llm.ask()``.
+    When *contexts* is provided, includes the ``inspect_context`` tool.
     """
     trace_index = {t.meta.id: t for t in traces}
 
@@ -227,5 +287,12 @@ def make_mcp_tools(
         ),
         "query_traces": lambda inp: _execute_query_traces(inp, traces),
     }
+
+    if contexts is not None:
+        context_index = {c.meta.id: c for c in contexts}
+        tools.append(_make_inspect_context_tool())
+        executors["inspect_context"] = lambda inp: _execute_inspect_context(
+            inp, context_index
+        )
 
     return tools, executors

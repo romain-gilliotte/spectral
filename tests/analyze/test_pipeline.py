@@ -1,7 +1,7 @@
 """Tests for the full analysis pipeline with mocked LLM."""
 
 import json
-from typing import Any
+from typing import Any, cast
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -88,7 +88,12 @@ def _make_mock_create(
         mock_content = MagicMock()
         mock_content.type = "text"
         mock_response.stop_reason = "end_turn"
-        msg: str = kwargs.get("messages", [{}])[0].get("content", "")
+        raw: Any = kwargs.get("messages", [{}])[0].get("content", "")
+        if isinstance(raw, list):
+            blocks = cast(list[dict[str, Any]], raw)
+            msg = "".join(b["text"] for b in blocks if b.get("type") == "text")
+        else:
+            msg = str(raw)
 
         if "base URL" in msg and "business API" in msg:
             mock_content.text = base_url_response
