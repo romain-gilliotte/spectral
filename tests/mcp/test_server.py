@@ -216,7 +216,7 @@ class TestCallTool:
 
         parsed = json.loads(result)
         assert "error" in parsed
-        assert "spectral query login" in parsed["error"]
+        assert "spectral auth login" in parsed["error"]
 
     @patch("cli.commands.mcp.server.http_requests.request")
     async def test_call_tool_no_auth_skips_auth(

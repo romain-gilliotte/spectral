@@ -40,11 +40,12 @@ uv run spectral capture proxy -a myapp
 Analyze all captures for an app to produce an API spec:
 
 ```bash
-uv run spectral analyze myapp -o myapp-api
+uv run spectral openapi analyze myapp -o myapp-api
 # → myapp-api.yaml (OpenAPI 3.1)
-# → myapp-api.graphql (SDL schema, if GraphQL detected)
 # → myapp-api.restish.json (Restish config)
-# → myapp-api-auth.py (auth helper, if auth detected)
+
+uv run spectral graphql analyze myapp -o myapp-api
+# → myapp-api.graphql (SDL schema)
 ```
 
 Call the API with [Restish](https://rest.sh/):

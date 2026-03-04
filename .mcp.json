@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "spectral": {
+      "command": "uv",
+      "args": ["run", "spectral", "mcp", "stdio"]
+    }
+  }
+}

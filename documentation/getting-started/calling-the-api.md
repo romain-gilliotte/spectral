@@ -1,6 +1,6 @@
 # Calling the API
 
-After running `spectral analyze`, you have an API spec and configuration files. This guide shows how to use them to actually call the API from the command line.
+After running `spectral openapi analyze` or `spectral graphql analyze`, you have an API spec and configuration files. This guide shows how to use them to actually call the API from the command line.
 
 ## REST APIs with Restish
 

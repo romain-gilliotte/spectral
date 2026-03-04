@@ -1,4 +1,4 @@
-"""CLI command for the analyze stage."""
+"""Shared helpers for the analyze commands (openapi, graphql, mcp)."""
 
 from __future__ import annotations
 
@@ -9,43 +9,25 @@ import json
 from pathlib import Path
 import re
 
-import click
-import yaml
-
+from cli.commands.analyze.steps.types import AnalysisResult
+from cli.commands.capture.types import CaptureBundle
 from cli.helpers.console import console
 
 
-@click.command()
-@click.argument("app_name")
-@click.option(
-    "-o", "--output", required=False, default=None,
-    help="Output base name (produces <name>.yaml and/or <name>.graphql). Required unless --mcp is used.",
-)
-@click.option("--model", default="claude-sonnet-4-5-20250929", help="LLM model to use")
-@click.option(
-    "--debug", is_flag=True, default=False, help="Save LLM prompts/responses to debug/"
-)
-@click.option(
-    "--skip-enrich",
-    is_flag=True,
-    default=False,
-    help="Skip LLM enrichment step (business context, glossary, etc.)",
-)
-@click.option(
-    "--mcp",
-    is_flag=True,
-    default=False,
-    help="Generate MCP tool definitions instead of OpenAPI/SDL",
-)
-def analyze(
-    app_name: str, output: str | None, model: str, debug: bool, skip_enrich: bool, mcp: bool
-) -> None:
-    """Analyze captures for an app and produce an API spec."""
+def run_analysis(
+    app_name: str,
+    output: str,
+    model: str,
+    debug: bool,
+    skip_enrich: bool,
+    protocol_filter: str | None = None,
+) -> tuple[AnalysisResult, Path]:
+    """Load captures, run the analysis pipeline, and return (result, output_base).
+
+    Shared by ``openapi analyze`` and ``graphql analyze``.
+    """
     import cli.helpers.llm as llm
     from cli.helpers.storage import list_captures, load_app_bundle
-
-    if not mcp and not output:
-        raise click.UsageError("Missing option '-o' / '--output'. Required unless --mcp is used.")
 
     cap_count = len(list_captures(app_name))
     console.print(f"[bold]Loading captures for app:[/bold] {app_name}")
@@ -69,10 +51,6 @@ def analyze(
     def on_progress(msg: str) -> None:
         console.print(f"  {msg}")
 
-    if mcp:
-        _analyze_mcp(app_name, bundle, model, on_progress, skip_enrich)
-        return
-
     from cli.commands.analyze.pipeline import build_spec
 
     console.print(f"[bold]Analyzing with LLM ({model})...[/bold]")
@@ -82,6 +60,7 @@ def analyze(
             source_filename=app_name,
             on_progress=on_progress,
             skip_enrich=skip_enrich,
+            protocol_filter=protocol_filter,
         )
     )
 
@@ -93,88 +72,31 @@ def analyze(
         console.print(f"  LLM token usage: {inp_tok:,} input, {out_tok:,} output{cost_str}")
 
     # Strip any extension from the output name so it's a pure base name
-    assert output is not None  # guaranteed by UsageError guard above
     output_base = Path(output)
     output_base = output_base.parent / output_base.stem
 
-    # Write each branch output
-    for branch_output in result.outputs:
-        out_path = output_base.with_suffix(branch_output.file_extension)
-        out_path.parent.mkdir(parents=True, exist_ok=True)
-
-        artifact = branch_output.artifact
-        if isinstance(artifact, dict):
-            # Dict artifact (e.g. OpenAPI) → YAML
-            with open(out_path, "w") as f:
-                yaml.dump(
-                    artifact, f,
-                    default_flow_style=False, sort_keys=False, allow_unicode=True,
-                )
-        else:
-            # String artifact (e.g. SDL) → write as-is
-            with open(out_path, "w") as f:
-                f.write(str(artifact))
-
-        console.print(f"[green]{branch_output.label} written to {out_path}[/green]")
-
-        # REST-specific: Restish config
-        if branch_output.protocol == "rest" and isinstance(artifact, dict):
-            endpoint_count = len(artifact.get("paths", {}))
-            console.print(f"  Found {endpoint_count} REST paths")
-
-            from cli.commands.analyze.restish import generate_restish_entry
-            from cli.commands.analyze.steps.types import AuthInfo
-
-            restish_entry = generate_restish_entry(
-                base_url=result.base_url,
-                spec_path=out_path.resolve(),
-                auth=AuthInfo(),
-                auth_helper_path=None,
-            )
-            restish_path = output_base.with_suffix(".restish.json")
-            with open(restish_path, "w") as f:
-                json.dump(restish_entry, f, indent=2)
-                f.write("\n")
-            console.print(f"[green]Restish config written to {restish_path}[/green]")
-
-            # Print Restish usage instructions
-            api_name = output_base.stem
-            console.print()
-            console.print("[bold]Restish setup:[/bold]")
-            console.print(
-                f"  Merge [cyan]{restish_path}[/cyan] into "
-                f"~/.config/restish/apis.json under the key [cyan]{api_name}[/cyan]"
-            )
-            placeholders = _find_placeholders(restish_entry)
-            if placeholders:
-                console.print(f"  Fill in placeholder values: {', '.join(placeholders)}")
-
-    if not result.outputs:
-        console.print("[yellow]No API traces found in the capture bundle.[/yellow]")
+    return result, output_base
 
 
-def _analyze_mcp(
+def run_mcp_analysis(
     app_name: str,
-    bundle: object,
+    bundle: CaptureBundle,
     model: str,
     on_progress: Callable[[str], None] | None,
     skip_enrich: bool,
 ) -> None:
     """Run the MCP tool generation pipeline."""
     from cli.commands.analyze.steps.mcp.pipeline import build_mcp_tools
-    from cli.commands.capture.types import CaptureBundle
     import cli.helpers.llm as llm
     from cli.helpers.storage import (
         update_app_meta,
         write_tools,
     )
 
-    typed_bundle = CaptureBundle(**vars(bundle)) if not isinstance(bundle, CaptureBundle) else bundle
-
     console.print(f"[bold]Generating MCP tools with LLM ({model})...[/bold]")
     result = asyncio.run(
         build_mcp_tools(
-            typed_bundle,
+            bundle,
             app_name,
             on_progress=on_progress,
             skip_enrich=skip_enrich,
@@ -201,7 +123,7 @@ def _analyze_mcp(
         console.print(f"  Tool: {tool.name} — {tool.request.method} {tool.request.path}")
 
 
-def _find_placeholders(entry: dict[str, object]) -> list[str]:
+def find_placeholders(entry: dict[str, object]) -> list[str]:
     """Find placeholder values like <TOKEN> in a restish config entry."""
     serialized = json.dumps(entry)
     return re.findall(r"<[A-Z_]+>", serialized)

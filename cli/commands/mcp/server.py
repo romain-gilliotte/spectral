@@ -57,7 +57,7 @@ async def _handle_call(
             return json.dumps({
                 "error": (
                     f"Not authenticated. "
-                    f"Run 'spectral query login {app_name}' in a terminal to log in, "
+                    f"Run 'spectral auth login {app_name}' in a terminal to log in, "
                     f"then retry."
                 )
             })

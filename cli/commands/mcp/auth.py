@@ -54,7 +54,7 @@ def get_auth_headers(app_name: str) -> dict[str, str]:
     # Step 3: Auth required
     raise AuthError(
         f"No valid token for app '{app_name}'. "
-        f"Run 'spectral query login {app_name}' to authenticate."
+        f"Run 'spectral auth login {app_name}' to authenticate."
     )
 
 

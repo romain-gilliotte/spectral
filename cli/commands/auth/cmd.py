@@ -1,4 +1,4 @@
-"""CLI command for standalone auth analysis."""
+"""CLI command for auth analysis, login, logout, and refresh."""
 
 from __future__ import annotations
 
@@ -11,7 +11,7 @@ from cli.helpers.console import console
 
 @click.group()
 def auth() -> None:
-    """Authentication analysis and script generation."""
+    """Authentication analysis and management."""
 
 
 @auth.command()
@@ -67,6 +67,65 @@ def analyze(app_name: str, model: str, debug: bool) -> None:
     console.print(f"[green]Auth script written to {script_path}[/green]")
 
     _print_usage(model)
+
+
+@auth.command()
+@click.argument("app_name")
+def login(app_name: str) -> None:
+    """Run interactive authentication for an app.
+
+    Loads auth_acquire.py, calls acquire_token(), and writes token.json.
+    """
+    from cli.commands.mcp.auth import acquire_auth
+    from cli.helpers.storage import resolve_app, write_token
+
+    resolve_app(app_name)
+
+    console.print(f"[bold]Logging in to {app_name}...[/bold]")
+    token = acquire_auth(app_name)
+    write_token(app_name, token)
+    console.print("[green]Login successful. Token saved.[/green]")
+
+
+@auth.command()
+@click.argument("app_name")
+def logout(app_name: str) -> None:
+    """Remove stored token for an app."""
+    from cli.helpers.storage import delete_token, resolve_app
+
+    resolve_app(app_name)
+
+    if delete_token(app_name):
+        console.print(f"[green]Logged out of {app_name}. Token removed.[/green]")
+    else:
+        console.print(f"[dim]No token found for '{app_name}'. Nothing to remove.[/dim]")
+
+
+@auth.command()
+@click.argument("app_name")
+def refresh(app_name: str) -> None:
+    """Manually refresh the auth token for an app.
+
+    Loads token.json, calls refresh_token(), and updates token.json.
+    """
+    from cli.commands.mcp.auth import AuthError, refresh_auth
+    from cli.helpers.storage import load_token, resolve_app, write_token
+
+    resolve_app(app_name)
+
+    token = load_token(app_name)
+    if token is None:
+        raise click.ClickException(
+            f"No token found for '{app_name}'. Run 'spectral auth login {app_name}' first."
+        )
+
+    try:
+        new_token = refresh_auth(app_name, token)
+    except AuthError as exc:
+        raise click.ClickException(str(exc)) from exc
+
+    write_token(app_name, new_token)
+    console.print("[green]Token refreshed successfully.[/green]")
 
 
 def _print_usage(model: str) -> None:

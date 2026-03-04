@@ -93,7 +93,7 @@ class TestAnalyzeCommand:
     def test_analyze_basic(
         self, sample_bundle: CaptureBundle, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
     ) -> None:
-        """Test the analyze command with mocked LLM."""
+        """Test the openapi analyze command with mocked LLM."""
         from cli.helpers.storage import store_capture
 
         monkeypatch.setenv("SPECTRAL_HOME", str(tmp_path / "store"))
@@ -106,7 +106,7 @@ class TestAnalyzeCommand:
         with patch.dict("sys.modules", {"anthropic": mock_anthropic}):
             result = runner.invoke(
                 cli,
-                ["analyze", "testapp", "-o", str(output_path)],
+                ["openapi", "analyze", "testapp", "-o", str(output_path)],
             )
 
         assert result.exit_code == 0, result.output
@@ -131,7 +131,7 @@ class TestAnalyzeCommand:
         with patch.dict("sys.modules", {"anthropic": mock_anthropic}):
             result = runner.invoke(
                 cli,
-                ["analyze", "testapp", "-o", str(output_path)],
+                ["openapi", "analyze", "testapp", "-o", str(output_path)],
             )
 
         assert result.exit_code == 0
@@ -462,7 +462,7 @@ class TestAnalyzeMcpCommand:
         with patch.dict("sys.modules", {"anthropic": mock_anthropic}):
             result = runner.invoke(
                 cli,
-                ["analyze", "testapp", "-o", "out", "--mcp"],
+                ["mcp", "analyze", "testapp"],
             )
 
         assert result.exit_code == 0, result.output
@@ -487,7 +487,7 @@ class TestAnalyzeMcpCommand:
         with patch.dict("sys.modules", {"anthropic": mock_anthropic}):
             result = runner.invoke(
                 cli,
-                ["analyze", "testapp", "-o", "out", "--mcp"],
+                ["mcp", "analyze", "testapp"],
             )
 
         assert result.exit_code == 0, result.output
@@ -495,7 +495,7 @@ class TestAnalyzeMcpCommand:
         assert meta.base_url == "https://api.example.com"
 
 
-class TestQueryCommand:
+class TestAuthLoginCommand:
     def test_login(self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
         from cli.helpers.storage import ensure_app
 
@@ -513,7 +513,7 @@ class TestQueryCommand:
         )
 
         runner = CliRunner()
-        result = runner.invoke(cli, ["query", "login", "testapp"])
+        result = runner.invoke(cli, ["auth", "login", "testapp"])
 
         assert result.exit_code == 0, result.output
         assert "Login successful" in result.output
@@ -524,6 +524,51 @@ class TestQueryCommand:
         assert token is not None
         assert token.headers["Authorization"] == "Bearer test"
 
+
+class TestAuthLogoutCommand:
+    def test_logout_with_token(self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+        import time
+
+        from cli.formats.mcp_tool import TokenState
+        from cli.helpers.storage import ensure_app, load_token, write_token
+
+        monkeypatch.setenv("SPECTRAL_HOME", str(tmp_path / "store"))
+        ensure_app("testapp")
+        write_token("testapp", TokenState(
+            headers={"Authorization": "Bearer test"},
+            obtained_at=time.time(),
+        ))
+
+        runner = CliRunner()
+        result = runner.invoke(cli, ["auth", "logout", "testapp"])
+
+        assert result.exit_code == 0, result.output
+        assert "Logged out" in result.output
+        assert load_token("testapp") is None
+
+    def test_logout_no_token(self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+        from cli.helpers.storage import ensure_app
+
+        monkeypatch.setenv("SPECTRAL_HOME", str(tmp_path / "store"))
+        ensure_app("testapp")
+
+        runner = CliRunner()
+        result = runner.invoke(cli, ["auth", "logout", "testapp"])
+
+        assert result.exit_code == 0, result.output
+        assert "No token found" in result.output
+
+    def test_logout_nonexistent_app(self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+        monkeypatch.setenv("SPECTRAL_HOME", str(tmp_path / "store"))
+
+        runner = CliRunner()
+        result = runner.invoke(cli, ["auth", "logout", "nope"])
+
+        assert result.exit_code != 0
+        assert "not found" in result.output
+
+
+class TestAuthRefreshCommand:
     def test_refresh_no_token(self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
         from cli.helpers.storage import ensure_app
 
@@ -531,7 +576,7 @@ class TestQueryCommand:
         ensure_app("testapp")
 
         runner = CliRunner()
-        result = runner.invoke(cli, ["query", "refresh", "testapp"])
+        result = runner.invoke(cli, ["auth", "refresh", "testapp"])
 
         assert result.exit_code != 0
         assert "No token found" in result.output
@@ -564,7 +609,7 @@ class TestQueryCommand:
         )
 
         runner = CliRunner()
-        result = runner.invoke(cli, ["query", "refresh", "testapp"])
+        result = runner.invoke(cli, ["auth", "refresh", "testapp"])
 
         assert result.exit_code == 0, result.output
         assert "Token refreshed" in result.output

@@ -252,7 +252,7 @@ Before making any request, the server checks auth state with the following casca
 |------|-----------|--------|
 | 1. Valid token | `token.json` exists and `expires_at` is in the future (or absent) | Use `headers` from `token.json` |
 | 2. Auto-refresh | Token expired, `refresh_token` is present, `auth_acquire.py` defines `refresh_token()` | Run `refresh_token()`, update `token.json`, retry |
-| 3. Auth required | No valid token and no refresh possible | Return an error instructing the user to run `spectral query login <app>` |
+| 3. Auth required | No valid token and no refresh possible | Return an error instructing the user to run `spectral auth login <app>` |
 
 Auto-refresh is transparent to the LLM — the tool call succeeds as if the token were valid. Only when refresh fails or is unavailable does the server surface an error.
 
@@ -262,13 +262,13 @@ The server never runs `acquire_token()` itself because that function requires in
 
 ## 5. CLI commands
 
-### 5.1 `spectral mcp`
+### 5.1 `spectral mcp stdio`
 
 Starts the MCP server on stdio. This is the command users configure in their MCP client (Claude Desktop, Claude Code, etc.).
 
 The server is a single process that exposes tools from all apps that have a `tools/` directory. It watches for changes to tool definitions and auth state at runtime — no restart needed when new tools are generated or tokens refreshed.
 
-### 5.2 `spectral query login <app>`
+### 5.2 `spectral auth login <app>`
 
 Runs the interactive authentication flow for an app:
 
@@ -278,7 +278,7 @@ Runs the interactive authentication flow for an app:
 
 This is the only command that requires user interaction. It must be run before the MCP server can make authenticated requests for the app.
 
-### 5.3 `spectral query refresh <app>`
+### 5.3 `spectral auth refresh <app>`
 
 Manually triggers a token refresh:
 
@@ -286,9 +286,9 @@ Manually triggers a token refresh:
 2. Loads `auth_acquire.py` and calls `refresh_token(current_refresh_token)`
 3. Updates `token.json` with the new auth state
 
-The MCP server auto-refreshes on demand, so this command isn't needed during normal use. But it's useful for keeping tokens warm in a crontab (e.g. `*/30 * * * * spectral query refresh sncf`) or for debugging auth issues when the server isn't running.
+The MCP server auto-refreshes on demand, so this command isn't needed during normal use. But it's useful for keeping tokens warm in a crontab (e.g. `*/30 * * * * spectral auth refresh sncf`) or for debugging auth issues when the server isn't running.
 
-### 5.4 `spectral analyze <app> --mcp`
+### 5.4 `spectral mcp analyze <app>`
 
 Runs the tool generation pipeline on an app's captures:
 
@@ -296,7 +296,7 @@ Runs the tool generation pipeline on an app's captures:
 2. Runs the MCP analysis pipeline (section 6)
 3. Writes `tools/*.json`, `auth_acquire.py`, and updates `app.json` with `base_url`
 
-This is the same `analyze` command as before, with `--mcp` selecting the MCP output path instead of OpenAPI/SDL. The existing flags still apply: `--model` to override the LLM model, `--debug` to save prompts, `--skip-enrich` to skip the LLM enrichment step. Without `--mcp`, the command produces OpenAPI/SDL as before.
+The flags `--model`, `--debug`, and `--skip-enrich` are available to override the LLM model, save prompts, or skip enrichment.
 
 ---
 

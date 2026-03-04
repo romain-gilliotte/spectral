@@ -249,6 +249,15 @@ def write_token(app_name: str, token: TokenState) -> None:
     token_path.write_text(token.model_dump_json(indent=2))
 
 
+def delete_token(app_name: str) -> bool:
+    """Delete token.json for an app. Returns True if a token was removed."""
+    path = app_dir(app_name) / "token.json"
+    if path.is_file():
+        path.unlink()
+        return True
+    return False
+
+
 def auth_script_path(app_name: str) -> Path:
     """Return the path to the auth_acquire.py script for an app."""
     return app_dir(app_name) / "auth_acquire.py"

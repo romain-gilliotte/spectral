@@ -4,13 +4,13 @@ This guide turns a capture bundle into an API specification.
 
 ## Run the analysis
 
-Pass the app name to the `analyze` command with an output base name:
+Pass the app name to the `openapi analyze` command with an output base name:
 
 ```bash
-uv run spectral analyze myapp -o myapp-api
+uv run spectral openapi analyze myapp -o myapp-api
 ```
 
-The command loads all captures for the app, merges them into a single bundle, then auto-detects whether the captured traffic is REST, GraphQL, or both, and produces the appropriate output files.
+For GraphQL captures, use `spectral graphql analyze` instead. The command loads all captures for the app, merges them into a single bundle, and produces the appropriate output files.
 
 ## What happens during analysis
 
@@ -41,19 +41,19 @@ Depending on the protocols detected, the command produces some or all of these f
 Skip the LLM enrichment step to get a faster but less detailed spec:
 
 ```bash
-uv run spectral analyze myapp -o myapp-api --skip-enrich
+uv run spectral openapi analyze myapp -o myapp-api --skip-enrich
 ```
 
 Use a different model:
 
 ```bash
-uv run spectral analyze myapp -o myapp-api --model claude-sonnet-4-5-20250929
+uv run spectral openapi analyze myapp -o myapp-api --model claude-sonnet-4-5-20250929
 ```
 
 Save all LLM prompts and responses for inspection:
 
 ```bash
-uv run spectral analyze myapp -o myapp-api --debug
+uv run spectral openapi analyze myapp -o myapp-api --debug
 ```
 
 See [Debug mode](../analyze/debug-mode.md) for details on reading the debug output.

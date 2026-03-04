@@ -35,6 +35,7 @@ async def build_spec(
     source_filename: str = "",
     on_progress: Callable[[str], None] | None = None,
     skip_enrich: bool = False,
+    protocol_filter: str | None = None,
 ) -> AnalysisResult:
     """Build API specs from a capture bundle.
 
@@ -108,6 +109,7 @@ async def build_spec(
         branch.run(traces_by_protocol[branch.protocol], ctx)
         for branch in _BRANCHES
         if branch.protocol in traces_by_protocol
+        and (protocol_filter is None or branch.protocol == protocol_filter or branch.catch_all)
     ]
     branch_results = await asyncio.gather(*branch_coros)
     outputs = [r for r in branch_results if r is not None]

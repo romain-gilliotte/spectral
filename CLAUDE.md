@@ -8,7 +8,7 @@
 
 - Package manager is **uv**. Use `uv run` to execute commands (no need to activate the venv):
   - `uv run pytest tests/` — run tests
-  - `uv run spectral analyze ...` — run the CLI
+  - `uv run spectral openapi analyze ...` — run the CLI
   - `uv add <package>` — add a dependency (updates `pyproject.toml` + `uv.lock`)
   - `uv add --dev <package>` — add a dev dependency
 - `.env` file at project root holds `ANTHROPIC_API_KEY` (loaded by the CLI via `python-dotenv`). Do NOT commit `.env`.
@@ -374,7 +374,7 @@ A single capture can contain both REST and GraphQL traces; the pipeline processe
 
 ### What the LLM infers (Stage 2 — analyze)
 
-The LLM is called during `spectral analyze` to produce these fields that a purely mechanical tool could not:
+The LLM is called during analysis (`spectral openapi analyze` / `spectral graphql analyze`) to produce these fields that a purely mechanical tool could not:
 
 - Operation `summary` — what the endpoint does in business terms
 - Response `description` — what each status code means in domain terms
@@ -389,11 +389,13 @@ Everything else is mechanical (headers, schemas, status codes, URLs, timing).
 ## CLI commands
 
 ```bash
-# Analyze all captures for an app → edf-api.yaml and/or edf-api.graphql (requires ANTHROPIC_API_KEY)
-spectral analyze edf -o edf-api
-spectral analyze edf -o edf-api --model claude-sonnet-4-5-20250929
-spectral analyze edf -o edf-api --skip-enrich                   # skip LLM enrichment
-spectral analyze edf -o edf-api --debug                         # save LLM prompts to debug/
+# Analyze captures → edf-api.yaml (REST) or edf-api.graphql (GraphQL) (requires ANTHROPIC_API_KEY)
+spectral openapi analyze edf -o edf-api
+spectral openapi analyze edf -o edf-api --model claude-sonnet-4-5-20250929
+spectral openapi analyze edf -o edf-api --skip-enrich            # skip LLM enrichment
+spectral openapi analyze edf -o edf-api --debug                  # save LLM prompts to debug/
+spectral graphql analyze edf -o edf-api                          # GraphQL SDL output
+spectral mcp analyze edf                                         # generate MCP tool definitions
 
 # Capture: import, list, show, inspect, proxy, discover
 spectral capture add capture_20260213.zip -a edf                 # import ZIP into managed storage
@@ -413,7 +415,7 @@ spectral android install com.spotify.music-patched.apk
 spectral android cert                                            # push mitmproxy CA cert to device
 ```
 
-Note: `analyze` requires `ANTHROPIC_API_KEY`. The `-o` flag takes a base name (e.g. `-o edf-api` produces `edf-api.yaml` and/or `edf-api.graphql`). Default model is `claude-sonnet-4-5-20250929`. Captures are stored in managed storage (`~/.local/share/spectral/`, overridable with `SPECTRAL_HOME`).
+Note: `openapi analyze`, `graphql analyze`, and `mcp analyze` require `ANTHROPIC_API_KEY`. The `-o` flag takes a base name (e.g. `-o edf-api` produces `edf-api.yaml` or `edf-api.graphql`). Default model is `claude-sonnet-4-5-20250929`. Captures are stored in managed storage (`~/.local/share/spectral/`, overridable with `SPECTRAL_HOME`).
 
 ---
 

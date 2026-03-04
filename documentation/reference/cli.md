@@ -8,25 +8,80 @@ Complete reference for all `spectral` commands.
 spectral [--version] [--help] <command>
 ```
 
-## analyze
+## openapi analyze
 
-Analyze all captures for an app and produce API specifications.
+Analyze all captures for an app and produce an OpenAPI specification.
 
 ```
-spectral analyze <app_name> -o <name> [--model MODEL] [--debug] [--skip-enrich]
+spectral openapi analyze <app_name> -o <name> [--model MODEL] [--debug] [--skip-enrich]
 ```
 
 | Argument / Option | Required | Default | Description |
 |-------------------|----------|---------|-------------|
 | `app_name` | Yes | — | Name of the app in managed storage |
-| `-o, --output` | Yes | — | Output base name (produces `<name>.yaml`, `<name>.graphql`, `<name>.restish.json`, `<name>-auth.py` as appropriate) |
+| `-o, --output` | Yes | — | Output base name (produces `<name>.yaml` and `<name>.restish.json`) |
 | `--model` | No | `claude-sonnet-4-5-20250929` | Anthropic model to use for LLM steps |
 | `--debug` | No | Off | Save LLM prompts and responses to `debug/<timestamp>/` |
 | `--skip-enrich` | No | Off | Skip LLM enrichment (faster, but no business descriptions) |
 
-The command loads all captures for the app and merges them into a single bundle before analysis. It auto-detects the protocol from captured traces. REST traces produce an OpenAPI 3.1 YAML file; GraphQL traces produce an SDL schema. A single capture can contain both protocols.
+The command loads all captures for the app and merges them into a single bundle before analysis. Only REST traces are processed; GraphQL traces are ignored. REST traces produce an OpenAPI 3.1 YAML file and a Restish configuration file.
 
 Requires the `ANTHROPIC_API_KEY` environment variable (loaded automatically from `.env`).
+
+---
+
+## graphql analyze
+
+Analyze all captures for an app and produce a GraphQL SDL schema.
+
+```
+spectral graphql analyze <app_name> -o <name> [--model MODEL] [--debug] [--skip-enrich]
+```
+
+| Argument / Option | Required | Default | Description |
+|-------------------|----------|---------|-------------|
+| `app_name` | Yes | — | Name of the app in managed storage |
+| `-o, --output` | Yes | — | Output base name (produces `<name>.graphql`) |
+| `--model` | No | `claude-sonnet-4-5-20250929` | Anthropic model to use for LLM steps |
+| `--debug` | No | Off | Save LLM prompts and responses to `debug/<timestamp>/` |
+| `--skip-enrich` | No | Off | Skip LLM enrichment (faster, but no business descriptions) |
+
+The command loads all captures for the app and merges them into a single bundle before analysis. Only GraphQL traces are processed; REST traces are ignored.
+
+Requires the `ANTHROPIC_API_KEY` environment variable (loaded automatically from `.env`).
+
+---
+
+## mcp analyze
+
+Generate MCP tool definitions from captures.
+
+```
+spectral mcp analyze <app_name> [--model MODEL] [--debug] [--skip-enrich]
+```
+
+| Argument / Option | Required | Default | Description |
+|-------------------|----------|---------|-------------|
+| `app_name` | Yes | — | Name of the app in managed storage |
+| `--model` | No | `claude-sonnet-4-5-20250929` | Anthropic model to use for LLM steps |
+| `--debug` | No | Off | Save LLM prompts and responses to `debug/<timestamp>/` |
+| `--skip-enrich` | No | Off | Skip LLM enrichment (faster, but no business descriptions) |
+
+Writes tool definitions to `tools/*.json` in the app's managed storage directory and updates `app.json` with the detected `base_url`.
+
+Requires the `ANTHROPIC_API_KEY` environment variable (loaded automatically from `.env`).
+
+---
+
+## mcp stdio
+
+Start the MCP server on stdio.
+
+```
+spectral mcp stdio
+```
+
+Exposes all app tools from managed storage as MCP tools. This is the command users configure in their MCP client (Claude Desktop, Claude Code, etc.).
 
 ---
 

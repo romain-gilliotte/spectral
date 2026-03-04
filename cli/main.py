@@ -5,12 +5,12 @@ from __future__ import annotations
 import click
 from dotenv import load_dotenv
 
-from cli.commands.analyze.cmd import analyze
 from cli.commands.android.cmd import android
 from cli.commands.auth.cmd import auth
 from cli.commands.capture.cmd import capture
+from cli.commands.graphql.cmd import graphql_cmd
 from cli.commands.mcp.cmd import mcp
-from cli.commands.query.cmd import query
+from cli.commands.openapi.cmd import openapi
 
 load_dotenv()
 
@@ -21,12 +21,12 @@ def cli() -> None:
     """Automatically discover and document web application APIs."""
 
 
-cli.add_command(analyze)
+cli.add_command(openapi)
+cli.add_command(graphql_cmd, "graphql")
+cli.add_command(mcp)
 cli.add_command(auth)
 cli.add_command(capture)
 cli.add_command(android)
-cli.add_command(mcp)
-cli.add_command(query)
 
 if __name__ == "__main__":
     cli()
