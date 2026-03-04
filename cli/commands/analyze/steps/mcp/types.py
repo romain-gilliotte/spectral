@@ -6,7 +6,6 @@ from dataclasses import dataclass, field
 
 from pydantic import BaseModel
 
-from cli.commands.analyze.steps.types import AuthInfo
 from cli.commands.capture.types import Context, Trace
 from cli.formats.mcp_tool import ToolDefinition
 
@@ -74,5 +73,3 @@ class McpPipelineResult:
         default_factory=lambda: list[ToolDefinition]()
     )
     base_url: str = ""
-    auth: AuthInfo | None = None
-    auth_acquire_script: str | None = None

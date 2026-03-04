@@ -32,7 +32,6 @@ def _get_openapi(result: AnalysisResult) -> dict[str, Any]:
 def _make_mock_create(
     base_url_response: str | None = None,
     groups_response: str | None = None,
-    auth_response: str | None = None,
     enrich_response: str | None = None,
 ) -> Any:
     """Build a mock client.messages.create that routes by prompt content."""
@@ -62,17 +61,6 @@ def _make_mock_create(
                 },
             ]
         )
-    if auth_response is None:
-        auth_response = json.dumps(
-            {
-                "type": "bearer_token",
-                "obtain_flow": "login_form",
-                "token_header": "Authorization",
-                "token_prefix": "Bearer",
-                "business_process": "Token-based auth",
-                "user_journey": ["Login with credentials", "Receive bearer token"],
-            }
-        )
     if enrich_response is None:
         enrich_response = json.dumps(
             {
@@ -99,8 +87,6 @@ def _make_mock_create(
             mock_content.text = base_url_response
         elif "Group these observed URLs" in msg:
             mock_content.text = groups_response
-        elif "authentication mechanism" in msg:
-            mock_content.text = auth_response
         elif "single API endpoint" in msg:
             # Per-endpoint enrichment call
             mock_content.text = enrich_response
@@ -132,7 +118,6 @@ class TestBuildSpec:
         assert openapi["openapi"] == "3.1.0"
         assert openapi["info"]["title"] == "Test App API"
         assert len(openapi["paths"]) > 0
-        assert "bearerAuth" in openapi["components"]["securitySchemes"]
         assert openapi["servers"][0]["url"] == "https://api.example.com"
 
     @pytest.mark.asyncio
@@ -154,7 +139,6 @@ class TestBuildSpec:
                     },
                 ]
             ),
-            auth_response=json.dumps({"type": "none"}),
         )
         llm.init(client=mock_client, model="test-model")
 
@@ -164,25 +148,6 @@ class TestBuildSpec:
         assert openapi["servers"][0]["url"] == "https://api.example.com"
         # CDN trace should not appear in the output
         assert len(openapi["paths"]) >= 1
-
-    @pytest.mark.asyncio
-    async def test_auth_detected_on_endpoints(self, sample_bundle: CaptureBundle) -> None:
-        """Endpoints with Authorization header should have security set."""
-        mock_client = AsyncMock()
-        mock_client.messages.create = _make_mock_create()
-        llm.init(client=mock_client, model="test-model")
-
-        result = await build_spec(sample_bundle)
-
-        openapi = _get_openapi(result)
-        # At least one endpoint should have security (sample traces have Authorization)
-        has_security = False
-        for path_ops in openapi["paths"].values():
-            for op in path_ops.values():
-                if "security" in op:
-                    has_security = True
-                    break
-        assert has_security
 
     @pytest.mark.asyncio
     async def test_openapi_structure(self, sample_bundle: CaptureBundle) -> None:
@@ -199,7 +164,6 @@ class TestBuildSpec:
         assert "title" in openapi["info"]
         assert "paths" in openapi
         assert "components" in openapi
-        assert "securitySchemes" in openapi["components"]
         assert "servers" in openapi
 
     @pytest.mark.asyncio

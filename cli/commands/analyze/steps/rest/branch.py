@@ -6,7 +6,6 @@ from collections.abc import Callable
 from typing import Any
 
 from cli.commands.analyze.schemas import resolve_map_candidates
-from cli.commands.analyze.steps.analyze_auth import detect_auth_mechanical
 from cli.commands.analyze.steps.base import ProtocolBranch
 from cli.commands.analyze.steps.rest.assemble import AssembleStep
 from cli.commands.analyze.steps.rest.enrich import EnrichEndpointsStep
@@ -14,7 +13,6 @@ from cli.commands.analyze.steps.rest.extraction import (
     MechanicalExtractionStep,
     extract_rate_limit,
     find_traces_for_group,
-    has_auth_header_or_cookie,
 )
 from cli.commands.analyze.steps.rest.group_endpoints import GroupEndpointsStep
 from cli.commands.analyze.steps.rest.strip_prefix import StripPrefixStep
@@ -70,13 +68,7 @@ class RestBranch(ProtocolBranch):
             except Exception:
                 enriched = None
 
-        # Phase C: Await auth (needed for assembly)
-        try:
-            auth = await ctx.auth_task
-        except Exception:
-            auth = detect_auth_mechanical(ctx.all_filtered_traces)
-
-        # Phase D: Assembly
+        # Phase C: Assembly
         final_endpoints = enriched if enriched is not None else endpoints
         assemble_step = AssembleStep(traces=traces)
         openapi = await assemble_step.run(
@@ -85,7 +77,6 @@ class RestBranch(ProtocolBranch):
                 source_filename=ctx.source_filename,
                 base_url=ctx.base_url,
                 endpoints=final_endpoints,
-                auth=auth,
             )
         )
 
@@ -139,10 +130,9 @@ def _detect_auth_and_rate_limit(
     endpoint_groups: list[EndpointGroup],
     traces: list[Trace],
 ) -> None:
-    """Detect requires_auth and rate_limit for each endpoint from traces."""
+    """Detect rate_limit for each endpoint from traces."""
     for ep, group in zip(endpoints, endpoint_groups):
         group_traces = find_traces_for_group(group, traces)
-        ep.requires_auth = any(has_auth_header_or_cookie(t) for t in group_traces)
         ep.rate_limit = extract_rate_limit(group_traces)
 
 

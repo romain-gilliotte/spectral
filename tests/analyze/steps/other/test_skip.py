@@ -1,24 +1,17 @@
 """Tests for UnsupportedBranch."""
 
-import asyncio
 import json
 
 import pytest
 
 from cli.commands.analyze.steps.other.skip import UnsupportedBranch
-from cli.commands.analyze.steps.types import AuthInfo, BranchContext
+from cli.commands.analyze.steps.types import BranchContext
 from cli.formats.capture_bundle import Header
 from tests.conftest import make_trace
 
 
 def _make_ctx(messages: list[str]) -> BranchContext:
     """Create a minimal BranchContext for testing."""
-
-    async def _noop_auth() -> AuthInfo:
-        return AuthInfo()
-
-    loop = asyncio.get_event_loop()
-    auth_task = loop.create_task(_noop_auth())
     return BranchContext(
         base_url="https://example.com",
         app_name="Test",
@@ -27,7 +20,6 @@ def _make_ctx(messages: list[str]) -> BranchContext:
         all_filtered_traces=[],
         skip_enrich=True,
         on_progress=messages.append,
-        auth_task=auth_task,
     )
 
 

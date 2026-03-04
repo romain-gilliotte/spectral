@@ -7,7 +7,6 @@ types will be in ``steps.graphql.types``.
 
 from __future__ import annotations
 
-import asyncio
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import Any
@@ -99,7 +98,6 @@ class BranchContext:
     all_filtered_traces: list[Trace]
     skip_enrich: bool
     on_progress: Callable[[str], None]
-    auth_task: asyncio.Task[AuthInfo]
 
 
 @dataclass
@@ -120,6 +118,4 @@ class AnalysisResult:
     """Result of the analysis pipeline, supporting any combination of protocols."""
 
     outputs: list[BranchOutput] = field(default_factory=lambda: list[BranchOutput]())
-    auth: AuthInfo | None = None
     base_url: str = ""
-    auth_acquire_script: str | None = None

@@ -3,7 +3,6 @@
 Coordinates protocol branches to build API specs from a capture bundle.
 Each protocol (REST, GraphQL, ...) is encapsulated in a ProtocolBranch;
 the pipeline dispatches traces and runs branches in parallel.
-Auth analysis runs in parallel with branch execution.
 """
 
 from __future__ import annotations
@@ -13,10 +12,6 @@ from collections.abc import Callable
 
 from cli.commands.analyze.correlator import correlate
 from cli.commands.analyze.protocol import detect_trace_protocol
-from cli.commands.analyze.steps.analyze_auth import (
-    AnalyzeAuthStep,
-    detect_auth_mechanical,
-)
 from cli.commands.analyze.steps.base import ProtocolBranch
 from cli.commands.analyze.steps.detect_base_url import DetectBaseUrlStep
 from cli.commands.analyze.steps.extract_pairs import ExtractPairsStep
@@ -26,7 +21,6 @@ from cli.commands.analyze.steps.other.skip import UnsupportedBranch
 from cli.commands.analyze.steps.rest.branch import RestBranch
 from cli.commands.analyze.steps.types import (
     AnalysisResult,
-    AuthInfo,
     BranchContext,
     TracesWithBaseUrl,
 )
@@ -99,16 +93,6 @@ async def build_spec(
     if active_specific:
         progress(f"  {', '.join(active_specific)}")
 
-    # Phase B: Auth + branches in parallel
-    async def _auth() -> AuthInfo:
-        auth_step = AnalyzeAuthStep()
-        try:
-            return await auth_step.run(all_traces)
-        except Exception:
-            return detect_auth_mechanical(all_traces)
-
-    auth_task = asyncio.create_task(_auth())
-
     ctx = BranchContext(
         base_url=base_url,
         app_name=app_name,
@@ -117,7 +101,6 @@ async def build_spec(
         all_filtered_traces=filtered_traces,
         skip_enrich=skip_enrich,
         on_progress=progress,
-        auth_task=auth_task,
     )
 
     # Launch all branches with traces in parallel
@@ -129,36 +112,7 @@ async def build_spec(
     branch_results = await asyncio.gather(*branch_coros)
     outputs = [r for r in branch_results if r is not None]
 
-    # Resolve auth (may already be done if RestBranch awaited it)
-    auth = await auth_task
-
-    # Generate auth acquire script (if interactive auth detected)
-    auth_acquire_script: str | None = None
-    needs_script = (
-        auth.type in ("bearer_token", "cookie")
-        and auth.login_config is not None
-        and not skip_enrich
-    )
-    if needs_script:
-        from cli.commands.analyze.steps.generate_auth_script import (
-            GenerateAuthScriptInput,
-            GenerateAuthScriptStep,
-        )
-
-        progress("Generating auth helper script (LLM)...")
-        try:
-            script_step = GenerateAuthScriptStep()
-            auth_acquire_script = await script_step.run(
-                GenerateAuthScriptInput(
-                    auth=auth, traces=all_traces, api_name=app_name
-                )
-            )
-        except Exception:
-            progress("  Auth helper generation failed — skipping")
-
     return AnalysisResult(
         outputs=outputs,
-        auth=auth,
         base_url=base_url,
-        auth_acquire_script=auth_acquire_script,
     )

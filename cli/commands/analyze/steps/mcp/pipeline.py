@@ -2,14 +2,9 @@
 
 from __future__ import annotations
 
-import asyncio
 from collections.abc import Callable
 from urllib.parse import urlparse
 
-from cli.commands.analyze.steps.analyze_auth import (
-    AnalyzeAuthStep,
-    detect_auth_mechanical,
-)
 from cli.commands.analyze.steps.detect_base_url import DetectBaseUrlStep
 from cli.commands.analyze.steps.extract_pairs import ExtractPairsStep
 from cli.commands.analyze.steps.filter_traces import FilterTracesStep
@@ -23,7 +18,7 @@ from cli.commands.analyze.steps.mcp.types import (
     McpPipelineResult,
     ToolBuildInput,
 )
-from cli.commands.analyze.steps.types import AuthInfo, TracesWithBaseUrl
+from cli.commands.analyze.steps.types import TracesWithBaseUrl
 from cli.commands.capture.types import CaptureBundle, Trace
 from cli.formats.mcp_tool import ToolDefinition
 
@@ -66,10 +61,7 @@ async def build_mcp_tools(
     on_progress: Callable[[str], None] | None = None,
     skip_enrich: bool = False,
 ) -> McpPipelineResult:
-    """Build MCP tool definitions from a capture bundle.
-
-    Returns McpPipelineResult with tools, base_url, auth, and optional auth script.
-    """
+    """Build MCP tool definitions from a capture bundle."""
 
     def progress(msg: str) -> None:
         if on_progress:
@@ -94,16 +86,6 @@ async def build_mcp_tools(
         TracesWithBaseUrl(traces=all_traces, base_url=base_url)
     )
     progress(f"  Kept {len(filtered)}/{total_before} traces under {base_url}")
-
-    # Step 4: Auth analysis (parallel with tool building)
-    async def _auth() -> AuthInfo:
-        auth_step = AnalyzeAuthStep()
-        try:
-            return await auth_step.run(all_traces)
-        except Exception:
-            return detect_auth_mechanical(all_traces)
-
-    auth_task = asyncio.create_task(_auth())
 
     # Build system context (shared across identify + build_tool for prompt caching)
     timeline_text = _build_timeline_text(bundle, base_url)
@@ -171,36 +153,7 @@ async def build_mcp_tools(
 
     progress(f"Extracted {len(tools)} tool(s).")
 
-    # Resolve auth
-    auth = await auth_task
-
-    # Generate auth script if needed
-    auth_acquire_script: str | None = None
-    needs_script = (
-        auth.type in ("bearer_token", "cookie")
-        and auth.login_config is not None
-        and not skip_enrich
-    )
-    if needs_script:
-        from cli.commands.analyze.steps.mcp.generate_auth import (
-            GenerateMcpAuthScriptInput,
-            GenerateMcpAuthScriptStep,
-        )
-
-        progress("Generating auth script (LLM)...")
-        try:
-            script_step = GenerateMcpAuthScriptStep()
-            auth_acquire_script = await script_step.run(
-                GenerateMcpAuthScriptInput(
-                    auth=auth, traces=all_traces, api_name=app_name
-                )
-            )
-        except Exception:
-            progress("  Auth script generation failed \u2014 skipping")
-
     return McpPipelineResult(
         tools=tools,
         base_url=base_url,
-        auth=auth,
-        auth_acquire_script=auth_acquire_script,
     )

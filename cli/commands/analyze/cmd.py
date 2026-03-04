@@ -97,34 +97,6 @@ def analyze(
     output_base = Path(output)
     output_base = output_base.parent / output_base.stem
 
-    # Write auth helper script (protocol-agnostic — works for REST and GraphQL)
-    from cli.commands.analyze.steps.types import AuthInfo
-
-    auth = result.auth or AuthInfo()
-    auth_helper_path: str | None = None
-
-    if result.auth_acquire_script:
-        from cli.helpers.auth_framework import generate_auth_script
-
-        login_config = auth.login_config
-        credential_fields = (
-            login_config.credential_fields if login_config else {}
-        )
-        api_name = output_base.stem
-
-        full_script = generate_auth_script(
-            acquire_source=result.auth_acquire_script,
-            api_name=api_name,
-            credential_fields=credential_fields,
-            token_header=auth.token_header or "Authorization",
-            token_prefix=auth.token_prefix or "Bearer",
-        )
-        helper_file = output_base.with_name(f"{output_base.stem}-auth.py")
-        with open(helper_file, "w") as f:
-            f.write(full_script)
-        auth_helper_path = str(helper_file.resolve())
-        console.print(f"[green]Auth helper written to {helper_file}[/green]")
-
     # Write each branch output
     for branch_output in result.outputs:
         out_path = output_base.with_suffix(branch_output.file_extension)
@@ -151,12 +123,13 @@ def analyze(
             console.print(f"  Found {endpoint_count} REST paths")
 
             from cli.commands.analyze.restish import generate_restish_entry
+            from cli.commands.analyze.steps.types import AuthInfo
 
             restish_entry = generate_restish_entry(
                 base_url=result.base_url,
                 spec_path=out_path.resolve(),
-                auth=auth,
-                auth_helper_path=auth_helper_path,
+                auth=AuthInfo(),
+                auth_helper_path=None,
             )
             restish_path = output_base.with_suffix(".restish.json")
             with open(restish_path, "w") as f:
@@ -176,19 +149,6 @@ def analyze(
             if placeholders:
                 console.print(f"  Fill in placeholder values: {', '.join(placeholders)}")
 
-        # GraphQL-specific: auth helper usage instructions
-        if branch_output.protocol == "graphql" and auth_helper_path:
-            console.print()
-            console.print("[bold]GraphQL auth usage:[/bold]")
-            helper_name = Path(auth_helper_path).name
-            console.print(
-                f"  Get a token:  [cyan]python3 {helper_name}[/cyan]"
-            )
-            console.print(
-                f"  With curl:    [cyan]curl -H \"Authorization: "
-                f"{auth.token_prefix or 'Bearer'} $(python3 {helper_name})\" ...[/cyan]"
-            )
-
     if not result.outputs:
         console.print("[yellow]No API traces found in the capture bundle.[/yellow]")
 
@@ -205,7 +165,6 @@ def _analyze_mcp(
     from cli.commands.capture.types import CaptureBundle
     import cli.helpers.llm as llm
     from cli.helpers.storage import (
-        auth_script_path,
         update_app_meta,
         write_tools,
     )
@@ -232,14 +191,6 @@ def _analyze_mcp(
     # Write tools
     write_tools(app_name, result.tools)
     console.print(f"[green]Wrote {len(result.tools)} tool(s) to storage[/green]")
-
-    # Write auth script if generated
-    if result.auth_acquire_script:
-        script_path = auth_script_path(app_name)
-        script_path.parent.mkdir(parents=True, exist_ok=True)
-        with open(script_path, "w") as f:
-            f.write(result.auth_acquire_script)
-        console.print(f"[green]Auth script written to {script_path}[/green]")
 
     # Update app.json with base_url
     update_app_meta(app_name, base_url=result.base_url)

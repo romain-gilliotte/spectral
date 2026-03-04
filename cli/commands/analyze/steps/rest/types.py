@@ -9,7 +9,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any
 
-from cli.commands.analyze.steps.types import AuthInfo, Correlation
+from cli.commands.analyze.steps.types import Correlation
 from cli.commands.capture.types import Trace
 
 # -- Endpoint grouping -------------------------------------------------------
@@ -104,4 +104,3 @@ class SpecComponents:
     source_filename: str
     base_url: str
     endpoints: list[EndpointSpec]
-    auth: AuthInfo

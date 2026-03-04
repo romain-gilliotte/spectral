@@ -44,17 +44,6 @@ def _make_mock_anthropic_module() -> MagicMock:
         ]
     )
 
-    auth_response = json.dumps(
-        {
-            "type": "bearer_token",
-            "token_header": "Authorization",
-            "token_prefix": "Bearer",
-            "business_process": "Token auth",
-            "user_journey": ["Login"],
-            "obtain_flow": "login_form",
-        }
-    )
-
     enrich_response = json.dumps(
         {
             "description": "test purpose",
@@ -84,8 +73,6 @@ def _make_mock_anthropic_module() -> MagicMock:
             mock_content.text = base_url_response
         elif "Group these observed URLs" in msg:
             mock_content.text = groups_response
-        elif "authentication" in msg:
-            mock_content.text = auth_response
         elif "single API endpoint" in msg:
             mock_content.text = enrich_response
         else:
@@ -426,13 +413,6 @@ def _make_mcp_mock_anthropic() -> MagicMock:
 
         if "base url" in prompt_lower and "business api" in prompt_lower:
             content_block.text = json.dumps({"base_url": "https://api.example.com"})
-        elif "analyze the authentication" in prompt_lower:
-            content_block.text = json.dumps({
-                "type": "bearer_token",
-                "token_header": "Authorization",
-                "token_prefix": "Bearer",
-                "obtain_flow": "login_form",
-            })
         elif "target trace:" in prompt_lower and "business capability" in full_text_lower:
             # Per-trace identify: first call -> useful, rest -> not useful
             identify_call_count += 1

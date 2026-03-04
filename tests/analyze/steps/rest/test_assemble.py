@@ -13,7 +13,6 @@ from cli.commands.analyze.steps.rest.types import (
     ResponseSpec,
     SpecComponents,
 )
-from cli.commands.analyze.steps.types import AuthInfo
 
 
 class TestObservedToExamples:
@@ -121,14 +120,12 @@ class TestOpenApiExamples:
     def _build_simple_openapi(
         self,
         endpoints: list[EndpointSpec],
-        auth: AuthInfo | None = None,
     ) -> dict[str, Any]:
         components = SpecComponents(
             app_name="Test",
             source_filename="test.zip",
             base_url="https://api.example.com",
             endpoints=endpoints,
-            auth=auth or AuthInfo(),
         )
         return build_openapi_dict(components)
 

@@ -69,11 +69,10 @@ def _setup_pipeline_llm() -> None:
     The pipeline calls identify per trace (no tools), then build for useful ones (with tools).
     Call sequence:
       1. detect base URL
-      2. analyze auth
-      3. identify t_0001 -> useful (search_routes)
-      4. build search_routes (with tools) -> returns tool + consumed [t_0001, t_0002]
-      5. identify t_0003 -> useful (get_account)
-      6. build get_account (with tools) -> returns tool + consumed [t_0003]
+      2. identify t_0001 -> useful (search_routes)
+      3. build search_routes (with tools) -> returns tool + consumed [t_0001, t_0002]
+      4. identify t_0003 -> useful (get_account)
+      5. build get_account (with tools) -> returns tool + consumed [t_0003]
     """
     mock_client = MagicMock()
 
@@ -109,13 +108,6 @@ def _setup_pipeline_llm() -> None:
 
         if "base url" in prompt_lower and "business api" in prompt_lower:
             content_block.text = json.dumps({"base_url": "https://api.example.com"})
-        elif "analyze the authentication" in prompt_lower:
-            content_block.text = json.dumps({
-                "type": "bearer_token",
-                "token_header": "Authorization",
-                "token_prefix": "Bearer",
-                "obtain_flow": "login_form",
-            })
         elif "target trace: t_0001" in prompt_lower:
             content_block.text = json.dumps({
                 "useful": True,
@@ -185,7 +177,6 @@ async def test_pipeline_extracts_tools() -> None:
     assert len(result.tools) >= 1
     tool_names = {t.name for t in result.tools}
     assert "search_routes" in tool_names
-    assert result.auth is not None
 
 
 async def test_pipeline_progress_callback() -> None:

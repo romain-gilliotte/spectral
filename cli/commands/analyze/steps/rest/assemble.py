@@ -5,14 +5,10 @@ from __future__ import annotations
 from typing import Any, cast
 
 from cli.commands.analyze.steps.base import Step
-from cli.commands.analyze.steps.rest.extraction import (
-    has_auth_header_or_cookie,
-)
 from cli.commands.analyze.steps.rest.types import (
     EndpointSpec,
     SpecComponents,
 )
-from cli.commands.analyze.steps.types import AuthInfo
 from cli.commands.capture.types import Trace
 
 
@@ -42,16 +38,13 @@ def build_openapi_dict(
         },
         "servers": [],
         "paths": {},
-        "components": {"securitySchemes": {}, "schemas": {}},
+        "components": {"schemas": {}},
     }
 
     # Servers
     if components.base_url:
         servers: list[dict[str, Any]] = openapi["servers"]
         servers.append({"url": components.base_url})
-
-    # Security schemes
-    _add_security_schemes(openapi, components.auth)
 
     # Paths
     for endpoint in components.endpoints:
@@ -61,38 +54,11 @@ def build_openapi_dict(
         if path not in openapi["paths"]:
             openapi["paths"][path] = {}
 
-        operation = _build_operation(endpoint, components.auth)
+        operation = _build_operation(endpoint)
         paths: dict[str, Any] = openapi["paths"]
         paths[path][method] = operation
 
     return openapi
-
-
-def _add_security_schemes(openapi: dict[str, Any], auth: AuthInfo) -> None:
-    """Add security scheme definitions based on detected auth."""
-    if auth.type == "bearer_token":
-        openapi["components"]["securitySchemes"]["bearerAuth"] = {
-            "type": "http",
-            "scheme": "bearer",
-        }
-    elif auth.type == "basic":
-        openapi["components"]["securitySchemes"]["basicAuth"] = {
-            "type": "http",
-            "scheme": "basic",
-        }
-    elif auth.type == "cookie":
-        openapi["components"]["securitySchemes"]["cookieAuth"] = {
-            "type": "apiKey",
-            "in": "cookie",
-            "name": "session",
-        }
-    elif auth.type == "api_key":
-        header_name = auth.token_header or "X-API-Key"
-        openapi["components"]["securitySchemes"]["apiKeyAuth"] = {
-            "type": "apiKey",
-            "in": "header",
-            "name": header_name,
-        }
 
 
 def _params_from_schema(
@@ -119,7 +85,7 @@ def _params_from_schema(
 
 
 def _build_operation(
-    endpoint: EndpointSpec, auth: AuthInfo
+    endpoint: EndpointSpec,
 ) -> dict[str, Any]:
     """Build an OpenAPI operation object for an endpoint."""
     operation: dict[str, Any] = {
@@ -174,17 +140,6 @@ def _build_operation(
     if endpoint.rate_limit:
         operation["x-rate-limit"] = endpoint.rate_limit
 
-    # Security
-    if endpoint.requires_auth and auth.type:
-        if auth.type == "bearer_token":
-            operation["security"] = [{"bearerAuth": []}]
-        elif auth.type == "basic":
-            operation["security"] = [{"basicAuth": []}]
-        elif auth.type == "cookie":
-            operation["security"] = [{"cookieAuth": []}]
-        elif auth.type == "api_key":
-            operation["security"] = [{"apiKeyAuth": []}]
-
     return operation
 
 
@@ -220,8 +175,3 @@ def _extract_tag(path: str) -> str:
         if seg.lower() not in ("api", "v1", "v2", "v3", "rest"):
             return seg
     return segments[-1] if segments else ""
-
-
-def detect_requires_auth(traces: list[Trace]) -> bool:
-    """Check if any trace in a group has auth headers or cookies."""
-    return any(has_auth_header_or_cookie(t) for t in traces)
