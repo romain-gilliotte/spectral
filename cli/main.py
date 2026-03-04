@@ -7,6 +7,7 @@ from dotenv import load_dotenv
 
 from cli.commands.analyze.cmd import analyze
 from cli.commands.android.cmd import android
+from cli.commands.auth.cmd import auth
 from cli.commands.capture.cmd import capture
 from cli.commands.mcp.cmd import mcp
 from cli.commands.query.cmd import query
@@ -21,6 +22,7 @@ def cli() -> None:
 
 
 cli.add_command(analyze)
+cli.add_command(auth)
 cli.add_command(capture)
 cli.add_command(android)
 cli.add_command(mcp)
