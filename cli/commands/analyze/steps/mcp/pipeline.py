@@ -1,11 +1,11 @@
-"""MCP pipeline: batch identification then sequential tool building."""
+"""MCP pipeline: greedy per-trace identification then tool building."""
 
 from __future__ import annotations
 
 import asyncio
 from collections.abc import Callable
+from urllib.parse import urlparse
 
-from cli.commands.analyze.correlator import correlate
 from cli.commands.analyze.steps.analyze_auth import (
     AnalyzeAuthStep,
     detect_auth_mechanical,
@@ -14,17 +14,50 @@ from cli.commands.analyze.steps.detect_base_url import DetectBaseUrlStep
 from cli.commands.analyze.steps.extract_pairs import ExtractPairsStep
 from cli.commands.analyze.steps.filter_traces import FilterTracesStep
 from cli.commands.analyze.steps.mcp.build_tool import BuildToolStep
-from cli.commands.analyze.steps.mcp.cleanup import CleanupTracesStep
-from cli.commands.analyze.steps.mcp.identify import IdentifyCapabilitiesStep
+from cli.commands.analyze.steps.mcp.identify import (
+    IdentifyCapabilitiesStep,
+    trace_timeline_line,
+)
 from cli.commands.analyze.steps.mcp.types import (
-    CleanupInput,
     IdentifyInput,
     McpPipelineResult,
     ToolBuildInput,
 )
 from cli.commands.analyze.steps.types import AuthInfo, TracesWithBaseUrl
-from cli.commands.capture.types import CaptureBundle
+from cli.commands.capture.types import CaptureBundle, Trace
 from cli.formats.mcp_tool import ToolDefinition
+
+_MAX_ITERATIONS = 200
+
+
+def _build_timeline_text(
+    bundle: CaptureBundle, base_url: str
+) -> str:
+    """Build a chronological timeline string from the bundle's timeline events."""
+    parsed_base = urlparse(base_url)
+    base_origin = f"{parsed_base.scheme}://{parsed_base.netloc}"
+    base_path = parsed_base.path.rstrip("/")
+
+    trace_index = {t.meta.id: t for t in bundle.traces}
+    context_index = {c.meta.id: c for c in bundle.contexts}
+
+    lines: list[str] = []
+    for event in bundle.timeline.events:
+        if event.type == "context":
+            ctx = context_index.get(event.ref)
+            if ctx is None:
+                continue
+            text = ctx.meta.element.text or ctx.meta.element.selector
+            lines.append(
+                f"\U0001f5b1 [{ctx.meta.action}] \"{text}\" on {ctx.meta.page.url}"
+            )
+        elif event.type == "trace":
+            trace = trace_index.get(event.ref)
+            if trace is None:
+                continue
+            lines.append(trace_timeline_line(trace, base_origin, base_path))
+
+    return "\n".join(lines)
 
 
 async def build_mcp_tools(
@@ -43,7 +76,6 @@ async def build_mcp_tools(
             on_progress(msg)
 
     all_traces = list(bundle.traces)
-    correlations = correlate(bundle)
 
     # Step 1: Extract pairs
     extract_step = ExtractPairsStep()
@@ -73,56 +105,67 @@ async def build_mcp_tools(
 
     auth_task = asyncio.create_task(_auth())
 
-    # Step 5: Batch identification — single LLM call
-    progress("Identifying capabilities (LLM)...")
-    identify_step = IdentifyCapabilitiesStep()
-    candidates = await identify_step.run(
-        IdentifyInput(
-            correlations=correlations,
-            remaining_traces=filtered,
-            base_url=base_url,
-        )
-    )
-    progress(f"  Found {len(candidates)} candidate(s).")
+    # Build system context (shared across identify + build_tool for prompt caching)
+    timeline_text = _build_timeline_text(bundle, base_url)
+    system_context = f"""You are analyzing captured HTTP traffic from a web application to identify and document API capabilities as MCP tools.
 
-    # Step 6: Sequential build + cleanup for each candidate
+## Base URL
+{base_url}
+
+## Session timeline
+{timeline_text}"""
+
+    # Step 5: Greedy per-trace identification + build loop
+    progress("Identifying capabilities and building tools...")
     tools: list[ToolDefinition] = []
-    remaining = list(filtered)
+    remaining: list[Trace] = list(filtered)
+    contexts = list(bundle.contexts)
+    iterations = 0
 
-    for i, candidate in enumerate(candidates, 1):
-        if not remaining:
-            progress("  Trace pool empty — stopping.")
-            break
+    while remaining and iterations < _MAX_ITERATIONS:
+        iterations += 1
+        target = remaining[0]
 
-        progress(
-            f"  [{i}/{len(candidates)}] Building tool: {candidate.name} "
-            f"({len(candidate.trace_ids)} example traces)"
+        # Lightweight: is this trace useful?
+        identify_step = IdentifyCapabilitiesStep()
+        candidate = await identify_step.run(
+            IdentifyInput(
+                remaining_traces=remaining,
+                base_url=base_url,
+                target_trace=target,
+                existing_tools=tools,
+                system_context=system_context,
+            )
         )
 
+        if candidate is None:
+            progress(f"  Evaluating {target.meta.id}... skip")
+            remaining = remaining[1:]
+            continue
+
+        # Full build with investigation tools
+        progress(f"  Evaluating {target.meta.id}... useful \u2192 building {candidate.name}")
         build_step = BuildToolStep()
-        tool = await build_step.run(
+        build_result = await build_step.run(
             ToolBuildInput(
                 candidate=candidate,
                 traces=filtered,
+                contexts=contexts,
                 base_url=base_url,
                 existing_tools=tools,
+                system_context=system_context,
             )
         )
-        tools.append(tool)
+        tools.append(build_result.tool)
 
-        # Cleanup: remove matching traces
-        cleanup_step = CleanupTracesStep()
+        # Remove consumed traces
+        consumed = set(build_result.consumed_trace_ids)
         before_count = len(remaining)
-        remaining = await cleanup_step.run(
-            CleanupInput(
-                traces=remaining,
-                tool_definition=tool,
-                base_url=base_url,
-            )
-        )
+        remaining = [t for t in remaining if t.meta.id not in consumed]
         removed = before_count - len(remaining)
         progress(
-            f"    → {tool.name}: {tool.request.method} {tool.request.path} "
+            f"    \u2192 {build_result.tool.name}: {build_result.tool.request.method} "
+            f"{build_result.tool.request.path} "
             f"(removed {removed} traces, {len(remaining)} remaining)"
         )
 
@@ -153,7 +196,7 @@ async def build_mcp_tools(
                 )
             )
         except Exception:
-            progress("  Auth script generation failed — skipping")
+            progress("  Auth script generation failed \u2014 skipping")
 
     return McpPipelineResult(
         tools=tools,
