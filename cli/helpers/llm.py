@@ -22,9 +22,13 @@ from datetime import datetime, timezone
 import json
 from pathlib import Path
 import re
-from typing import Any
+from typing import Any, TypeVar, cast, overload
+
+from pydantic import BaseModel, ValidationError
 
 from cli.helpers.console import console
+
+T = TypeVar("T", bound=BaseModel)
 
 _client: Any = None
 _semaphore: asyncio.Semaphore | None = None
@@ -32,10 +36,44 @@ _debug_dir: Path | None = None
 _model: str | None = None
 _total_input_tokens: int = 0
 _total_output_tokens: int = 0
+_total_cache_read_tokens: int = 0
+_total_cache_creation_tokens: int = 0
 
 MAX_CONCURRENT = 5
 MAX_RETRIES = 3
 FALLBACK_BACKOFF = 2.0  # seconds, doubled each retry
+
+# Per-million-token pricing: (input_$/M, output_$/M)
+_MODEL_PRICING: dict[str, tuple[float, float]] = {
+    "claude-sonnet-4-5-20250929": (3.0, 15.0),
+    "claude-sonnet-4-20250514": (3.0, 15.0),
+    "claude-haiku-3-5-20241022": (0.80, 4.0),
+}
+
+
+def estimate_cost(
+    model: str,
+    input_tokens: int,
+    output_tokens: int,
+    cache_read_tokens: int = 0,
+    cache_creation_tokens: int = 0,
+) -> float | None:
+    """Return estimated USD cost, or ``None`` if model pricing is unknown.
+
+    Cache pricing follows Anthropic rates:
+    - cache reads cost 10% of the input rate
+    - cache writes cost 125% of the input rate
+    """
+    pricing = _MODEL_PRICING.get(model)
+    if pricing is None:
+        return None
+    inp_rate, out_rate = pricing
+    return (
+        input_tokens * inp_rate
+        + cache_read_tokens * inp_rate * 0.1
+        + cache_creation_tokens * inp_rate * 1.25
+        + output_tokens * out_rate
+    ) / 1_000_000
 
 
 def init(
@@ -52,7 +90,9 @@ def init(
     saved there automatically by ``ask()``.  When *model* is set, all
     ``ask()`` calls use it by default.
     """
-    global _client, _semaphore, _debug_dir, _model, _total_input_tokens, _total_output_tokens
+    global _client, _semaphore, _debug_dir, _model
+    global _total_input_tokens, _total_output_tokens
+    global _total_cache_read_tokens, _total_cache_creation_tokens
 
     if client is not None:
         _client = client
@@ -66,17 +106,23 @@ def init(
     _model = model
     _total_input_tokens = 0
     _total_output_tokens = 0
+    _total_cache_read_tokens = 0
+    _total_cache_creation_tokens = 0
 
 
 def reset() -> None:
     """Clear the module-level client, semaphore, debug directory, and model (for tests)."""
-    global _client, _semaphore, _debug_dir, _model, _total_input_tokens, _total_output_tokens
+    global _client, _semaphore, _debug_dir, _model
+    global _total_input_tokens, _total_output_tokens
+    global _total_cache_read_tokens, _total_cache_creation_tokens
     _client = None
     _semaphore = None
     _debug_dir = None
     _model = None
     _total_input_tokens = 0
     _total_output_tokens = 0
+    _total_cache_read_tokens = 0
+    _total_cache_creation_tokens = 0
 
 
 def get_usage() -> tuple[int, int]:
@@ -84,31 +130,84 @@ def get_usage() -> tuple[int, int]:
     return (_total_input_tokens, _total_output_tokens)
 
 
+def get_cache_usage() -> tuple[int, int]:
+    """Return accumulated cache token usage as ``(cache_read, cache_creation)``."""
+    return (_total_cache_read_tokens, _total_cache_creation_tokens)
+
+
 # ---------------------------------------------------------------------------
 # Public entry point
 # ---------------------------------------------------------------------------
 
 
+@overload
 async def ask(
     prompt: str,
     *,
+    system: str | list[str] | None = None,
     max_tokens: int = 4096,
     label: str = "",
     tools: list[dict[str, Any]] | None = None,
     executors: dict[str, Callable[[dict[str, Any]], str]] | None = None,
     max_iterations: int = 10,
-) -> str:
+    response_model: type[T],
+) -> T: ...
+
+
+@overload
+async def ask(
+    prompt: str,
+    *,
+    system: str | list[str] | None = None,
+    max_tokens: int = 4096,
+    label: str = "",
+    tools: list[dict[str, Any]] | None = None,
+    executors: dict[str, Callable[[dict[str, Any]], str]] | None = None,
+    max_iterations: int = 10,
+    response_model: None = None,
+) -> str: ...
+
+
+async def ask(
+    prompt: str,
+    *,
+    system: str | list[str] | None = None,
+    max_tokens: int = 4096,
+    label: str = "",
+    tools: list[dict[str, Any]] | None = None,
+    executors: dict[str, Callable[[dict[str, Any]], str]] | None = None,
+    max_iterations: int = 10,
+    response_model: type[T] | None = None,
+) -> T | str:
     """The single entry point for calling the LLM.
 
     Returns the assistant's text response.  Uses the model configured
     via ``init(model=...)``.  When *tools* and *executors* are supplied,
     runs the tool-use loop via ``_call_with_tools``.  Debug logging is
     handled internally.
+
+    When *response_model* is set, the prompt is augmented with a JSON
+    instruction, the response is parsed and validated against the model,
+    and a retry is attempted once on parse/validation failure.
     """
+    if response_model is not None:
+        prompt = (
+            prompt
+            + "\n\nIMPORTANT: Respond with a single minified JSON object. "
+            "No commentary, no markdown fences, no explanation — only raw JSON."
+        )
+
     model = _require_model()
 
+    # Build system blocks with cache_control for prompt caching.
+    system_blocks = _build_system_blocks(system)
+
+    create_kwargs: dict[str, Any] = {}
+    if system_blocks:
+        create_kwargs["system"] = system_blocks
+
     if tools is not None and executors is not None:
-        return await _call_with_tools(
+        text = await _call_with_tools(
             model,
             [{"role": "user", "content": prompt}],
             tools,
@@ -116,24 +215,118 @@ async def ask(
             max_tokens=max_tokens,
             max_iterations=max_iterations,
             call_name=label or "call",
+            **create_kwargs,
+        )
+    else:
+        response: Any = await _create(
+            label=label,
+            model=model,
+            max_tokens=max_tokens,
+            messages=[{"role": "user", "content": prompt}],
+            **create_kwargs,
         )
 
-    response: Any = await _create(
-        label=label,
-        model=model,
-        max_tokens=max_tokens,
-        messages=[{"role": "user", "content": prompt}],
+        text = _extract_text(response.content)
+
+        _save_debug(
+            label or "call",
+            [{"role": "user", "content": prompt}, {"role": "assistant", "content": text}],
+        )
+
+        _check_truncation(response, max_tokens=max_tokens, label=label)
+
+    if response_model is None:
+        return text
+
+    return await _parse_response_model(
+        text, response_model, prompt, model=model, max_tokens=max_tokens, label=label,
+        tools=tools, executors=executors, max_iterations=max_iterations,
+        system_blocks=system_blocks,
     )
 
-    text = _extract_text(response.content)
 
-    _save_debug(
-        label or "call",
-        [{"role": "user", "content": prompt}, {"role": "assistant", "content": text}],
+def _build_system_blocks(
+    system: str | list[str] | None,
+) -> list[dict[str, Any]] | None:
+    """Convert *system* into a list of text blocks with ``cache_control``."""
+    if system is None:
+        return None
+    _CACHE_EPHEMERAL: dict[str, str] = {"type": "ephemeral"}
+    if isinstance(system, str):
+        return [{"type": "text", "text": system, "cache_control": _CACHE_EPHEMERAL}]
+    return [
+        {"type": "text", "text": s, "cache_control": _CACHE_EPHEMERAL}
+        for s in system
+    ]
+
+
+async def _parse_response_model(
+    text: str,
+    response_model: type[T],
+    original_prompt: str,
+    *,
+    model: str,
+    max_tokens: int,
+    label: str,
+    tools: list[dict[str, Any]] | None,
+    executors: dict[str, Callable[[dict[str, Any]], str]] | None,
+    max_iterations: int,
+    system_blocks: list[dict[str, Any]] | None = None,
+) -> T:
+    """Parse and validate *text* against *response_model*, retrying once on failure."""
+    # First attempt
+    parse_error: Exception | None = None
+    try:
+        return _try_parse_model(text, response_model)
+    except (json.JSONDecodeError, ValidationError, ValueError) as first_err:
+        parse_error = first_err
+
+    # Retry: re-call the LLM with the error
+    retry_msg = (
+        f"Your response could not be parsed: {parse_error}. "
+        "Please respond with valid JSON matching the expected schema."
     )
+    messages: list[dict[str, Any]] = [
+        {"role": "user", "content": original_prompt},
+        {"role": "assistant", "content": text},
+        {"role": "user", "content": retry_msg},
+    ]
 
-    _check_truncation(response, max_tokens=max_tokens, label=label)
-    return text
+    extra_kwargs: dict[str, Any] = {}
+    if system_blocks:
+        extra_kwargs["system"] = system_blocks
+
+    if tools is not None and executors is not None:
+        retry_text = await _call_with_tools(
+            model,
+            messages,
+            tools,
+            executors,
+            max_tokens=max_tokens,
+            max_iterations=max_iterations,
+            call_name=(label or "call") + "_retry",
+            **extra_kwargs,
+        )
+    else:
+        retry_response: Any = await _create(
+            label=(label or "call") + "_retry",
+            model=model,
+            max_tokens=max_tokens,
+            messages=messages,
+            **extra_kwargs,
+        )
+        retry_text = _extract_text(retry_response.content)
+
+    return _try_parse_model(retry_text, response_model)
+
+
+def _try_parse_model(text: str, response_model: type[T]) -> T:
+    """Try to parse *text* as JSON and validate against *response_model*."""
+    try:
+        data = json.loads(text.strip())
+    except json.JSONDecodeError:
+        data = extract_json(text)
+    return response_model.model_validate(data)
 
 
 def _require_model() -> str:
@@ -228,6 +421,7 @@ def _parse_retry_after(exc: Exception) -> float | None:
 def _record_usage(response: Any, label: str) -> None:
     """Accumulate token counts from *response* and print a dim summary line."""
     global _total_input_tokens, _total_output_tokens
+    global _total_cache_read_tokens, _total_cache_creation_tokens
     usage = getattr(response, "usage", None)
     if usage is None:
         return
@@ -238,16 +432,53 @@ def _record_usage(response: Any, label: str) -> None:
         return
     _total_input_tokens += inp
     _total_output_tokens += out
+
+    cache_read = int(getattr(usage, "cache_read_input_tokens", 0) or 0)
+    cache_create = int(getattr(usage, "cache_creation_input_tokens", 0) or 0)
+    _total_cache_read_tokens += cache_read
+    _total_cache_creation_tokens += cache_create
+
     if label:
-        console.print(f"  [dim]{label:<30} {inp:,} in · {out:,} out[/dim]")
+        line = f"  [dim]{label:<30} {inp:,} in · {out:,} out"
+        if cache_read or cache_create:
+            cache_parts: list[str] = []
+            if cache_read:
+                cache_parts.append(f"{cache_read:,} read")
+            if cache_create:
+                cache_parts.append(f"{cache_create:,} write")
+            line += f" (cache: {', '.join(cache_parts)})"
+        if _model is not None:
+            call_cost = estimate_cost(_model, inp, out, cache_read, cache_create)
+            if call_cost is not None:
+                line += f" · ${call_cost:.4f}"
+        line += "[/dim]"
+        console.print(line)
 
 
-def _save_debug(call_name: str, turns: list[dict[str, Any]]) -> None:
-    """Save an LLM conversation (single-shot or multi-turn) to the debug directory."""
+def _make_debug_path(call_name: str) -> Path | None:
+    """Return the debug file path for *call_name*, or ``None`` if debug is off."""
     if _debug_dir is None:
-        return
+        return None
     ts = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.%f")[:-3] + "Z"
-    path = _debug_dir / f"{ts}_{call_name}"
+    return _debug_dir / f"{ts}_{call_name}"
+
+
+def _save_debug(
+    call_name: str,
+    turns: list[dict[str, Any]],
+    *,
+    path: Path | None = None,
+) -> None:
+    """Save an LLM conversation (single-shot or multi-turn) to the debug directory.
+
+    When *path* is given, write to that file (used for incremental writes
+    during tool-use loops so every iteration is visible on disk).  When
+    omitted, a new timestamped path is generated.
+    """
+    if path is None:
+        path = _make_debug_path(call_name)
+    if path is None:
+        return
 
     parts: list[str] = []
     for turn in turns:
@@ -417,13 +648,35 @@ async def _call_with_tools(
     max_tokens: int = 4096,
     max_iterations: int = 10,
     call_name: str = "call",
+    **extra_create_kwargs: Any,
 ) -> str:
     """Call the LLM with tool_use support, looping until a text response is produced."""
     debug_turns: list[dict[str, Any]] = []
+    debug_path = _make_debug_path(call_name)
 
     # Log the initial user prompt
-    if _debug_dir is not None and messages:
+    if debug_path is not None and messages:
         debug_turns.append({"role": "user", "content": messages[0].get("content", "")})
+
+    # --- Prompt caching breakpoints ---
+    # Mark the last tool definition so all tool schemas are cached.
+    _CACHE_EPHEMERAL: dict[str, str] = {"type": "ephemeral"}
+    if tools:
+        tools[-1] = {**tools[-1], "cache_control": _CACHE_EPHEMERAL}
+
+    # Convert the first user message content to a content block with cache_control
+    # so the (usually large) initial prompt is cached across iterations.
+    if messages and isinstance(messages[0].get("content"), str):
+        messages[0] = {
+            **messages[0],
+            "content": [
+                {
+                    "type": "text",
+                    "text": messages[0]["content"],
+                    "cache_control": _CACHE_EPHEMERAL,
+                }
+            ],
+        }
 
     for _ in range(max_iterations):
         response: Any = await _create(
@@ -432,15 +685,16 @@ async def _call_with_tools(
             max_tokens=max_tokens,
             tools=tools,
             messages=messages,
+            **extra_create_kwargs,
         )
 
         if response.stop_reason == "max_tokens":
-            if _debug_dir is not None:
+            if debug_path is not None:
                 debug_turns.append({
                     "role": "assistant",
                     "content": _extract_text(response.content) + "\n[TRUNCATED]",
                 })
-                _save_debug(call_name, debug_turns)
+                _save_debug(call_name, debug_turns, path=debug_path)
             raise ValueError(
                 f"LLM response truncated ({call_name}, max_tokens={max_tokens}). "
                 f"The prompt or expected output is too large."
@@ -448,9 +702,9 @@ async def _call_with_tools(
 
         if response.stop_reason != "tool_use":
             text = _extract_text(response.content)
-            if _debug_dir is not None:
+            if debug_path is not None:
                 debug_turns.append({"role": "assistant", "content": text})
-                _save_debug(call_name, debug_turns)
+                _save_debug(call_name, debug_turns, path=debug_path)
             return text
 
         # Process tool calls
@@ -465,9 +719,26 @@ async def _call_with_tools(
             tool_result, debug_entry = _execute_tool(block, executors)
             tool_results.append(tool_result)
             debug_tool_calls.append(debug_entry)
+
+        # Rolling cache breakpoint: remove previous tool_result cache markers,
+        # then mark the last tool_result so everything up to here is cached.
+        for msg in messages:
+            if msg.get("role") != "user":
+                continue
+            content = msg.get("content")
+            if not isinstance(content, list):
+                continue
+            for blk in cast(list[dict[str, Any]], content):
+                if blk.get("type") == "tool_result":
+                    blk.pop("cache_control", None)
+
+        if tool_results:
+            tool_results[-1] = {**tool_results[-1], "cache_control": _CACHE_EPHEMERAL}
+
         messages.append({"role": "user", "content": tool_results})
 
-        if _debug_dir is not None:
+        if debug_path is not None:
             debug_turns.append({"role": "assistant", "tool_calls": debug_tool_calls})
+            _save_debug(call_name, debug_turns, path=debug_path)
 
     raise ValueError(f"_call_with_tools exceeded {max_iterations} iterations")
