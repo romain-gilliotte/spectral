@@ -26,6 +26,7 @@ from cli.commands.capture.loader import load_bundle, load_bundle_dir, write_bund
 from cli.commands.capture.types import CaptureBundle, merge_bundles
 from cli.formats.app_meta import AppMeta
 from cli.formats.capture_bundle import CaptureManifest
+from cli.formats.mcp_tool import TokenState, ToolDefinition
 
 
 class DuplicateCaptureError(Exception):
@@ -196,3 +197,81 @@ def load_app_bundle(app_name: str) -> CaptureBundle:
         raise click.ClickException(f"App '{app_name}' has no captures.")
     bundles = [load_bundle_dir(d) for d in cap_dirs]
     return merge_bundles(bundles)
+
+
+# ---------------------------------------------------------------------------
+# MCP tool and auth storage
+# ---------------------------------------------------------------------------
+
+
+def tools_dir(app_name: str) -> Path:
+    """Return the tools directory for an app."""
+    return app_dir(app_name) / "tools"
+
+
+def list_tools(app_name: str) -> list[ToolDefinition]:
+    """Load all tool definitions for an app, sorted by name."""
+    td = tools_dir(app_name)
+    if not td.is_dir():
+        return []
+    result: list[ToolDefinition] = []
+    for f in sorted(td.iterdir()):
+        if f.suffix == ".json" and f.is_file():
+            result.append(ToolDefinition.model_validate_json(f.read_text()))
+    return result
+
+
+def write_tools(app_name: str, tools: list[ToolDefinition]) -> None:
+    """Clear the tools directory and write new tool JSON files."""
+    td = tools_dir(app_name)
+    if td.is_dir():
+        for f in td.iterdir():
+            if f.suffix == ".json" and f.is_file():
+                f.unlink()
+    td.mkdir(parents=True, exist_ok=True)
+    for tool in tools:
+        path = td / f"{tool.name}.json"
+        path.write_text(tool.model_dump_json(indent=2))
+
+
+def load_token(app_name: str) -> TokenState | None:
+    """Read token.json for an app, or None if missing."""
+    token_path = app_dir(app_name) / "token.json"
+    if not token_path.is_file():
+        return None
+    return TokenState.model_validate_json(token_path.read_text())
+
+
+def write_token(app_name: str, token: TokenState) -> None:
+    """Write token.json for an app."""
+    token_path = app_dir(app_name) / "token.json"
+    token_path.parent.mkdir(parents=True, exist_ok=True)
+    token_path.write_text(token.model_dump_json(indent=2))
+
+
+def auth_script_path(app_name: str) -> Path:
+    """Return the path to the auth_acquire.py script for an app."""
+    return app_dir(app_name) / "auth_acquire.py"
+
+
+def load_app_meta(app_name: str) -> AppMeta:
+    """Load app.json for an app.
+
+    Raises ``click.ClickException`` if the app doesn't exist.
+    """
+    import click
+
+    meta_path = app_dir(app_name) / "app.json"
+    if not meta_path.is_file():
+        raise click.ClickException(f"App '{app_name}' not found.")
+    return AppMeta.model_validate_json(meta_path.read_text())
+
+
+def update_app_meta(app_name: str, **kwargs: object) -> None:
+    """Update fields of app.json for an app."""
+    meta = load_app_meta(app_name)
+    for key, value in kwargs.items():
+        if hasattr(meta, key):
+            setattr(meta, key, value)
+    meta_path = app_dir(app_name) / "app.json"
+    meta_path.write_text(meta.model_dump_json(indent=2))

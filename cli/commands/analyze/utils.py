@@ -47,23 +47,62 @@ def compact_url(url: str) -> str:
     return f"{parsed.scheme}://{parsed.netloc}{'/'.join(compacted)}"
 
 
-def truncate_json(obj: Any, max_keys: int = 10) -> Any:
-    """Truncate a JSON-like object for LLM consumption."""
+def truncate_json(obj: Any, max_keys: int = 10, max_depth: int = 4) -> Any:
+    """Truncate a JSON-like object for LLM consumption.
+
+    Limits breadth (max_keys per dict, 3 items per list), depth, and string length.
+    """
+    return _truncate(obj, max_keys, max_depth, 0)
+
+
+def _truncate(obj: Any, max_keys: int, max_depth: int, depth: int) -> Any:
+    if depth >= max_depth:
+        if isinstance(obj, dict):
+            n: int = len(obj)  # pyright: ignore[reportUnknownArgumentType]
+            return {"_truncated": f"{n} keys"}
+        if isinstance(obj, list):
+            n = len(obj)  # pyright: ignore[reportUnknownArgumentType]
+            return [f"...{n} items"]
+        if isinstance(obj, str) and len(obj) > 200:
+            return obj[:200] + "..."
+        return obj
     if isinstance(obj, dict):
-        items: list[tuple[str, Any]] = list(obj.items())[:max_keys]  # pyright: ignore[reportUnknownVariableType, reportUnknownArgumentType]
-        return {k: truncate_json(v, max_keys) for k, v in items}
+        all_items: list[tuple[str, Any]] = list(obj.items())  # pyright: ignore[reportUnknownVariableType, reportUnknownArgumentType]
+        items = all_items[:max_keys]
+        result = {k: _truncate(v, max_keys, max_depth, depth + 1) for k, v in items}
+        if len(all_items) > max_keys:
+            result["_truncated"] = f"{len(all_items) - max_keys} more keys"
+        return result
     if isinstance(obj, list):
         items_list: list[Any] = obj[:3]  # pyright: ignore[reportUnknownVariableType]
-        return [truncate_json(item, max_keys) for item in items_list]
+        truncated = [_truncate(item, max_keys, max_depth, depth + 1) for item in items_list]
+        total: int = len(obj)  # pyright: ignore[reportUnknownArgumentType]
+        if total > 3:
+            truncated.append(f"...{total - 3} more items")
+        return truncated
     if isinstance(obj, str) and len(obj) > 200:
         return obj[:200] + "..."
     return obj
 
 
+_NOISE_HEADERS: frozenset[str] = frozenset({
+    # HTTP/2 pseudo-headers
+    ":authority", ":method", ":path", ":scheme",
+    # Browser fingerprint
+    "sec-ch-ua", "sec-ch-ua-mobile", "sec-ch-ua-platform",
+    # Fetch metadata
+    "sec-fetch-dest", "sec-fetch-mode", "sec-fetch-site",
+    # Transport / low-value
+    "accept-encoding", "user-agent", "priority",
+})
+
+
 def sanitize_headers(headers: dict[str, str]) -> dict[str, str]:
-    """Redact long token values but keep header structure visible."""
+    """Redact long token values and strip noise headers."""
     sanitized: dict[str, str] = {}
     for k, v in headers.items():
+        if k.lower() in _NOISE_HEADERS:
+            continue
         if k.lower() in ("authorization", "cookie", "set-cookie") and len(v) > 30:
             sanitized[k] = v[:30] + "...[redacted]"
         else:

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-from typing import cast
+from typing import Any, cast
 from unittest.mock import MagicMock, patch
 
 from click.testing import CliRunner
@@ -379,3 +379,187 @@ class TestDiscoverCommand:
 
         assert result.exit_code == 0
         mock_discover.assert_called_once_with(9090)
+
+
+def _make_mcp_mock_anthropic() -> MagicMock:
+    """Create a mock anthropic module for MCP pipeline tests."""
+    identify_call_count = 0
+
+    async def mock_create(**kwargs: Any) -> MagicMock:
+        nonlocal identify_call_count
+        resp = MagicMock()
+        content_block = MagicMock()
+        content_block.type = "text"
+        resp.stop_reason = "end_turn"
+
+        messages = cast(list[dict[str, Any]], kwargs.get("messages", []))
+        prompt = ""
+        for m in messages:
+            if isinstance(m, dict) and m.get("role") == "user":
+                c = m.get("content", "")
+                if isinstance(c, str):
+                    prompt = c
+                    break
+
+        prompt_lower = prompt.lower()
+
+        if "base url" in prompt_lower and "business api" in prompt_lower:
+            content_block.text = json.dumps({"base_url": "https://api.example.com"})
+        elif "analyze the authentication" in prompt_lower:
+            content_block.text = json.dumps({
+                "type": "bearer_token",
+                "token_header": "Authorization",
+                "token_prefix": "Bearer",
+                "obtain_flow": "login_form",
+            })
+        elif "identify" in prompt_lower and "business capabilit" in prompt_lower:
+            identify_call_count += 1
+            if identify_call_count == 1:
+                content_block.text = json.dumps({
+                    "name": "list_users",
+                    "description": "List users",
+                    "trace_ids": ["t_0001"],
+                })
+            else:
+                content_block.text = json.dumps({"stop": True})
+        elif "building an mcp tool" in prompt_lower:
+            content_block.text = json.dumps({
+                "name": "list_users",
+                "description": "List users",
+                "parameters": {"type": "object", "properties": {}},
+                "request": {"method": "GET", "path": "/api/users"},
+            })
+        else:
+            content_block.text = json.dumps({"stop": True})
+
+        resp.content = [content_block]
+        return resp
+
+    mock_client = MagicMock()
+    mock_client.messages.create = mock_create
+
+    mock_module = MagicMock()
+    mock_module.AsyncAnthropic.return_value = mock_client
+    return mock_module
+
+
+class TestAnalyzeMcpCommand:
+    def test_analyze_mcp_basic(
+        self, sample_bundle: CaptureBundle, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ) -> None:
+        from cli.helpers.storage import store_capture
+
+        monkeypatch.setenv("SPECTRAL_HOME", str(tmp_path / "store"))
+        store_capture(sample_bundle, "testapp")
+
+        runner = CliRunner()
+        mock_anthropic = _make_mcp_mock_anthropic()
+        with patch.dict("sys.modules", {"anthropic": mock_anthropic}):
+            result = runner.invoke(
+                cli,
+                ["analyze", "testapp", "-o", "out", "--mcp"],
+            )
+
+        assert result.exit_code == 0, result.output
+        assert "tool" in result.output.lower()
+
+        # Verify tools were written
+        from cli.helpers.storage import list_tools
+
+        tools = list_tools("testapp")
+        assert len(tools) >= 1
+
+    def test_analyze_mcp_updates_app_meta(
+        self, sample_bundle: CaptureBundle, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ) -> None:
+        from cli.helpers.storage import load_app_meta, store_capture
+
+        monkeypatch.setenv("SPECTRAL_HOME", str(tmp_path / "store"))
+        store_capture(sample_bundle, "testapp")
+
+        runner = CliRunner()
+        mock_anthropic = _make_mcp_mock_anthropic()
+        with patch.dict("sys.modules", {"anthropic": mock_anthropic}):
+            result = runner.invoke(
+                cli,
+                ["analyze", "testapp", "-o", "out", "--mcp"],
+            )
+
+        assert result.exit_code == 0, result.output
+        meta = load_app_meta("testapp")
+        assert meta.base_url == "https://api.example.com"
+
+
+class TestQueryCommand:
+    def test_login(self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+        from cli.helpers.storage import ensure_app
+
+        monkeypatch.setenv("SPECTRAL_HOME", str(tmp_path / "store"))
+        ensure_app("testapp")
+
+        # Write a mock auth script
+        from cli.helpers.storage import auth_script_path
+
+        script_path = auth_script_path("testapp")
+        script_path.parent.mkdir(parents=True, exist_ok=True)
+        script_path.write_text(
+            'def acquire_token():\n'
+            '    return {"headers": {"Authorization": "Bearer test"}, "expires_in": 3600}\n'
+        )
+
+        runner = CliRunner()
+        result = runner.invoke(cli, ["query", "login", "testapp"])
+
+        assert result.exit_code == 0, result.output
+        assert "Login successful" in result.output
+
+        from cli.helpers.storage import load_token
+
+        token = load_token("testapp")
+        assert token is not None
+        assert token.headers["Authorization"] == "Bearer test"
+
+    def test_refresh_no_token(self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+        from cli.helpers.storage import ensure_app
+
+        monkeypatch.setenv("SPECTRAL_HOME", str(tmp_path / "store"))
+        ensure_app("testapp")
+
+        runner = CliRunner()
+        result = runner.invoke(cli, ["query", "refresh", "testapp"])
+
+        assert result.exit_code != 0
+        assert "No token found" in result.output
+
+    def test_refresh_with_token(self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+        import time
+
+        from cli.formats.mcp_tool import TokenState
+        from cli.helpers.storage import auth_script_path, ensure_app, write_token
+
+        monkeypatch.setenv("SPECTRAL_HOME", str(tmp_path / "store"))
+        ensure_app("testapp")
+
+        # Write token with refresh_token
+        write_token("testapp", TokenState(
+            headers={"Authorization": "Bearer old"},
+            refresh_token="refresh_tok",
+            expires_at=0.0,  # expired
+            obtained_at=time.time() - 7200,
+        ))
+
+        # Write mock auth script with refresh_token function
+        script_path = auth_script_path("testapp")
+        script_path.parent.mkdir(parents=True, exist_ok=True)
+        script_path.write_text(
+            'def acquire_token():\n'
+            '    return {"headers": {"Authorization": "Bearer new"}}\n'
+            'def refresh_token(current_refresh_token):\n'
+            '    return {"headers": {"Authorization": "Bearer refreshed"}, "expires_in": 3600}\n'
+        )
+
+        runner = CliRunner()
+        result = runner.invoke(cli, ["query", "refresh", "testapp"])
+
+        assert result.exit_code == 0, result.output
+        assert "Token refreshed" in result.output

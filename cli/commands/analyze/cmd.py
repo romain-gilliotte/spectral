@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+from collections.abc import Callable
 from datetime import datetime, timezone
 import json
 from pathlib import Path
@@ -33,7 +34,8 @@ def _estimate_cost(model: str, input_tokens: int, output_tokens: int) -> float |
 @click.command()
 @click.argument("app_name")
 @click.option(
-    "-o", "--output", required=True, help="Output base name (produces <name>.yaml and/or <name>.graphql)"
+    "-o", "--output", required=False, default=None,
+    help="Output base name (produces <name>.yaml and/or <name>.graphql). Required unless --mcp is used.",
 )
 @click.option("--model", default="claude-sonnet-4-5-20250929", help="LLM model to use")
 @click.option(
@@ -45,13 +47,21 @@ def _estimate_cost(model: str, input_tokens: int, output_tokens: int) -> float |
     default=False,
     help="Skip LLM enrichment step (business context, glossary, etc.)",
 )
+@click.option(
+    "--mcp",
+    is_flag=True,
+    default=False,
+    help="Generate MCP tool definitions instead of OpenAPI/SDL",
+)
 def analyze(
-    app_name: str, output: str, model: str, debug: bool, skip_enrich: bool
+    app_name: str, output: str | None, model: str, debug: bool, skip_enrich: bool, mcp: bool
 ) -> None:
     """Analyze captures for an app and produce an API spec."""
-    from cli.commands.analyze.pipeline import build_spec
     import cli.helpers.llm as llm
     from cli.helpers.storage import list_captures, load_app_bundle
+
+    if not mcp and not output:
+        raise click.UsageError("Missing option '-o' / '--output'. Required unless --mcp is used.")
 
     cap_count = len(list_captures(app_name))
     console.print(f"[bold]Loading captures for app:[/bold] {app_name}")
@@ -75,6 +85,12 @@ def analyze(
     def on_progress(msg: str) -> None:
         console.print(f"  {msg}")
 
+    if mcp:
+        _analyze_mcp(app_name, bundle, model, on_progress, skip_enrich)
+        return
+
+    from cli.commands.analyze.pipeline import build_spec
+
     console.print(f"[bold]Analyzing with LLM ({model})...[/bold]")
     result = asyncio.run(
         build_spec(
@@ -92,6 +108,7 @@ def analyze(
         console.print(f"  LLM token usage: {inp_tok:,} input, {out_tok:,} output{cost_str}")
 
     # Strip any extension from the output name so it's a pure base name
+    assert output is not None  # guaranteed by UsageError guard above
     output_base = Path(output)
     output_base = output_base.parent / output_base.stem
 
@@ -189,6 +206,62 @@ def analyze(
 
     if not result.outputs:
         console.print("[yellow]No API traces found in the capture bundle.[/yellow]")
+
+
+def _analyze_mcp(
+    app_name: str,
+    bundle: object,
+    model: str,
+    on_progress: Callable[[str], None] | None,
+    skip_enrich: bool,
+) -> None:
+    """Run the MCP tool generation pipeline."""
+    from cli.commands.analyze.steps.mcp.pipeline import build_mcp_tools
+    from cli.commands.capture.types import CaptureBundle
+    import cli.helpers.llm as llm
+    from cli.helpers.storage import (
+        auth_script_path,
+        update_app_meta,
+        write_tools,
+    )
+
+    typed_bundle = CaptureBundle(**vars(bundle)) if not isinstance(bundle, CaptureBundle) else bundle
+
+    console.print(f"[bold]Generating MCP tools with LLM ({model})...[/bold]")
+    result = asyncio.run(
+        build_mcp_tools(
+            typed_bundle,
+            app_name,
+            on_progress=on_progress,
+            skip_enrich=skip_enrich,
+        )
+    )
+
+    inp_tok, out_tok = llm.get_usage()
+    if inp_tok or out_tok:
+        cost = _estimate_cost(model, inp_tok, out_tok)
+        cost_str = f" (~${cost:.2f})" if cost else ""
+        console.print(f"  LLM token usage: {inp_tok:,} input, {out_tok:,} output{cost_str}")
+
+    # Write tools
+    write_tools(app_name, result.tools)
+    console.print(f"[green]Wrote {len(result.tools)} tool(s) to storage[/green]")
+
+    # Write auth script if generated
+    if result.auth_acquire_script:
+        script_path = auth_script_path(app_name)
+        script_path.parent.mkdir(parents=True, exist_ok=True)
+        with open(script_path, "w") as f:
+            f.write(result.auth_acquire_script)
+        console.print(f"[green]Auth script written to {script_path}[/green]")
+
+    # Update app.json with base_url
+    update_app_meta(app_name, base_url=result.base_url)
+    console.print(f"  Base URL: {result.base_url}")
+
+    # Summary
+    for tool in result.tools:
+        console.print(f"  Tool: {tool.name} — {tool.request.method} {tool.request.path}")
 
 
 def _find_placeholders(entry: dict[str, object]) -> list[str]:

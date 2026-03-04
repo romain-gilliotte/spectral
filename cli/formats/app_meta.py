@@ -8,3 +8,4 @@ class AppMeta(BaseModel):
     display_name: str = ""
     created_at: str
     updated_at: str
+    base_url: str | None = None

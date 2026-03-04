@@ -95,7 +95,18 @@ def _execute_inspect_trace(
             result["response_body_raw"] = trace.response_body.decode(
                 errors="replace"
             )[:2000]
-    return compact_json(result)
+    serialized = compact_json(result)
+    if len(serialized) > 4000:
+        # Re-truncate with tighter limits to stay under budget
+        if trace.response_body:
+            try:
+                result["response_body"] = truncate_json(
+                    json.loads(trace.response_body), max_keys=10, max_depth=2
+                )
+            except (json.JSONDecodeError, UnicodeDecodeError):
+                pass
+        serialized = compact_json(result)
+    return serialized
 
 
 # -- The step ----------------------------------------------------------------

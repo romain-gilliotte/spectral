@@ -15,18 +15,27 @@ from cli.formats.capture_bundle import (
     CaptureManifest,
     CaptureStats,
 )
+from cli.formats.mcp_tool import TokenState, ToolDefinition, ToolRequest
 from cli.helpers.storage import (
     DuplicateCaptureError,
+    auth_script_path,
     capture_dirname,
     ensure_app,
     import_capture,
     latest_capture,
     list_apps,
     list_captures,
+    list_tools,
+    load_app_meta,
+    load_token,
     resolve_app,
     slugify,
     store_capture,
     store_root,
+    tools_dir,
+    update_app_meta,
+    write_token,
+    write_tools,
 )
 
 # ---------------------------------------------------------------------------
@@ -281,3 +290,111 @@ class TestStorageFunctions:
         with pytest.raises(DuplicateCaptureError) as exc_info:
             store_capture(sample_bundle, "myapp")
         assert exc_info.value.capture_id == sample_bundle.manifest.capture_id
+
+
+# ---------------------------------------------------------------------------
+# MCP tool and auth storage
+# ---------------------------------------------------------------------------
+
+
+def _make_tool(name: str, description: str = "A tool") -> ToolDefinition:
+    return ToolDefinition(
+        name=name,
+        description=description,
+        parameters={"type": "object", "properties": {}},
+        request=ToolRequest(method="GET", path=f"/{name}"),
+    )
+
+
+class TestToolStorage:
+    def test_tools_dir(self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+        monkeypatch.setenv("SPECTRAL_HOME", str(tmp_path))
+        td = tools_dir("myapp")
+        assert td == tmp_path / "apps" / "myapp" / "tools"
+
+    def test_list_tools_empty(self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+        monkeypatch.setenv("SPECTRAL_HOME", str(tmp_path))
+        ensure_app("myapp")
+        assert list_tools("myapp") == []
+
+    def test_write_and_list_tools(self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+        monkeypatch.setenv("SPECTRAL_HOME", str(tmp_path))
+        ensure_app("myapp")
+        tools = [_make_tool("zeta"), _make_tool("alpha")]
+        write_tools("myapp", tools)
+
+        loaded = list_tools("myapp")
+        assert len(loaded) == 2
+        assert loaded[0].name == "alpha"  # sorted by name
+        assert loaded[1].name == "zeta"
+
+    def test_write_tools_clears_previous(self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+        monkeypatch.setenv("SPECTRAL_HOME", str(tmp_path))
+        ensure_app("myapp")
+        write_tools("myapp", [_make_tool("old_tool")])
+        assert len(list_tools("myapp")) == 1
+
+        write_tools("myapp", [_make_tool("new_tool")])
+        loaded = list_tools("myapp")
+        assert len(loaded) == 1
+        assert loaded[0].name == "new_tool"
+
+
+class TestTokenStorage:
+    def test_load_token_missing(self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+        monkeypatch.setenv("SPECTRAL_HOME", str(tmp_path))
+        ensure_app("myapp")
+        assert load_token("myapp") is None
+
+    def test_write_and_load_token(self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+        monkeypatch.setenv("SPECTRAL_HOME", str(tmp_path))
+        ensure_app("myapp")
+        token = TokenState(
+            headers={"Authorization": "Bearer ey123"},
+            refresh_token="rt_abc",
+            expires_at=1700000000.0,
+            obtained_at=1699990000.0,
+        )
+        write_token("myapp", token)
+        loaded = load_token("myapp")
+        assert loaded is not None
+        assert loaded.headers == {"Authorization": "Bearer ey123"}
+        assert loaded.refresh_token == "rt_abc"
+
+
+class TestAuthScriptPath:
+    def test_path(self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+        monkeypatch.setenv("SPECTRAL_HOME", str(tmp_path))
+        p = auth_script_path("myapp")
+        assert p == tmp_path / "apps" / "myapp" / "auth_acquire.py"
+
+
+class TestAppMetaFunctions:
+    def test_load_app_meta(self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+        monkeypatch.setenv("SPECTRAL_HOME", str(tmp_path))
+        ensure_app("myapp", "My App")
+        meta = load_app_meta("myapp")
+        assert meta.name == "myapp"
+        assert meta.display_name == "My App"
+
+    def test_load_app_meta_missing(self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+        import click
+
+        monkeypatch.setenv("SPECTRAL_HOME", str(tmp_path))
+        with pytest.raises(click.ClickException, match="not found"):
+            load_app_meta("nonexistent")
+
+    def test_update_app_meta(self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+        monkeypatch.setenv("SPECTRAL_HOME", str(tmp_path))
+        ensure_app("myapp")
+        update_app_meta("myapp", base_url="https://api.example.com")
+        meta = load_app_meta("myapp")
+        assert meta.base_url == "https://api.example.com"
+
+    def test_update_app_meta_preserves_fields(self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+        monkeypatch.setenv("SPECTRAL_HOME", str(tmp_path))
+        ensure_app("myapp", "My App")
+        update_app_meta("myapp", base_url="https://api.example.com")
+        meta = load_app_meta("myapp")
+        assert meta.display_name == "My App"
+        assert meta.base_url == "https://api.example.com"
