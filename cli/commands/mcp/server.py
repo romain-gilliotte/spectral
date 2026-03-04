@@ -50,10 +50,17 @@ async def _handle_call(
 
     # Auth cascade
     auth_headers: dict[str, str] = {}
-    try:
-        auth_headers = get_auth_headers(app_name)
-    except AuthError:
-        pass  # proceed without auth
+    if tool.requires_auth:
+        try:
+            auth_headers = get_auth_headers(app_name)
+        except AuthError:
+            return json.dumps({
+                "error": (
+                    f"Not authenticated. "
+                    f"Run 'spectral query login {app_name}' in a terminal to log in, "
+                    f"then retry."
+                )
+            })
 
     method, url, headers, body = build_request(tool, base_url, arguments, auth_headers)
 
@@ -77,6 +84,7 @@ async def _handle_call(
         result_parts.append(f"Headers: {json.dumps(resp_headers)}")
 
     result_parts.append(resp.text)
+
     return "\n\n".join(result_parts)
 
 

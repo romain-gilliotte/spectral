@@ -198,8 +198,11 @@ class TestSanitizeHeaders:
         for key in (":authority", ":method", ":path", ":scheme",
                     "sec-ch-ua", "sec-ch-ua-mobile", "sec-ch-ua-platform",
                     "sec-fetch-dest", "sec-fetch-mode", "sec-fetch-site",
-                    "accept-encoding", "user-agent", "priority"):
+                    "accept-encoding", "priority"):
             assert key not in result
+        # user-agent should be preserved (needed for WAF/API compatibility)
+        assert "user-agent" in result
+        assert result["user-agent"] == "Mozilla/5.0 ..."
         # Meaningful headers should remain
         assert "content-type" in result
         assert result["content-type"] == "application/json"

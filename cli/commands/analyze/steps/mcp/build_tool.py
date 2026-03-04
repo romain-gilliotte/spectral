@@ -61,6 +61,7 @@ The tool definition must be a JSON object with these fields:
   - `query`: query parameters (optional, object — values can be literals or {{"$param": "name"}})
   - `body`: request body template (optional, object — values can be literals or {{"$param": "name"}})
   - `content_type`: body content type (optional, defaults to "application/json")
+- `requires_auth`: boolean — set to `true` if the traces carry authentication (Authorization header, auth cookies, API key headers, etc.), `false` if the endpoint is publicly accessible without credentials
 
 ## Templating rules
 

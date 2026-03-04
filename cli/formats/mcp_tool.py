@@ -25,6 +25,7 @@ class ToolDefinition(BaseModel):
     description: str
     parameters: dict[str, Any]
     request: ToolRequest
+    requires_auth: bool = True
 
 
 class TokenState(BaseModel):

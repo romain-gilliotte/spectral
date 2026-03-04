@@ -64,6 +64,36 @@ class TestToolDefinition:
         assert tool.request.body is None
         assert tool.request.headers == {}
 
+    def test_requires_auth_default_true(self) -> None:
+        tool = ToolDefinition(
+            name="get_status",
+            description="Get system status",
+            parameters={"type": "object", "properties": {}},
+            request=ToolRequest(method="GET", path="/status"),
+        )
+        assert tool.requires_auth is True
+
+    def test_requires_auth_roundtrip(self) -> None:
+        tool = ToolDefinition(
+            name="get_public_info",
+            description="Get public info",
+            parameters={"type": "object", "properties": {}},
+            request=ToolRequest(method="GET", path="/public/info"),
+            requires_auth=False,
+        )
+        loaded = ToolDefinition.model_validate_json(tool.model_dump_json())
+        assert loaded.requires_auth is False
+
+    def test_backward_compat_missing_requires_auth(self) -> None:
+        """Existing tool.json files without requires_auth should default to True."""
+        old_json = (
+            '{"name":"x","description":"d",'
+            '"parameters":{"type":"object","properties":{}},'
+            '"request":{"method":"GET","path":"/x"}}'
+        )
+        loaded = ToolDefinition.model_validate_json(old_json)
+        assert loaded.requires_auth is True
+
 
 class TestTokenState:
     def test_roundtrip(self) -> None:

@@ -17,7 +17,12 @@ from cli.commands.mcp.server import (
 from cli.formats.mcp_tool import ToolDefinition, ToolRequest
 
 
-def _make_tool(name: str = "search", method: str = "POST", path: str = "/api/search") -> ToolDefinition:
+def _make_tool(
+    name: str = "search",
+    method: str = "POST",
+    path: str = "/api/search",
+    requires_auth: bool = False,
+) -> ToolDefinition:
     return ToolDefinition(
         name=name,
         description=f"Test tool: {name}",
@@ -27,6 +32,7 @@ def _make_tool(name: str = "search", method: str = "POST", path: str = "/api/sea
             "required": ["q"],
         },
         request=ToolRequest(method=method, path=path, body={"query": {"$param": "q"}}),
+        requires_auth=requires_auth,
     )
 
 
@@ -164,7 +170,7 @@ class TestCallTool:
         mock_resp.text = '{"ok": true}'
         mock_request.return_value = mock_resp
 
-        tool = _make_tool("search")
+        tool = _make_tool("search", requires_auth=True)
         await _handle_call("testapp", tool, {"q": "test"})
 
         call_kwargs = mock_request.call_args
@@ -193,6 +199,53 @@ class TestCallTool:
         parsed = json.loads(result)
         assert "error" in parsed
         assert "Connection refused" in parsed["error"]
+
+
+    async def test_call_tool_requires_auth_short_circuits(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: pytest.TempPathFactory
+    ) -> None:
+        from cli.helpers.storage import ensure_app, update_app_meta, write_tools
+
+        monkeypatch.setenv("SPECTRAL_HOME", str(tmp_path))
+        ensure_app("testapp")
+        write_tools("testapp", [_make_tool("search", requires_auth=True)])
+        update_app_meta("testapp", base_url="https://api.example.com")
+
+        tool = _make_tool("search", requires_auth=True)
+        result = await _handle_call("testapp", tool, {"q": "test"})
+
+        parsed = json.loads(result)
+        assert "error" in parsed
+        assert "spectral query login" in parsed["error"]
+
+    @patch("cli.commands.mcp.server.http_requests.request")
+    async def test_call_tool_no_auth_skips_auth(
+        self,
+        mock_request: MagicMock,
+        monkeypatch: pytest.MonkeyPatch,
+        tmp_path: pytest.TempPathFactory,
+    ) -> None:
+        from cli.helpers.storage import ensure_app, update_app_meta, write_tools
+
+        monkeypatch.setenv("SPECTRAL_HOME", str(tmp_path))
+        ensure_app("testapp")
+        write_tools("testapp", [_make_tool("search")])
+        update_app_meta("testapp", base_url="https://api.example.com")
+
+        mock_resp = MagicMock()
+        mock_resp.status_code = 200
+        mock_resp.headers = {}
+        mock_resp.text = '{"public": true}'
+        mock_request.return_value = mock_resp
+
+        tool = _make_tool("search", requires_auth=False)
+        result = await _handle_call("testapp", tool, {"q": "test"})
+
+        assert "200" in result
+        # No Authorization header should be present
+        call_kwargs = mock_request.call_args
+        headers = call_kwargs.kwargs["headers"]
+        assert "Authorization" not in headers
 
 
 class TestServerCallTool:
