@@ -85,6 +85,94 @@ Exposes all app tools from managed storage as MCP tools. This is the command use
 
 ---
 
+## auth analyze
+
+Analyze captures to detect authentication mechanisms and generate an auth script.
+
+```
+spectral auth analyze <app_name> [--model MODEL] [--debug]
+```
+
+| Argument / Option | Required | Default | Description |
+|-------------------|----------|---------|-------------|
+| `app_name` | Yes | — | Name of the app in managed storage |
+| `--model` | No | `claude-sonnet-4-5-20250929` | Anthropic model to use |
+| `--debug` | No | Off | Save LLM prompts and responses to `debug/<timestamp>/` |
+
+Examines all traces for auth-related patterns (login endpoints, token exchanges, OAuth flows) and generates `auth_acquire.py` in the app's managed storage directory. The script contains `acquire_token()` and optionally `refresh_token()` functions.
+
+If no authentication mechanism is detected, prints an informational message and exits without generating a script.
+
+Requires the `ANTHROPIC_API_KEY` environment variable (loaded automatically from `.env`).
+
+---
+
+## auth set
+
+Manually set auth headers or cookies for an app.
+
+```
+spectral auth set <app_name> [-H HEADER ...] [-c COOKIE ...]
+```
+
+| Argument / Option | Required | Default | Description |
+|-------------------|----------|---------|-------------|
+| `app_name` | Yes | — | Name of the app in managed storage |
+| `-H, --header` | No | — | Header as `"Name: Value"` (repeatable) |
+| `-c, --cookie` | No | — | Cookie as `"name=value"` (repeatable) |
+
+Fallback when the generated auth script does not work. Pass headers and/or cookies directly to store in `token.json`. If neither `--header` nor `--cookie` is given, prompts for a token interactively and stores it as `Authorization: Bearer <token>`.
+
+Cookies are joined into a single `Cookie` header (e.g., `-c "a=1" -c "b=2"` becomes `Cookie: a=1; b=2`).
+
+---
+
+## auth login
+
+Run interactive authentication for an app.
+
+```
+spectral auth login <app_name>
+```
+
+| Argument | Required | Default | Description |
+|----------|----------|---------|-------------|
+| `app_name` | Yes | — | Name of the app in managed storage |
+
+Loads the generated `auth_acquire.py` script, calls `acquire_token()` (which prompts for credentials), and writes the result to `token.json`.
+
+---
+
+## auth logout
+
+Remove the stored token for an app.
+
+```
+spectral auth logout <app_name>
+```
+
+| Argument | Required | Default | Description |
+|----------|----------|---------|-------------|
+| `app_name` | Yes | — | Name of the app in managed storage |
+
+---
+
+## auth refresh
+
+Manually refresh the auth token for an app.
+
+```
+spectral auth refresh <app_name>
+```
+
+| Argument | Required | Default | Description |
+|----------|----------|---------|-------------|
+| `app_name` | Yes | — | Name of the app in managed storage |
+
+Loads `token.json`, calls `refresh_token()` from the auth script, and updates `token.json` with the new token. Requires both `token.json` and `auth_acquire.py` to exist.
+
+---
+
 ## capture add
 
 Import a ZIP bundle from the Chrome extension into managed storage.

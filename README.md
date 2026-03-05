@@ -6,7 +6,7 @@ Reverse-engineer any app's private API. Browse normally, get a full spec — the
 
 Most apps sit on undocumented APIs that work perfectly well. But without a spec, people fall back to Playwright/Selenium/Puppeteer: slow, fragile, breaks on every UI change, can't handle mobile. Spectral captures the traffic, has an LLM figure out what each call means, and gives you a spec you can actually use.
 
-Supports both **REST** (outputs OpenAPI 3.1) and **GraphQL** (outputs SDL with inferred types).
+Supports both **REST** (outputs OpenAPI 3.1) and **GraphQL** (outputs SDL with inferred types). Can also generate **MCP tools** so AI agents can call the API directly.
 
 **[Documentation](https://romain-gilliotte.github.io/spectral/)**
 
@@ -14,7 +14,7 @@ Supports both **REST** (outputs OpenAPI 3.1) and **GraphQL** (outputs SDL with i
 
 1. **Capture** — Chrome extension (web) or MITM proxy records traffic + UI actions while you browse
 2. **Analyze** — LLM correlates UI actions with API calls, infers endpoint patterns, auth flow, and business meaning
-3. **Call** — Generated Restish config + auth helper let you call the API immediately from the command line
+3. **Use** — Generated MCP tools let AI agents call the API. Auth scripts handle token acquisition automatically. Restish config works for command-line use
 
 ## Quick start
 
@@ -37,22 +37,21 @@ uv run spectral capture add capture_20260213.zip -a myapp
 uv run spectral capture proxy -a myapp
 ```
 
-Analyze all captures for an app to produce an API spec:
+Analyze captures to produce an API spec, MCP tools, or auth scripts:
 
 ```bash
-uv run spectral openapi analyze myapp -o myapp-api
-# → myapp-api.yaml (OpenAPI 3.1)
-# → myapp-api.restish.json (Restish config)
-
-uv run spectral graphql analyze myapp -o myapp-api
-# → myapp-api.graphql (SDL schema)
+uv run spectral openapi analyze myapp -o myapp-api    # → myapp-api.yaml (OpenAPI 3.1)
+uv run spectral graphql analyze myapp -o myapp-api     # → myapp-api.graphql (SDL schema)
+uv run spectral mcp analyze myapp                      # → MCP tool definitions
+uv run spectral auth analyze myapp                     # → auth script (acquire/refresh tokens)
 ```
 
-Call the API with [Restish](https://rest.sh/):
+Set up auth and start the MCP server:
 
 ```bash
-restish api edit < myapp-api.restish.json
-restish myapp-api get-user-profile
+uv run spectral auth login myapp                       # interactive login
+# or manually: spectral auth set myapp -H "Authorization: Bearer eyJ..."
+uv run spectral mcp stdio                              # start MCP server for AI agents
 ```
 
 See the [getting started guide](https://romain-gilliotte.github.io/spectral/getting-started/installation/) for detailed setup, or the [CLI reference](https://romain-gilliotte.github.io/spectral/reference/cli/) for all commands.
