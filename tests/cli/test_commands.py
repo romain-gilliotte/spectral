@@ -11,7 +11,6 @@ from click.testing import CliRunner
 import pytest
 import yaml
 
-from cli.commands.capture.loader import write_bundle
 from cli.commands.capture.types import CaptureBundle
 from cli.formats.capture_bundle import CaptureStats
 from cli.main import cli
@@ -137,59 +136,6 @@ class TestAnalyzeCommand:
         assert result.exit_code == 0
         openapi = yaml.safe_load(output_path.read_text())
         assert len(openapi["paths"]) > 0
-
-
-class TestAddCommand:
-    def test_add_with_app_flag(
-        self, sample_bundle: CaptureBundle, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
-    ) -> None:
-        monkeypatch.setenv("SPECTRAL_HOME", str(tmp_path / "store"))
-        zip_path = tmp_path / "capture.zip"
-        write_bundle(sample_bundle, zip_path)
-
-        runner = CliRunner()
-        result = runner.invoke(
-            cli, ["capture", "add", str(zip_path), "--app", "myapp"]
-        )
-
-        assert result.exit_code == 0, result.output
-        assert "Imported into app 'myapp'" in result.output
-        assert "Total captures: 1" in result.output
-
-    def test_add_prompts_for_app(
-        self, sample_bundle: CaptureBundle, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
-    ) -> None:
-        monkeypatch.setenv("SPECTRAL_HOME", str(tmp_path / "store"))
-        zip_path = tmp_path / "capture.zip"
-        write_bundle(sample_bundle, zip_path)
-
-        runner = CliRunner()
-        result = runner.invoke(
-            cli, ["capture", "add", str(zip_path)], input="testapp\n"
-        )
-
-        assert result.exit_code == 0, result.output
-        assert "Imported into app 'testapp'" in result.output
-
-    def test_add_duplicate_prints_warning(
-        self, sample_bundle: CaptureBundle, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
-    ) -> None:
-        monkeypatch.setenv("SPECTRAL_HOME", str(tmp_path / "store"))
-        zip_path = tmp_path / "capture.zip"
-        write_bundle(sample_bundle, zip_path)
-
-        runner = CliRunner()
-        result1 = runner.invoke(
-            cli, ["capture", "add", str(zip_path), "--app", "myapp"]
-        )
-        assert result1.exit_code == 0
-
-        result2 = runner.invoke(
-            cli, ["capture", "add", str(zip_path), "--app", "myapp"]
-        )
-        assert result2.exit_code == 0
-        assert "already imported" in result2.output
-        assert "Skipping" in result2.output
 
 
 class TestListCommand:

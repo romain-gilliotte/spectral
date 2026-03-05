@@ -4,7 +4,7 @@
  * Captures network traffic via Chrome DevTools Protocol (chrome.debugger)
  * and coordinates with content.js for UI context capture.
  *
- * State machine: IDLE → ATTACHING → CAPTURING → EXPORTING → IDLE
+ * State machine: IDLE → ATTACHING → CAPTURING → SENDING → IDLE
  */
 
 import { captureState, State, resetState, loadSettings, saveSettings } from './state.js';
@@ -32,7 +32,7 @@ import {
   activateContentScript,
   deactivateContentScript,
 } from './capture.js';
-import { exportCapture } from './export.js';
+import { sendCapture } from './native.js';
 
 // ============================================================================
 // Debugger event handler
@@ -154,8 +154,8 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
           break;
         }
 
-        case 'EXPORT_CAPTURE': {
-          const result = await exportCapture();
+        case 'SEND_CAPTURE': {
+          const result = await sendCapture();
           sendResponse(result);
           break;
         }

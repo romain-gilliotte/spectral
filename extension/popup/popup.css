@@ -71,12 +71,12 @@ h1 {
   animation: pulse 1.5s ease-in-out infinite;
 }
 
-.status-exporting {
+.status-sending {
   background: #e3f2fd;
   color: #1565c0;
 }
 
-.status-exporting .status-indicator {
+.status-sending .status-indicator {
   background: #2196f3;
   animation: pulse 0.8s ease-in-out infinite;
 }
@@ -291,4 +291,46 @@ footer code {
   border-radius: 4px;
   font-family: 'SF Mono', Menlo, Monaco, monospace;
   font-size: 11px;
+}
+
+.connection-error {
+  color: #c62828;
+  font-size: 11px;
+  line-height: 1.5;
+}
+
+.connection-error code {
+  background: #ffebee;
+  color: #c62828;
+  font-size: 10px;
+  word-break: break-all;
+}
+
+.install-cmd {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-top: 4px;
+}
+
+.install-cmd code {
+  flex: 1;
+  padding: 4px 6px;
+  border-radius: 4px;
+  user-select: all;
+}
+
+.btn-copy {
+  flex-shrink: 0;
+  border: 1px solid #ffcdd2;
+  background: #fff;
+  border-radius: 4px;
+  padding: 3px 6px;
+  cursor: pointer;
+  font-size: 12px;
+  line-height: 1;
+}
+
+.btn-copy:hover {
+  background: #ffebee;
 }

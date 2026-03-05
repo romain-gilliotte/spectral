@@ -25,14 +25,14 @@ git clone https://github.com/romain-gilliotte/spectral.git && cd spectral
 uv sync
 ```
 
-Capture traffic with the Chrome extension or the MITM proxy, then import into managed storage:
+Set up the Chrome extension and capture traffic:
 
 ```bash
-# Chrome extension: load extension/ as unpacked in chrome://extensions
-# then: Start Capture → browse → Stop Capture → Export Bundle
-uv run spectral capture add capture_20260213.zip -a myapp
+# Load extension/ as unpacked in chrome://extensions, then connect it:
+uv run spectral extension install --extension-id <id-from-chrome-extensions>
 
-# Or use the MITM proxy (stores directly)
+# Chrome extension: Start Capture → browse → Stop Capture → Send to Spectral
+# Or use the MITM proxy (stores directly):
 uv run spectral capture proxy -a myapp
 ```
 

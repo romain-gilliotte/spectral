@@ -9,7 +9,7 @@ export const State = {
   IDLE: 'idle',
   ATTACHING: 'attaching',
   CAPTURING: 'capturing',
-  EXPORTING: 'exporting',
+  SENDING: 'sending',
 };
 
 export const captureState = {

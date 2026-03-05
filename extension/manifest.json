@@ -7,7 +7,7 @@
     "debugger",
     "activeTab",
     "scripting",
-    "downloads"
+    "nativeMessaging"
   ],
   "host_permissions": [
     "<all_urls>"

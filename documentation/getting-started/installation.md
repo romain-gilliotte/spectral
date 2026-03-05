@@ -22,6 +22,12 @@ To capture web traffic, load the Chrome extension:
 1. Open `chrome://extensions` in Chrome
 2. Enable "Developer mode" (top right toggle)
 3. Click "Load unpacked" and select the `extension/` directory from the repository
+4. Copy the extension ID shown on the card
+5. Connect the extension to the CLI by installing the native messaging host:
+
+```bash
+uv run spectral extension install --extension-id <paste-id-here>
+```
 
 The extension icon should appear in your toolbar. See [Chrome extension](../capture/chrome-extension.md) for detailed usage.
 

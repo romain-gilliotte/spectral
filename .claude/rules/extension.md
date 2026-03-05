@@ -17,16 +17,16 @@ paths:
 5. Content script sends timestamped context events to background via `chrome.runtime.sendMessage`
 6. On full-page navigation (non-SPA), `chrome.tabs.onUpdated` re-injects content script automatically so UI capture continues
 7. User clicks "Stop Capture" → background detaches debugger
-8. User clicks "Export" → background assembles the ZIP bundle using JSZip and triggers download
+8. User clicks "Send to Spectral" → background sends the capture via Chrome Native Messaging to the CLI host
 
 ## State machine
 
-`IDLE` → `ATTACHING` → `CAPTURING` → `EXPORTING` → `IDLE`
+`IDLE` → `ATTACHING` → `CAPTURING` → `SENDING` → `IDLE`
 
 The popup polls the background for current state and stats, updating the UI accordingly:
 - **idle**: Show "Start Capture" button
 - **capturing**: Show live stats (requests, WS messages, UI events, duration) + "Stop Capture" button
-- **stopped**: Show final stats + "Export Bundle" button
+- **stopped**: Show final stats + "Send to Spectral" button
 
 ## What we capture via DevTools Protocol
 

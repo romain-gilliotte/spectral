@@ -32,10 +32,9 @@ The key innovation is the **correlation of UI actions with network traffic** to 
 ```
 spectral/
 ├── extension/              # Chrome Extension (Manifest V3)
-│   ├── background/         # Service worker modules (background.js, network.js, websocket.js, graphql.js, capture.js, export.js)
+│   ├── background/         # Service worker modules (background.js, network.js, websocket.js, graphql.js, capture.js, native.js)
 │   ├── content/            # UI context capture (content.js)
-│   ├── popup/              # Extension popup UI
-│   └── lib/                # Bundled dependencies (JSZip)
+│   └── popup/              # Extension popup UI
 ├── cli/                    # Python CLI tool
 │   ├── main.py             # Entry point: wires command groups
 │   ├── commands/
@@ -44,6 +43,7 @@ spectral/
 │   │   ├── mcp/            # MCP tool generation and stdio server
 │   │   ├── auth/           # Authentication management
 │   │   ├── capture/        # Bundle parsing, inspect, MITM proxy
+│   │   ├── extension/      # Chrome Native Messaging host (listen, install)
 │   │   ├── analyze/        # Shared analysis engine (pipeline, steps, correlator, protocol, schemas)
 │   │   └── android/        # Android APK tools (list, pull, patch, install, cert)
 │   ├── formats/            # Pydantic models (capture_bundle, mcp_tool, app_meta)
@@ -62,7 +62,7 @@ spectral/
 
 ## Technology choices
 
-- **Extension**: Vanilla JS, Chrome Manifest V3, Chrome DevTools Protocol (via `chrome.debugger`), JSZip for bundle export
+- **Extension**: Vanilla JS, Chrome Manifest V3, Chrome DevTools Protocol (via `chrome.debugger`), Chrome Native Messaging for capture transfer
 - **CLI**: Python 3.11+, Click for CLI, Pydantic for data models
 - **LLM**: Anthropic API (Claude Sonnet) for semantic analysis
 - **Packaging**: pyproject.toml with `[project.scripts]` entry point for `spectral`
@@ -85,11 +85,14 @@ spectral auth login/logout/refresh <app>            # interactive auth operation
 spectral mcp stdio                                  # start MCP server on stdio
 
 # Capture management
-spectral capture add <zip> -a <app>                 # import ZIP into managed storage
 spectral capture list / show <app>                  # list apps / show captures
 spectral capture inspect <app> [--trace t_0001]     # inspect capture contents
 spectral capture proxy -a <app> [-d "pattern"]      # MITM proxy → managed storage
 spectral capture discover                           # log domains without MITM
+
+# Extension integration
+spectral extension install --extension-id <id>      # install native messaging host
+spectral extension listen                           # native host (called by Chrome)
 
 # Android APK tools
 spectral android list/pull/patch/install/cert       # APK manipulation + cert push
@@ -101,7 +104,7 @@ Default model is `claude-sonnet-4-5-20250929`. Options: `--model`, `--skip-enric
 
 | Component | Dependencies |
 |-----------|-------------|
-| Extension | JSZip (bundled) |
+| Extension | (no external dependencies) |
 | CLI | click, pydantic, anthropic, graphql-core, pyyaml, rich, requests, mitmproxy, jq, compact-json, mcp |
 | Dev | pytest, pytest-cov, pytest-asyncio (asyncio_mode="auto"), pyright, ruff, mkdocs-material |
 

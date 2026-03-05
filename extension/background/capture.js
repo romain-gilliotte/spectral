@@ -90,8 +90,11 @@ export async function startCapture(tabId) {
     const tab = await chrome.tabs.get(tabId);
     const url = new URL(tab.url);
 
+    // Strip common prefixes (www., m., app.) to get a clean domain name
+    const domain = url.hostname.replace(/^(www\.|m\.|app\.)/, '');
+
     captureState.appInfo = {
-      name: tab.title || 'Unknown App',
+      name: domain,
       base_url: url.origin,
       title: tab.title || '',
     };

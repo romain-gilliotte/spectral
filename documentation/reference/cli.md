@@ -173,20 +173,32 @@ Loads `token.json`, calls `refresh_token()` from the auth script, and updates `t
 
 ---
 
-## capture add
+## extension install
 
-Import a ZIP bundle from the Chrome extension into managed storage.
+Install the Chrome Native Messaging host manifest so the extension can send captures directly to the CLI.
 
 ```
-spectral capture add <zip_file> [-a APP]
+spectral extension install --extension-id <ID> [--browser BROWSER]
 ```
 
-| Argument / Option | Required | Default | Description |
-|-------------------|----------|---------|-------------|
-| `zip_file` | Yes | — | Path to the capture bundle (.zip) |
-| `-a, --app` | No | (prompted) | App name for storage. If omitted, prompted interactively with a suggestion derived from the bundle's app name. |
+| Option | Required | Default | Description |
+|--------|----------|---------|-------------|
+| `--extension-id` | Yes | — | Chrome extension ID (from `chrome://extensions`) |
+| `--browser` | No | (auto-detect) | Target browser: `chrome`, `chromium`, `brave`, `edge`. By default, writes manifests for all detected browsers. |
 
-Duplicate captures (same `capture_id`) are detected and skipped. Multiple captures can be imported into the same app and are merged automatically during analysis.
+Writes a native messaging host manifest (`com.spectral.capture_host.json`) and a wrapper script (`~/.local/share/spectral/native_host.sh`). The wrapper invokes `spectral extension listen`.
+
+---
+
+## extension listen
+
+Native messaging host process (called by Chrome, not by users directly).
+
+```
+spectral extension listen
+```
+
+Reads one length-prefixed JSON message from stdin, stores the capture in managed storage, writes a response to stdout, and exits. Chrome spawns this process automatically via `sendNativeMessage()`.
 
 ---
 

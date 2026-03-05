@@ -1,4 +1,4 @@
-"""CLI commands for capture: add, list, show, inspect, proxy, discover."""
+"""CLI commands for capture: list, show, inspect, proxy, discover."""
 
 from __future__ import annotations
 
@@ -12,40 +12,6 @@ def capture() -> None:
     """Capture tools: import bundles, inspect, run MITM proxy."""
 
 
-@capture.command()
-@click.argument("zip_file", type=click.Path(exists=True))
-@click.option("-a", "--app", "app_name", default=None, help="App name for storage")
-def add(zip_file: str, app_name: str | None) -> None:
-    """Import a ZIP bundle from the Chrome extension into managed storage."""
-    from cli.commands.capture.loader import load_bundle
-    from cli.helpers.storage import (
-        DuplicateCaptureError,
-        import_capture,
-        list_captures,
-        slugify,
-    )
-
-    if app_name is None:
-        bundle = load_bundle(zip_file)
-        suggested = slugify(bundle.manifest.app.name)
-        app_name = click.prompt("App name", default=suggested)
-
-    if not app_name:
-        raise click.ClickException("App name is required.")
-
-    try:
-        cap_dir = import_capture(zip_file, app_name)
-    except DuplicateCaptureError as exc:
-        console.print(f"[yellow]Capture already imported ({exc.capture_id}). Skipping.[/yellow]")
-        return
-
-    cap_count = len(list_captures(app_name))
-
-    console.print(f"[green]Imported into app '{app_name}'[/green]")
-    console.print(f"  Capture dir: {cap_dir}")
-    console.print(f"  Total captures: {cap_count}")
-
-
 @capture.command("list")
 def list_cmd() -> None:
     """List all known apps with capture counts."""
@@ -55,7 +21,7 @@ def list_cmd() -> None:
 
     apps = list_apps()
     if not apps:
-        console.print("No apps found. Import a capture with 'spectral capture add <file.zip>'.")
+        console.print("No apps found. Capture traffic with the Chrome extension or 'spectral capture proxy'.")
         return
 
     table = Table(title="Apps")

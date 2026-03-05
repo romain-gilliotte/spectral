@@ -32,6 +32,7 @@ const settingApq = document.getElementById('setting-apq');
 let currentTabId = null;
 let statusPollInterval = null;
 let lastStats = null;
+let hostConnected = false;
 
 // ============================================================================
 // Utility functions
@@ -73,11 +74,17 @@ function updateUI(state, stats = null) {
     case 'idle':
       statusEl.className = 'status status-idle';
       statusTextEl.textContent = 'Ready to capture';
-      btnStart.classList.remove('hidden');
       statsEl.classList.add('hidden');
 
-      // Show export if we have data from last capture
-      if (lastStats && lastStats.trace_count > 0) {
+      if (!hostConnected) {
+        statusTextEl.textContent = 'CLI not connected';
+        btnStart.disabled = true;
+      } else {
+        btnStart.classList.remove('hidden');
+      }
+
+      // Show send button if we have data from last capture
+      if (lastStats && lastStats.trace_count > 0 && hostConnected) {
         btnExport.classList.remove('hidden');
         statusEl.className = 'status status-stopped';
         statusTextEl.textContent = `Captured ${lastStats.trace_count} requests`;
@@ -103,9 +110,9 @@ function updateUI(state, stats = null) {
       }
       break;
 
-    case 'exporting':
-      statusEl.className = 'status status-exporting';
-      statusTextEl.textContent = 'Exporting bundle...';
+    case 'sending':
+      statusEl.className = 'status status-sending';
+      statusTextEl.textContent = 'Sending to Spectral...';
       break;
   }
 }
@@ -168,26 +175,37 @@ async function stopCapture() {
 }
 
 /**
- * Export capture bundle
+ * Send capture to spectral CLI via native messaging
  */
-async function exportCapture() {
+async function sendCapture() {
   try {
     btnExport.disabled = true;
-    updateUI('exporting');
+    updateUI('sending');
 
     const response = await chrome.runtime.sendMessage({
-      type: 'EXPORT_CAPTURE',
+      type: 'SEND_CAPTURE',
     });
 
     if (response.error) {
+      // Detect native messaging host not installed
+      if (chrome.runtime.lastError &&
+          chrome.runtime.lastError.message &&
+          chrome.runtime.lastError.message.includes('native messaging host not found')) {
+        throw new Error(`Native host not found. Run: spectral extension install --extension-id ${chrome.runtime.id}`);
+      }
       throw new Error(response.error);
     }
 
-    // Reset state after export
+    // Reset state after send
     lastStats = null;
     updateUI('idle');
   } catch (error) {
-    showError(`Failed to export: ${error.message}`);
+    // Also check lastError at this level
+    if (error.message && error.message.includes('native messaging host not found')) {
+      showError(`Native host not found. Run: spectral extension install --extension-id ${chrome.runtime.id}`);
+    } else {
+      showError(`Failed to send: ${error.message}`);
+    }
     updateUI('idle');
   } finally {
     btnExport.disabled = false;
@@ -243,8 +261,44 @@ async function pollStatus() {
 // Initialize
 // ============================================================================
 
+/**
+ * Check if the native messaging host is reachable.
+ */
+async function checkHostConnection() {
+  const connEl = document.getElementById('connection-status');
+  try {
+    const response = await chrome.runtime.sendNativeMessage(
+      'com.spectral.capture_host',
+      { type: 'ping' }
+    );
+    if (response && response.type === 'pong') {
+      hostConnected = true;
+      connEl.innerHTML = 'Connected to <code>spectral</code> CLI';
+      return true;
+    }
+  } catch {
+    // Host not found or errored
+  }
+  hostConnected = false;
+  const installCmd = `spectral extension install --extension-id ${chrome.runtime.id}`;
+  connEl.innerHTML = `<code>spectral</code> CLI not connected. Run:<br><span class="install-cmd"><code>${installCmd}</code><button class="btn-copy" title="&#128461; command">&#128461;</button></span>`;
+  connEl.classList.add('connection-error');
+  connEl.querySelector('.btn-copy').addEventListener('click', () => {
+    navigator.clipboard.writeText(installCmd).then(() => {
+      const btn = connEl.querySelector('.btn-copy');
+      btn.textContent = '\u2713';
+      setTimeout(() => { btn.innerHTML = '&#128461;'; }, 1500);
+    });
+  });
+  btnStart.disabled = true;
+  return false;
+}
+
 async function initialize() {
   try {
+    // Check host connection first
+    await checkHostConnection();
+
     // Get current tab
     const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
 
@@ -295,7 +349,7 @@ async function initialize() {
 
 btnStart.addEventListener('click', startCapture);
 btnStop.addEventListener('click', stopCapture);
-btnExport.addEventListener('click', exportCapture);
+btnExport.addEventListener('click', sendCapture);
 
 settingTypename.addEventListener('change', () => {
   chrome.runtime.sendMessage({

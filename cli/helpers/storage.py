@@ -117,7 +117,9 @@ def import_capture(zip_path: str | Path, app_name: str) -> Path:
     return store_capture(bundle, app_name)
 
 
-def store_capture(bundle: CaptureBundle, app_name: str) -> Path:
+def store_capture(
+    bundle: CaptureBundle, app_name: str, *, display_name: str | None = None
+) -> Path:
     """Write a CaptureBundle as flat files into managed storage.
 
     Returns the capture directory path.
@@ -125,7 +127,7 @@ def store_capture(bundle: CaptureBundle, app_name: str) -> Path:
     Raises ``DuplicateCaptureError`` if a capture with the same ``capture_id``
     already exists under the app.
     """
-    ensure_app(app_name)
+    ensure_app(app_name, display_name=display_name)
 
     # Check all existing captures for duplicate capture_id
     capture_id = bundle.manifest.capture_id
