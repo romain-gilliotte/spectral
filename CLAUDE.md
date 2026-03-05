@@ -11,7 +11,7 @@
   - `uv run spectral mcp analyze ...` — run the CLI
   - `uv add <package>` — add a dependency (updates `pyproject.toml` + `uv.lock`)
   - `uv add --dev <package>` — add a dev dependency
-- `.env` file at project root holds `ANTHROPIC_API_KEY` (loaded by the CLI via `python-dotenv`). Do NOT commit `.env`.
+- The Anthropic API key is resolved in order: `ANTHROPIC_API_KEY` env var → stored key at `~/.local/share/spectral/api_key` → interactive prompt. No `.env` file needed.
 - **Before finishing any code change**, run the full verification suite and fix any new errors:
   - `uv run pytest tests/ -x -q` — all tests must pass
   - `uv run ruff check` — zero lint errors (use `--fix` for auto-fixable import sorting)
@@ -102,7 +102,7 @@ Default model is `claude-sonnet-4-5-20250929`. Options: `--model`, `--skip-enric
 | Component | Dependencies |
 |-----------|-------------|
 | Extension | JSZip (bundled) |
-| CLI | click, pydantic, anthropic, graphql-core, pyyaml, rich, python-dotenv, requests, mitmproxy, jq, compact-json, mcp |
+| CLI | click, pydantic, anthropic, graphql-core, pyyaml, rich, requests, mitmproxy, jq, compact-json, mcp |
 | Dev | pytest, pytest-cov, pytest-asyncio (asyncio_mode="auto"), pyright, ruff, mkdocs-material |
 
 ## Managed storage
@@ -110,6 +110,7 @@ Default model is `claude-sonnet-4-5-20250929`. Options: `--model`, `--skip-enric
 Layout under `~/.local/share/spectral/` (overridable with `SPECTRAL_HOME`):
 
 ```
+api_key                   # Anthropic API key (plain text, created on first prompt)
 apps/<name>/
 ├── app.json              # AppMeta (name, display_name, base_url, timestamps)
 ├── auth_acquire.py       # Generated auth script (acquire_token, refresh_token)
@@ -127,7 +128,7 @@ Bundle merging (`merge_bundles` in `cli/commands/capture/types.py`) prefixes IDs
 
 | Variable | Purpose |
 |----------|---------|
-| `ANTHROPIC_API_KEY` | Required for analyze commands |
+| `ANTHROPIC_API_KEY` | Override for analyze commands (otherwise read from `api_key` file or prompted) |
 | `SPECTRAL_HOME` | Override managed storage root (default: `~/.local/share/spectral`) |
 
 ## Remaining work

@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import click
-from dotenv import load_dotenv
 
 from cli.commands.android.cmd import android
 from cli.commands.auth.cmd import auth
@@ -11,8 +10,6 @@ from cli.commands.capture.cmd import capture
 from cli.commands.graphql.cmd import graphql_cmd
 from cli.commands.mcp.cmd import mcp
 from cli.commands.openapi.cmd import openapi
-
-load_dotenv()
 
 
 @click.group()

@@ -97,9 +97,30 @@ def init(
     if client is not None:
         _client = client
     else:
-        import anthropic
+        import os
 
-        _client = anthropic.AsyncAnthropic()
+        import anthropic
+        import click
+
+        import cli.helpers.storage as storage
+
+        key = os.environ.get("ANTHROPIC_API_KEY")
+        if not key:
+            key = storage.load_api_key()
+        if not key:
+            click.echo(
+                "\nTo use this command, Spectral needs an Anthropic API key.\n"
+                "You can create one at https://console.anthropic.com/settings/keys\n"
+                f"\nThe key will be saved to {storage.store_root() / 'api_key'}\n"
+            )
+            key = click.prompt("API key", hide_input=True).strip()
+            if not key.startswith("sk-ant-"):
+                raise click.ClickException(
+                    "Invalid API key format (expected a key starting with 'sk-ant-')."
+                )
+            storage.write_api_key(key)
+
+        _client = anthropic.AsyncAnthropic(api_key=key)
 
     _semaphore = asyncio.Semaphore(max_concurrent)
     _debug_dir = debug_dir

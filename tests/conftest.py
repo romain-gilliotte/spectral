@@ -10,8 +10,13 @@ import cli.helpers.llm as llm
 
 
 @pytest.fixture(autouse=True)
-def reset_llm_globals():
-    """Reset module globals before/after each test."""
+def reset_llm_globals(monkeypatch: pytest.MonkeyPatch):
+    """Reset module globals before/after each test.
+
+    Sets a dummy ANTHROPIC_API_KEY so that tests which call
+    ``llm.init()`` in production mode never trigger an interactive prompt.
+    """
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-ant-test-dummy")
     llm.reset()
     yield
     llm.reset()

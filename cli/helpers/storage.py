@@ -263,6 +263,21 @@ def auth_script_path(app_name: str) -> Path:
     return app_dir(app_name) / "auth_acquire.py"
 
 
+def load_api_key() -> str | None:
+    """Read the stored Anthropic API key, or ``None`` if not set."""
+    path = store_root() / "api_key"
+    if not path.is_file():
+        return None
+    return path.read_text().strip() or None
+
+
+def write_api_key(key: str) -> None:
+    """Write the Anthropic API key to managed storage."""
+    path = store_root() / "api_key"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(key.strip() + "\n")
+
+
 def load_app_meta(app_name: str) -> AppMeta:
     """Load app.json for an app.
 

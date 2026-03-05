@@ -26,6 +26,7 @@ from cli.helpers.storage import (
     list_apps,
     list_captures,
     list_tools,
+    load_api_key,
     load_app_meta,
     load_token,
     resolve_app,
@@ -34,6 +35,7 @@ from cli.helpers.storage import (
     store_root,
     tools_dir,
     update_app_meta,
+    write_api_key,
     write_token,
     write_tools,
 )
@@ -398,3 +400,24 @@ class TestAppMetaFunctions:
         meta = load_app_meta("myapp")
         assert meta.display_name == "My App"
         assert meta.base_url == "https://api.example.com"
+
+
+class TestApiKeyStorage:
+    def test_load_api_key_missing(self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+        monkeypatch.setenv("SPECTRAL_HOME", str(tmp_path))
+        assert load_api_key() is None
+
+    def test_write_and_load_api_key(self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+        monkeypatch.setenv("SPECTRAL_HOME", str(tmp_path))
+        write_api_key("sk-ant-test-key")
+        assert load_api_key() == "sk-ant-test-key"
+
+    def test_write_api_key_strips_whitespace(self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+        monkeypatch.setenv("SPECTRAL_HOME", str(tmp_path))
+        write_api_key("  sk-ant-test-key  \n")
+        assert load_api_key() == "sk-ant-test-key"
+
+    def test_load_api_key_empty_file(self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+        monkeypatch.setenv("SPECTRAL_HOME", str(tmp_path))
+        (tmp_path / "api_key").write_text("")
+        assert load_api_key() is None

@@ -7,7 +7,7 @@ import asyncio
 from collections.abc import Callable
 from pathlib import Path
 from typing import Any, cast
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
 from pydantic import BaseModel
 import pytest
@@ -773,3 +773,85 @@ class TestResponseModel:
         )
         assert isinstance(result, _SampleModel)
         assert result.name == "found"
+
+
+class TestInitKeyResolution:
+    """Test API key resolution in init(): env var > stored file > prompt."""
+
+    def test_env_var_takes_priority(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ) -> None:
+        """ANTHROPIC_API_KEY env var is used when set."""
+        monkeypatch.setenv("SPECTRAL_HOME", str(tmp_path))
+        monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-from-env")
+
+        with patch("anthropic.AsyncAnthropic") as mock_cls:
+            llm.init(model="m")
+            mock_cls.assert_called_once_with(api_key="sk-from-env")
+
+    def test_stored_key_used_when_no_env(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ) -> None:
+        """Stored api_key file is used when env var is absent."""
+        monkeypatch.setenv("SPECTRAL_HOME", str(tmp_path))
+        monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+        (tmp_path / "api_key").write_text("sk-from-file\n")
+
+        with patch("anthropic.AsyncAnthropic") as mock_cls:
+            llm.init(model="m")
+            mock_cls.assert_called_once_with(api_key="sk-from-file")
+
+    def test_prompt_when_no_env_and_no_file(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ) -> None:
+        """Interactive prompt is used when neither env var nor file exists."""
+        monkeypatch.setenv("SPECTRAL_HOME", str(tmp_path))
+        monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+
+        with (
+            patch("anthropic.AsyncAnthropic") as mock_cls,
+            patch("click.prompt", return_value="sk-ant-prompted123") as mock_prompt,
+            patch("click.echo"),
+        ):
+            llm.init(model="m")
+            mock_prompt.assert_called_once_with("API key", hide_input=True)
+            mock_cls.assert_called_once_with(api_key="sk-ant-prompted123")
+
+        # Key should be persisted
+        from cli.helpers.storage import load_api_key
+
+        assert load_api_key() == "sk-ant-prompted123"
+
+    def test_prompt_rejects_invalid_format(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ) -> None:
+        """Interactive prompt rejects keys that don't start with 'sk-ant-'."""
+        import click
+
+        monkeypatch.setenv("SPECTRAL_HOME", str(tmp_path))
+        monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+
+        with (
+            patch("anthropic.AsyncAnthropic"),
+            patch("click.prompt", return_value="bad-key-format"),
+            patch("click.echo"),
+        ):
+            with pytest.raises(click.ClickException, match="Invalid API key format"):
+                llm.init(model="m")
+
+        # Key should NOT be persisted
+        from cli.helpers.storage import load_api_key
+
+        assert load_api_key() is None
+
+    def test_env_var_overrides_stored_key(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ) -> None:
+        """Env var takes priority over stored file."""
+        monkeypatch.setenv("SPECTRAL_HOME", str(tmp_path))
+        monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-from-env")
+        (tmp_path / "api_key").write_text("sk-from-file\n")
+
+        with patch("anthropic.AsyncAnthropic") as mock_cls:
+            llm.init(model="m")
+            mock_cls.assert_called_once_with(api_key="sk-from-env")

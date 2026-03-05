@@ -26,7 +26,7 @@ spectral openapi analyze <app_name> -o <name> [--model MODEL] [--debug] [--skip-
 
 The command loads all captures for the app and merges them into a single bundle before analysis. Only REST traces are processed; GraphQL traces are ignored.
 
-Requires the `ANTHROPIC_API_KEY` environment variable (loaded automatically from `.env`).
+Requires an Anthropic API key (resolved from the `ANTHROPIC_API_KEY` env var, stored key file, or interactive prompt).
 
 ---
 
@@ -48,7 +48,7 @@ spectral graphql analyze <app_name> -o <name> [--model MODEL] [--debug] [--skip-
 
 The command loads all captures for the app and merges them into a single bundle before analysis. Only GraphQL traces are processed; REST traces are ignored.
 
-Requires the `ANTHROPIC_API_KEY` environment variable (loaded automatically from `.env`).
+Requires an Anthropic API key (resolved from the `ANTHROPIC_API_KEY` env var, stored key file, or interactive prompt).
 
 ---
 
@@ -69,7 +69,7 @@ spectral mcp analyze <app_name> [--model MODEL] [--debug] [--skip-enrich]
 
 Writes tool definitions to `tools/*.json` in the app's managed storage directory and updates `app.json` with the detected `base_url`.
 
-Requires the `ANTHROPIC_API_KEY` environment variable (loaded automatically from `.env`).
+Requires an Anthropic API key (resolved from the `ANTHROPIC_API_KEY` env var, stored key file, or interactive prompt).
 
 ---
 
@@ -103,7 +103,7 @@ Examines all traces for auth-related patterns (login endpoints, token exchanges,
 
 If no authentication mechanism is detected, prints an informational message and exits without generating a script.
 
-Requires the `ANTHROPIC_API_KEY` environment variable (loaded automatically from `.env`).
+Requires an Anthropic API key (resolved from the `ANTHROPIC_API_KEY` env var, stored key file, or interactive prompt).
 
 ---
 

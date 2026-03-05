@@ -13,13 +13,7 @@ git clone https://github.com/romain-gilliotte/spectral.git && cd spectral
 uv sync
 ```
 
-Create a `.env` file at the project root with your Anthropic API key:
-
-```bash
-echo "ANTHROPIC_API_KEY=sk-ant-..." > .env
-```
-
-The CLI loads this file automatically via `python-dotenv`. The key is only needed for the `analyze` command — capture works without it.
+The first time you run an `analyze` command, Spectral will prompt for your Anthropic API key and save it to managed storage (`~/.local/share/spectral/api_key`). You can also set the `ANTHROPIC_API_KEY` environment variable to override the stored key. The key is only needed for the `analyze` commands — capture works without it.
 
 ## Chrome extension
 

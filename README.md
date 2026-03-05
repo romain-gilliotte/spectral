@@ -23,7 +23,6 @@ Prerequisites: Python 3.11+, [uv](https://docs.astral.sh/uv/), [Anthropic API ke
 ```bash
 git clone https://github.com/romain-gilliotte/spectral.git && cd spectral
 uv sync
-echo "ANTHROPIC_API_KEY=sk-ant-..." > .env
 ```
 
 Capture traffic with the Chrome extension or the MITM proxy, then import into managed storage:
