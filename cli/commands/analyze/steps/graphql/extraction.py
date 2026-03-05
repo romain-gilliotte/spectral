@@ -292,15 +292,16 @@ def _walk_fields(
         elif isinstance(value, dict):
             child_dict = cast(dict[str, Any], value)
             type_name = _resolve_type_name(child_dict, field)
-            field_rec.type_name = type_name
-            _walk_fields(
-                registry=registry,
-                fields=field.children,
-                response_data=child_dict,
-                parent_type_name=type_name,
-                parent_path=f"{parent_path}.{field.name}",
-                var_types=var_types,
-            )
+            if type_name is not None:
+                field_rec.type_name = type_name
+                _walk_fields(
+                    registry=registry,
+                    fields=field.children,
+                    response_data=child_dict,
+                    parent_type_name=type_name,
+                    parent_path=f"{parent_path}.{field.name}",
+                    var_types=var_types,
+                )
         else:
             scalar = _infer_scalar(value)
             field_rec.type_name = scalar
@@ -320,6 +321,8 @@ def _process_list_value(
         if isinstance(item, dict):
             child_dict = cast(dict[str, Any], item)
             type_name = _resolve_type_name(child_dict, field)
+            if type_name is None:
+                continue  # Try next item
             field_rec.type_name = type_name
             _walk_fields(
                 registry=registry,
@@ -339,13 +342,15 @@ def _process_list_value(
 def _resolve_type_name(
     response_obj: dict[str, Any],
     field: ParsedField,
-) -> str:
+) -> str | None:
     """Determine the GraphQL type name for a response object.
 
     Priority:
     1. __typename from the response (guaranteed by __typename injection)
     2. Type condition from an inline fragment
-    3. Generated from the field name (fallback for legacy bundles)
+
+    Returns None if no type name can be determined, signalling callers
+    to skip the object subtree rather than guess from the field name.
     """
     # 1. __typename from response
     typename = response_obj.get("__typename")
@@ -361,8 +366,7 @@ def _resolve_type_name(
         if child.type_condition:
             return child.type_condition
 
-    # 3. Fallback: generate from field name
-    return _capitalize_field_name(field.name)
+    return None
 
 
 def _capitalize_field_name(name: str) -> str:

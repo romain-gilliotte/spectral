@@ -71,15 +71,29 @@ class TestTypeNaming:
         schema = extract_graphql_schema(traces)
         assert "UserAccount" in schema.registry.types
 
-    def test_fallback_to_capitalized_field_name(self):
+    def test_object_without_typename_is_skipped(self):
+        """When __typename is absent and no type condition exists, the object
+        subtree is skipped — no bogus type is created in the registry."""
         traces = [
             gql_trace(
-                "{ user { id } }",
-                response_data={"user": {"id": "1"}},
+                "{ user { id address { city } } }",
+                response_data={
+                    "user": {
+                        "id": "1",
+                        "__typename": "User",
+                        "address": {"city": "Paris"},
+                    }
+                },
             )
         ]
         schema = extract_graphql_schema(traces)
         assert "User" in schema.registry.types
+        # No "Address" type should be created from field-name guessing
+        assert "Address" not in schema.registry.types
+        # The field still exists on User but has no resolved type
+        user_type = schema.registry.types["User"]
+        assert "address" in user_type.fields
+        assert user_type.fields["address"].type_name is None
 
     def test_capitalize_snake_case(self):
         assert _capitalize_field_name("order_items") == "OrderItems"
