@@ -42,16 +42,39 @@ def analyze(app_name: str, model: str, debug: bool) -> None:
 
     llm.init(debug_dir=debug_dir, model=model)
 
+    from cli.commands.analyze.steps.context import build_shared_context
+    from cli.commands.analyze.steps.detect_base_url import DetectBaseUrlStep
+    from cli.commands.analyze.steps.extract_pairs import ExtractPairsStep
     from cli.commands.analyze.steps.generate_auth_script import (
         GenerateAuthScriptInput,
         GenerateAuthScriptStep,
         NoAuthDetected,
     )
+    from cli.helpers.storage import update_app_meta
 
-    step_input = GenerateAuthScriptInput(traces=bundle.traces, api_name=app_name)
+    async def _run() -> str:
+        # Detect base URL (cached from app.json if available)
+        pairs = await ExtractPairsStep().run(bundle)
+        base_url = await DetectBaseUrlStep(app_name=app_name).run(pairs)
+        console.print(f"  API base URL: {base_url}")
+
+        # Build shared context for prompt caching
+        system_context = build_shared_context(bundle, base_url)
+
+        step_input = GenerateAuthScriptInput(
+            traces=bundle.traces,
+            api_name=app_name,
+            system_context=system_context,
+        )
+        script = await GenerateAuthScriptStep().run(step_input)
+
+        # Persist base_url for future cache hits
+        update_app_meta(app_name, base_url=base_url)
+
+        return script
 
     try:
-        script = asyncio.run(GenerateAuthScriptStep().run(step_input))
+        script = asyncio.run(_run())
     except NoAuthDetected:
         console.print()
         console.print(

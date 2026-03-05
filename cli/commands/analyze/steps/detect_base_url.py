@@ -19,11 +19,24 @@ class DetectBaseUrlStep(Step[list[MethodUrlPair], str]):
 
     Input: list of MethodUrlPair.
     Output: base URL string like "https://api.example.com" or "https://www.example.com/api".
+
+    If *app_name* is provided, checks app.json first for a cached ``base_url``.
+    When found, returns it directly without an LLM call.
     """
 
     name = "detect_base_url"
 
+    def __init__(self, app_name: str | None = None) -> None:
+        super().__init__()
+        self._app_name = app_name
+
     async def _execute(self, input: list[MethodUrlPair]) -> str:
+        # Fast path: return cached base_url from app.json if available
+        if self._app_name is not None:
+            cached = self._load_cached_base_url()
+            if cached is not None:
+                return cached
+
         counts = Counter(
             MethodUrlPair(p.method, compact_url(p.url)) for p in input
         )
@@ -72,3 +85,17 @@ Respond with a compact JSON object (no indentation):
                 f"Invalid base URL: {output}",
                 {"base_url": output},
             )
+
+    def _load_cached_base_url(self) -> str | None:
+        """Check app.json for a previously saved base_url."""
+        if self._app_name is None:
+            return None
+        try:
+            from cli.helpers.storage import load_app_meta
+
+            meta = load_app_meta(self._app_name)
+            if meta.base_url:
+                return meta.base_url
+        except Exception:
+            pass
+        return None

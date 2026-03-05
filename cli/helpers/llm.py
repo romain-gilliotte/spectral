@@ -248,15 +248,27 @@ async def ask(
 def _build_system_blocks(
     system: str | list[str] | None,
 ) -> list[dict[str, Any]] | None:
-    """Convert *system* into a list of text blocks with ``cache_control``."""
+    """Convert *system* into a list of text blocks with ``cache_control``.
+
+    Always produces at most **2** blocks so that the tool-use loop still
+    has room for its own cache breakpoints (Anthropic caps at 4 total).
+
+    When *system* is a list with 2+ entries the first entry becomes its
+    own block (shared-context cache breakpoint) and the remaining entries
+    are joined into a single second block.
+    """
     if system is None:
         return None
     _CACHE_EPHEMERAL: dict[str, str] = {"type": "ephemeral"}
     if isinstance(system, str):
         return [{"type": "text", "text": system, "cache_control": _CACHE_EPHEMERAL}]
+    if len(system) == 1:
+        return [{"type": "text", "text": system[0], "cache_control": _CACHE_EPHEMERAL}]
+    # First block = shared context (cache breakpoint for cross-step reuse).
+    # Remaining blocks merged into one (cache breakpoint for intra-step reuse).
     return [
-        {"type": "text", "text": s, "cache_control": _CACHE_EPHEMERAL}
-        for s in system
+        {"type": "text", "text": system[0], "cache_control": _CACHE_EPHEMERAL},
+        {"type": "text", "text": "\n\n".join(system[1:]), "cache_control": _CACHE_EPHEMERAL},
     ]
 
 
@@ -651,6 +663,9 @@ async def _call_with_tools(
     **extra_create_kwargs: Any,
 ) -> str:
     """Call the LLM with tool_use support, looping until a text response is produced."""
+    # Defensive copy so we never mutate the caller's list.
+    tools = list(tools)
+
     debug_turns: list[dict[str, Any]] = []
     debug_path = _make_debug_path(call_name)
 
@@ -720,8 +735,12 @@ async def _call_with_tools(
             tool_results.append(tool_result)
             debug_tool_calls.append(debug_entry)
 
-        # Rolling cache breakpoint: remove previous tool_result cache markers,
-        # then mark the last tool_result so everything up to here is cached.
+        # Rolling cache breakpoint: the new tool_result will be the latest
+        # cache boundary, so remove ALL previous cache_control markers from
+        # user messages (both old tool_results and the initial text block).
+        # This keeps total breakpoints at: system blocks + last tool def +
+        # latest tool_result (≤4).  The initial user message is still cached
+        # as part of the prefix up to the tool_result breakpoint.
         for msg in messages:
             if msg.get("role") != "user":
                 continue
@@ -729,8 +748,7 @@ async def _call_with_tools(
             if not isinstance(content, list):
                 continue
             for blk in cast(list[dict[str, Any]], content):
-                if blk.get("type") == "tool_result":
-                    blk.pop("cache_control", None)
+                blk.pop("cache_control", None)
 
         if tool_results:
             tool_results[-1] = {**tool_results[-1], "cache_control": _CACHE_EPHEMERAL}

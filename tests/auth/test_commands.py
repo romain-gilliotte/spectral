@@ -12,41 +12,63 @@ import pytest
 from cli.commands.capture.types import CaptureBundle
 from cli.main import cli
 
+_DEFAULT_SCRIPT_RESPONSE = (
+    '```python\nimport json\nimport urllib.request\n\n'
+    'def acquire_token():\n'
+    '    email = prompt_text("Email")\n'
+    '    password = prompt_secret("Password")\n'
+    '    data = json.dumps({"email": email, "password": password}).encode()\n'
+    '    req = urllib.request.Request(\n'
+    '        "https://api.example.com/auth/login",\n'
+    '        data=data,\n'
+    '        headers={"Content-Type": "application/json"},\n'
+    '        method="POST",\n'
+    '    )\n'
+    '    resp = urllib.request.urlopen(req)\n'
+    '    body = json.loads(resp.read())\n'
+    '    token = body["access_token"]\n'
+    '    return {"headers": {"Authorization": f"Bearer {token}"}, "expires_in": 3600}\n'
+    '```'
+)
+
+# Base URL detection response (first LLM call in the auth pipeline)
+_BASE_URL_RESPONSE = '{"base_url": "https://api.example.com"}'
+
+
+def _make_text_block(text: str) -> MagicMock:
+    block = MagicMock()
+    block.type = "text"
+    block.text = text
+    resp = MagicMock()
+    resp.stop_reason = "end_turn"
+    resp.content = [block]
+    return resp
+
 
 def _make_auth_mock_anthropic(script_response: str | None = None) -> MagicMock:
     """Create a mock anthropic module for auth analysis tests.
 
-    If *script_response* is provided, the mock returns it as the LLM text.
+    If *script_response* is provided, the mock returns it as the LLM text
+    for the auth script generation call.
     Otherwise returns a default script with ``acquire_token()``.
+
+    The mock handles multiple LLM calls: first for base URL detection,
+    then for auth script generation.
     """
     if script_response is None:
-        script_response = (
-            '```python\nimport json\nimport urllib.request\n\n'
-            'def acquire_token():\n'
-            '    email = prompt_text("Email")\n'
-            '    password = prompt_secret("Password")\n'
-            '    data = json.dumps({"email": email, "password": password}).encode()\n'
-            '    req = urllib.request.Request(\n'
-            '        "https://api.example.com/auth/login",\n'
-            '        data=data,\n'
-            '        headers={"Content-Type": "application/json"},\n'
-            '        method="POST",\n'
-            '    )\n'
-            '    resp = urllib.request.urlopen(req)\n'
-            '    body = json.loads(resp.read())\n'
-            '    token = body["access_token"]\n'
-            '    return {"headers": {"Authorization": f"Bearer {token}"}, "expires_in": 3600}\n'
-            '```'
-        )
+        script_response = _DEFAULT_SCRIPT_RESPONSE
+
+    # Track call count to return different responses
+    call_count = {"n": 0}
+    final_script = script_response
 
     async def mock_create(**kwargs: Any) -> MagicMock:
-        resp = MagicMock()
-        content_block = MagicMock()
-        content_block.type = "text"
-        content_block.text = script_response
-        resp.stop_reason = "end_turn"
-        resp.content = [content_block]
-        return resp
+        call_count["n"] += 1
+        # First call: base URL detection
+        if call_count["n"] == 1:
+            return _make_text_block(_BASE_URL_RESPONSE)
+        # Subsequent calls: auth script generation
+        return _make_text_block(final_script)
 
     mock_client = MagicMock()
     mock_client.messages.create = mock_create

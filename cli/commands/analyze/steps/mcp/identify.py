@@ -11,12 +11,13 @@ from cli.commands.analyze.steps.mcp.types import (
     IdentifyResponse,
     ToolCandidate,
 )
-from cli.commands.analyze.utils import compact_url, sanitize_headers, truncate_json
+from cli.commands.analyze.utils import sanitize_headers, truncate_json
 from cli.commands.capture.types import Trace
-from cli.helpers.http import get_header
 import cli.helpers.llm as llm
 
 IDENTIFY_INSTRUCTIONS = """\
+You are analyzing captured HTTP traffic from a web application to identify and document API capabilities as MCP tools.
+
 ## Your task
 
 Does this trace represent a useful **business capability** (something a user can do with this API: search, create, view, update, delete, etc.)?
@@ -80,48 +81,6 @@ class IdentifyCapabilitiesStep(Step[IdentifyInput, ToolCandidate | None]):
             description=result.description,
             trace_ids=[target.meta.id],
         )
-
-
-def trace_timeline_line(
-    trace: Trace, base_origin: str, base_path: str
-) -> str:
-    """Build a chronological timeline line for a trace."""
-    url = trace.meta.request.url
-    # Strip base URL to show relative path
-    relative = url
-    if url.startswith(base_origin):
-        relative = url[len(base_origin):]
-        if base_path and relative.startswith(base_path):
-            relative = relative[len(base_path):]
-        if not relative:
-            relative = "/"
-
-    # Content-type (short form)
-    ct = get_header(trace.meta.response.headers, "content-type") or ""
-    ct_short = ct.split(";")[0].strip() if ct else ""
-
-    # Body size
-    body_size = trace.meta.response.body_size or (
-        len(trace.response_body) if trace.response_body else 0
-    )
-    size_str = format_size(body_size) if body_size else ""
-
-    extras = " ".join(filter(None, [ct_short, size_str]))
-    extras_part = f" ({extras})" if extras else ""
-
-    return (
-        f"\U0001f310 {trace.meta.id}: {trace.meta.request.method} "
-        f"{compact_url(relative) if len(relative) > 80 else relative} "
-        f"\u2192 {trace.meta.response.status}{extras_part}"
-    )
-
-
-def format_size(size: int) -> str:
-    if size >= 1024 * 1024:
-        return f"{size / (1024 * 1024):.1f}MB"
-    if size >= 1024:
-        return f"{size / 1024:.1f}KB"
-    return f"{size}B"
 
 
 def format_request_details(trace: Trace) -> str:

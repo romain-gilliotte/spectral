@@ -26,9 +26,15 @@ class NoAuthDetected(Exception):
 class GenerateAuthScriptInput:
     """Input for the auth script generation step."""
 
-    def __init__(self, traces: list[Trace], api_name: str) -> None:
+    def __init__(
+        self,
+        traces: list[Trace],
+        api_name: str,
+        system_context: str | None = None,
+    ) -> None:
         self.traces = traces
         self.api_name = api_name
+        self.system_context = system_context
 
 
 # -- Tools: let the LLM inspect trace bodies --------------------------------
@@ -113,11 +119,60 @@ def _execute_inspect_trace(
 
 _NO_AUTH_SENTINEL = "NO_AUTH"
 
+AUTH_INSTRUCTIONS = f"""\
+You are generating Python auth functions for a web API.
+
+## Your task
+
+Survey the trace list below. Traces annotated with `[AUTH]` are likely auth-related (login endpoints, token exchanges, authenticated requests). Use the `inspect_trace` tool to examine them in detail. Identify the authentication mechanism (login endpoint, token format, refresh flow, credential fields). Then generate the functions.
+
+If you find NO authentication mechanism (no login endpoint, no token exchange, no auth headers), respond with exactly: {_NO_AUTH_SENTINEL}
+
+## Function contracts
+
+You must produce ONLY two functions (the second is optional):
+
+1. `acquire_token()` — **required**, takes NO arguments
+2. `refresh_token(current_refresh_token)` — only if a refresh endpoint was detected
+
+These functions are loaded dynamically by spectral. Two helper functions are injected into the module's namespace at load time:
+- `prompt_text(label)` — prompt the user for text input (e.g., email, phone number)
+- `prompt_secret(label)` — prompt the user for secret input with no echo (e.g., password, OTP code)
+
+### acquire_token()
+- Takes NO arguments — use `prompt_text(label)` and `prompt_secret(label)` to get user credentials
+- Must perform the FULL authentication flow (all steps: request OTP, then verify, etc.)
+- Returns a dict with:
+  - "headers": dict of HTTP headers to inject (e.g., {{"Authorization": "Bearer ey..."}})
+  - "refresh_token": optional, for later use with refresh_token()
+  - "expires_in": optional, token lifetime in seconds
+
+### refresh_token(current_refresh_token) — optional
+- Receives the current refresh token string
+- Returns the same dict format as acquire_token
+- Raises Exception on failure
+
+## Rules
+
+- **Stdlib only**: only use `base64`, `json`, `re`, `time`, `urllib.parse`, `urllib.request` — zero pip dependencies
+- **No caching**: do not cache tokens, do not read/write files
+- **Use prompt helpers**: use `prompt_text("Email")` and `prompt_secret("Password")` for user input
+- **Return headers**: return the actual HTTP headers to inject, not raw tokens
+- **Include necessary imports** at the top of your code
+- **Handle the FULL auth flow**: if auth requires multiple steps, acquire_token must handle ALL steps
+- **Error handling**: raise clear exceptions on failure
+- **Reproduce all request headers**: the captured traffic may come from a mobile app, browser, or other client. APIs often validate the client identity via custom headers (User-Agent, app version, device info, API keys, etc.) and reject requests missing them with 403. Copy ALL non-standard request headers from the captured traces into your HTTP requests. Only omit headers managed automatically by urllib (`Host`, `Content-Length`, `Accept-Encoding`)
+- **Only use observed endpoints**: only call endpoints you can see in the captured traces. If a flow (e.g., token refresh) was not captured, make `refresh_token` raise an exception explaining the endpoint was not observed instead of guessing a URL
+
+## Output format
+
+Respond with ONLY the Python code inside a ```python code block. Or respond with {_NO_AUTH_SENTINEL} if no auth mechanism was found."""
+
 
 class GenerateAuthScriptStep(Step[GenerateAuthScriptInput, str]):
     """Discover auth mechanism from traces and generate token functions.
 
-    Input: GenerateAuthScriptInput (traces + api_name).
+    Input: GenerateAuthScriptInput (traces + api_name + optional system_context).
     Output: Python source code containing ``acquire_token()`` and
             optionally ``refresh_token()`` (string).
     Raises NoAuthDetected if the LLM finds no auth.
@@ -139,62 +194,21 @@ class GenerateAuthScriptStep(Step[GenerateAuthScriptInput, str]):
             ),
         }
 
-        prompt = f"""You are generating Python auth functions for the "{input.api_name}" API.
-
-## Your task
-
-Survey the trace list below. Traces annotated with `[AUTH]` are likely auth-related (login endpoints, token exchanges, authenticated requests). Use the `inspect_trace` tool to examine them in detail. Identify the authentication mechanism (login endpoint, token format, refresh flow, credential fields). Then generate the functions.
-
-If you find NO authentication mechanism (no login endpoint, no token exchange, no auth headers), respond with exactly: {_NO_AUTH_SENTINEL}
-
-## Context
-
-You must produce ONLY two functions (the second is optional):
-
-1. `acquire_token()` — **required**, takes NO arguments
-2. `refresh_token(current_refresh_token)` — only if a refresh endpoint was detected
-
-These functions are loaded dynamically by spectral. Two helper functions are injected into the module's namespace at load time:
-- `prompt_text(label)` — prompt the user for text input (e.g., email, phone number)
-- `prompt_secret(label)` — prompt the user for secret input with no echo (e.g., password, OTP code)
-
-## Function contracts
-
-### acquire_token()
-- Takes NO arguments — use `prompt_text(label)` and `prompt_secret(label)` to get user credentials
-- Must perform the FULL authentication flow (all steps: request OTP, then verify, etc.)
-- Returns a dict with:
-  - "headers": dict of HTTP headers to inject (e.g., {{"Authorization": "Bearer ey..."}})
-  - "refresh_token": optional, for later use with refresh_token()
-  - "expires_in": optional, token lifetime in seconds
-
-### refresh_token(current_refresh_token) — optional
-- Receives the current refresh token string
-- Returns the same dict format as acquire_token
-- Raises Exception on failure
+        prompt = f"""## API: {input.api_name}
 
 ## Available traces
 
 Use the `inspect_trace` tool to examine any trace in detail.
 
-{trace_summaries}
+{trace_summaries}"""
 
-## Rules
-
-- **Stdlib only**: only use `base64`, `json`, `re`, `time`, `urllib.parse`, `urllib.request` — zero pip dependencies
-- **No caching**: do not cache tokens, do not read/write files
-- **Use prompt helpers**: use `prompt_text("Email")` and `prompt_secret("Password")` for user input
-- **Return headers**: return the actual HTTP headers to inject, not raw tokens
-- **Include necessary imports** at the top of your code
-- **Handle the FULL auth flow**: if auth requires multiple steps, acquire_token must handle ALL steps
-- **Error handling**: raise clear exceptions on failure
-
-## Output format
-
-Respond with ONLY the Python code inside a ```python code block. Or respond with {_NO_AUTH_SENTINEL} if no auth mechanism was found."""
+        system: list[str] | None = None
+        if input.system_context is not None:
+            system = [input.system_context, AUTH_INSTRUCTIONS]
 
         text = await llm.ask(
             prompt,
+            system=system,
             max_tokens=8192,
             label="generate_auth_script",
             tools=tools,

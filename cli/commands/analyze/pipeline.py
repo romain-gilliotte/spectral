@@ -61,7 +61,7 @@ async def build_spec(
 
     # Step 2: Detect base URL (LLM)
     progress("Detecting API base URL (LLM)...")
-    detect_url_step = DetectBaseUrlStep()
+    detect_url_step = DetectBaseUrlStep(app_name=source_filename)
     base_url = await detect_url_step.run(url_method_pairs)
     progress(f"  API base URL: {base_url}")
 

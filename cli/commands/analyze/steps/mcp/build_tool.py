@@ -16,6 +16,8 @@ from cli.commands.analyze.steps.mcp.types import (
 import cli.helpers.llm as llm
 
 BUILD_TOOL_INSTRUCTIONS = """\
+You are analyzing captured HTTP traffic from a web application to identify and document API capabilities as MCP tools.
+
 ## Your task
 
 1. Use `query_traces` to find ALL traces that serve the same business purpose as this candidate.

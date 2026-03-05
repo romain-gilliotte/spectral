@@ -23,6 +23,27 @@ def _make_text_response(text: str) -> MagicMock:
 
 class TestDetectBaseUrlStep:
     @pytest.mark.asyncio
+    async def test_returns_cached_base_url(self, monkeypatch: pytest.MonkeyPatch, tmp_path: Any):
+        """When app.json has base_url cached, return it without LLM call."""
+        from cli.formats.app_meta import AppMeta
+
+        monkeypatch.setenv("SPECTRAL_HOME", str(tmp_path / "store"))
+        app_dir = tmp_path / "store" / "apps" / "myapp"
+        app_dir.mkdir(parents=True)
+        meta = AppMeta(
+            name="myapp", display_name="myapp",
+            created_at="2026-01-01T00:00:00Z", updated_at="2026-01-01T00:00:00Z",
+            base_url="https://cached.example.com/api",
+        )
+        (app_dir / "app.json").write_text(meta.model_dump_json())
+
+        step = DetectBaseUrlStep(app_name="myapp")
+        result = await step.run(
+            [MethodUrlPair("GET", "https://cached.example.com/api/users")],
+        )
+        assert result == "https://cached.example.com/api"
+
+    @pytest.mark.asyncio
     async def test_returns_base_url(self):
         """DetectBaseUrlStep should parse the LLM response and return the base_url string."""
 

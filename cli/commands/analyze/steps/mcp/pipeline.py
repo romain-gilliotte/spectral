@@ -3,16 +3,13 @@
 from __future__ import annotations
 
 from collections.abc import Callable
-from urllib.parse import urlparse
 
+from cli.commands.analyze.steps.context import build_shared_context
 from cli.commands.analyze.steps.detect_base_url import DetectBaseUrlStep
 from cli.commands.analyze.steps.extract_pairs import ExtractPairsStep
 from cli.commands.analyze.steps.filter_traces import FilterTracesStep
 from cli.commands.analyze.steps.mcp.build_tool import BuildToolStep
-from cli.commands.analyze.steps.mcp.identify import (
-    IdentifyCapabilitiesStep,
-    trace_timeline_line,
-)
+from cli.commands.analyze.steps.mcp.identify import IdentifyCapabilitiesStep
 from cli.commands.analyze.steps.mcp.types import (
     IdentifyInput,
     McpPipelineResult,
@@ -23,36 +20,6 @@ from cli.commands.capture.types import CaptureBundle, Trace
 from cli.formats.mcp_tool import ToolDefinition
 
 _MAX_ITERATIONS = 200
-
-
-def _build_timeline_text(
-    bundle: CaptureBundle, base_url: str
-) -> str:
-    """Build a chronological timeline string from the bundle's timeline events."""
-    parsed_base = urlparse(base_url)
-    base_origin = f"{parsed_base.scheme}://{parsed_base.netloc}"
-    base_path = parsed_base.path.rstrip("/")
-
-    trace_index = {t.meta.id: t for t in bundle.traces}
-    context_index = {c.meta.id: c for c in bundle.contexts}
-
-    lines: list[str] = []
-    for event in bundle.timeline.events:
-        if event.type == "context":
-            ctx = context_index.get(event.ref)
-            if ctx is None:
-                continue
-            text = ctx.meta.element.text or ctx.meta.element.selector
-            lines.append(
-                f"\U0001f5b1 [{ctx.meta.action}] \"{text}\" on {ctx.meta.page.url}"
-            )
-        elif event.type == "trace":
-            trace = trace_index.get(event.ref)
-            if trace is None:
-                continue
-            lines.append(trace_timeline_line(trace, base_origin, base_path))
-
-    return "\n".join(lines)
 
 
 async def build_mcp_tools(
@@ -75,7 +42,7 @@ async def build_mcp_tools(
 
     # Step 2: Detect base URL
     progress("Detecting API base URL (LLM)...")
-    detect_url_step = DetectBaseUrlStep()
+    detect_url_step = DetectBaseUrlStep(app_name=app_name)
     base_url = await detect_url_step.run(pairs)
     progress(f"  API base URL: {base_url}")
 
@@ -88,14 +55,7 @@ async def build_mcp_tools(
     progress(f"  Kept {len(filtered)}/{total_before} traces under {base_url}")
 
     # Build system context (shared across identify + build_tool for prompt caching)
-    timeline_text = _build_timeline_text(bundle, base_url)
-    system_context = f"""You are analyzing captured HTTP traffic from a web application to identify and document API capabilities as MCP tools.
-
-## Base URL
-{base_url}
-
-## Session timeline
-{timeline_text}"""
+    system_context = build_shared_context(bundle, base_url)
 
     # Step 5: Greedy per-trace identification + build loop
     progress("Identifying capabilities and building tools...")
