@@ -37,25 +37,31 @@
       </div>
     </div>
 
-    <div class="settings">
-      <div class="settings-header">GraphQL interception</div>
-      <label class="setting-row">
-        <input type="checkbox" id="setting-typename" checked>
-        <span class="setting-label">Inject <code>__typename</code></span>
-        <a class="setting-link" href="https://graphql.org/learn/queries/#meta-fields" target="_blank" rel="noopener">docs &#8599;</a>
-      </label>
-      <label class="setting-row">
-        <input type="checkbox" id="setting-apq" checked>
-        <span class="setting-label">Block persisted queries</span>
-        <a class="setting-link" href="https://www.apollographql.com/docs/apollo-server/performance/apq/" target="_blank" rel="noopener">docs &#8599;</a>
-      </label>
-    </div>
-
     <div class="actions">
-      <button id="btn-start" class="btn btn-primary">
-        <span class="btn-icon">&#9658;</span>
-        Start Capture
+      <button id="btn-grab-auth" class="btn btn-accent hidden">
+        <span class="btn-icon">&#128274;</span>
+        Grab Auth
       </button>
+      <div class="btn-row">
+        <button id="btn-start" class="btn btn-primary">
+          <span class="btn-icon">&#9658;</span>
+          Start Capture
+        </button>
+        <button id="btn-toggle-settings" class="btn-toggle" aria-expanded="false" title="Capture settings">&#9881;</button>
+      </div>
+      <div id="capture-settings" class="drawer collapsed">
+        <div class="drawer-header">GraphQL interception</div>
+        <label class="check-row">
+          <input type="checkbox" id="setting-typename" checked>
+          <span class="check-row-label">Inject <code>__typename</code></span>
+          <a class="check-row-link" href="https://graphql.org/learn/queries/#meta-fields" target="_blank" rel="noopener">docs &#8599;</a>
+        </label>
+        <label class="check-row">
+          <input type="checkbox" id="setting-apq" checked>
+          <span class="check-row-label">Block persisted queries</span>
+          <a class="check-row-link" href="https://www.apollographql.com/docs/apollo-server/performance/apq/" target="_blank" rel="noopener">docs &#8599;</a>
+        </label>
+      </div>
       <button id="btn-stop" class="btn btn-danger hidden">
         <span class="btn-icon">&#9632;</span>
         Stop Capture
@@ -66,6 +72,14 @@
       </button>
     </div>
 
+    <div id="auth-panel" class="card hidden">
+      <div class="card-header">Authentication</div>
+      <div id="auth-items" class="auth-items"></div>
+      <div id="auth-empty" class="text-muted hidden">No auth found on this page.</div>
+      <button id="btn-save-auth" class="btn btn-accent hidden">Save</button>
+      <div id="auth-success" class="text-success hidden">Auth saved</div>
+    </div>
+
     <div id="error" class="error hidden"></div>
 
     <footer>
@@ -73,6 +87,6 @@
     </footer>
   </div>
 
-  <script src="popup.js"></script>
+  <script type="module" src="popup.js"></script>
 </body>
 </html>
