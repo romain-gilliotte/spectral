@@ -9,7 +9,7 @@ import time
 from typing import IO, Any
 from unittest.mock import patch
 
-from cli.helpers.auth_framework import AUTH_FRAMEWORK_CODE, generate_auth_script
+from cli.commands.auth.auth_framework import AUTH_FRAMEWORK_CODE, generate_auth_script
 
 # ---------------------------------------------------------------------------
 # Helpers: execute the framework code in an isolated namespace
