@@ -7,6 +7,7 @@ from dataclasses import dataclass
 
 from cli.commands.capture.types import CaptureBundle
 from cli.helpers.http import compact_url
+from cli.helpers.json import extract_json
 import cli.helpers.llm as llm
 from cli.helpers.llm_tools import INVESTIGATION_TOOLS, TOOL_EXECUTORS
 
@@ -68,7 +69,7 @@ Respond with a compact JSON object (no indentation):
         executors=TOOL_EXECUTORS,
     )
 
-    result = llm.extract_json(text)
+    result = extract_json(text)
     if isinstance(result, dict) and "base_url" in result:
         base_url = str(result["base_url"]).rstrip("/")
         if not base_url.startswith("http"):

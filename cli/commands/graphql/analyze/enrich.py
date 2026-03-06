@@ -12,7 +12,7 @@ from cli.commands.graphql.analyze.types import (
 )
 from cli.helpers.console import console
 from cli.helpers.correlator import Correlation
-from cli.helpers.json import minified
+from cli.helpers.json import extract_json, minified
 import cli.helpers.llm as llm
 
 
@@ -73,7 +73,7 @@ Respond in compact JSON only (no indentation)."""
 
         try:
             text = await llm.ask(prompt, max_tokens=1024, label=f"enrich_gql_{type_rec.name}")
-            data = llm.extract_json(text)
+            data = extract_json(text)
             if isinstance(data, dict):
                 _apply_type_enrichment(type_rec, data)
         except Exception as exc:
@@ -97,7 +97,7 @@ Respond in compact JSON only (no indentation)."""
 
         try:
             text = await llm.ask(prompt, max_tokens=256, label=f"enrich_gql_enum_{enum_name}")
-            data = llm.extract_json(text)
+            data = extract_json(text)
             if isinstance(data, dict):
                 desc = data.get("description")
                 if isinstance(desc, str):

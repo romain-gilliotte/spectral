@@ -53,7 +53,6 @@ class TestEnrichSizeGuard:
         mock_ask = AsyncMock(return_value='{"description": "should not be called"}')
         with patch("cli.commands.openapi.analyze.enrich.llm") as mock_llm:
             mock_llm.ask = mock_ask
-            mock_llm.extract_json.return_value = {}
             result = await enrich_endpoints(ctx)
 
         mock_ask.assert_not_called()
@@ -90,9 +89,6 @@ class TestEnrichSizeGuard:
         mock_ask = AsyncMock(return_value='{"description": "Returns a user"}')
         with patch("cli.commands.openapi.analyze.enrich.llm") as mock_llm:
             mock_llm.ask = mock_ask
-            mock_llm.extract_json = __import__(
-                "cli.helpers.llm", fromlist=["extract_json"]
-            ).extract_json
             result = await enrich_endpoints(ctx)
 
         mock_ask.assert_called_once()

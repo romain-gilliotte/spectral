@@ -13,7 +13,7 @@ from cli.commands.openapi.analyze.types import (
 )
 from cli.helpers.console import console
 from cli.helpers.correlator import Correlation
-from cli.helpers.json import minified
+from cli.helpers.json import extract_json, minified
 import cli.helpers.llm as llm
 
 _MAX_SUMMARY_CHARS = 40_000
@@ -58,7 +58,7 @@ Respond in compact JSON (no indentation)."""
 
         try:
             text = await llm.ask(prompt, max_tokens=4096, label=f"enrich_{ep.id}")
-            data = llm.extract_json(text)
+            data = extract_json(text)
 
             if isinstance(data, dict):
                 _apply_enrichment(ep, data)

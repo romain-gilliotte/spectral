@@ -10,8 +10,6 @@ Usage::
 
     text = await llm.ask(prompt)
     text = await llm.ask(prompt, tools=..., executors=...)
-
-    data = llm.extract_json(text)       # robust JSON extraction from LLM output
 """
 
 from __future__ import annotations
@@ -21,12 +19,12 @@ from collections.abc import Callable
 from datetime import datetime, timezone
 import json
 from pathlib import Path
-import re
 from typing import Any, TypeVar, cast, overload
 
 from pydantic import BaseModel, ValidationError
 
 from cli.helpers.console import console
+from cli.helpers.json import reformat_json_lines
 
 T = TypeVar("T", bound=BaseModel)
 
@@ -355,6 +353,8 @@ async def _parse_response_model(
 
 def _try_parse_model(text: str, response_model: type[T]) -> T:
     """Try to parse *text* as JSON and validate against *response_model*."""
+    from cli.helpers.json import extract_json
+
     try:
         data = json.loads(text.strip())
     except json.JSONDecodeError:
@@ -517,11 +517,11 @@ def _save_debug(
     for turn in turns:
         role = turn.get("role", "")
         if role == "user":
-            content = _reformat_debug_text(str(turn.get("content", "")))
+            content = reformat_json_lines(str(turn.get("content", "")))
             parts.append(f"=== PROMPT ===\n{content}")
         elif role == "assistant":
             if "content" in turn:
-                content = _reformat_debug_text(str(turn["content"]))
+                content = reformat_json_lines(str(turn["content"]))
                 parts.append(f"=== RESPONSE ===\n{content}")
             if "tool_calls" in turn:
                 for tc in turn["tool_calls"]:
@@ -532,99 +532,10 @@ def _save_debug(
                         header = f"=== TOOL: {tc['tool']}({inp}) ==="
                         if tc.get("error"):
                             header += " [ERROR]"
-                        result = _reformat_debug_text(str(tc["result"]))
+                        result = reformat_json_lines(str(tc["result"]))
                         parts.append(f"{header}\n{result}")
 
     path.write_text("\n\n".join(parts) + "\n")
-
-
-# ---------------------------------------------------------------------------
-# Generic LLM helpers
-# ---------------------------------------------------------------------------
-
-
-def compact_json(obj: Any) -> str:
-    """Serialize *obj* to compact JSON (no whitespace) for LLM prompts.
-
-    .. deprecated:: Use :func:`cli.helpers.json.minified` instead.
-    """
-    from cli.helpers.json import minified
-
-    return minified(obj)
-
-
-def truncate_json(obj: Any, max_keys: int = 10, max_depth: int = 4) -> Any:
-    """Truncate a JSON-like object for LLM consumption.
-
-    .. deprecated:: Use :func:`cli.helpers.json.truncate_json` instead.
-    """
-    from cli.helpers.json import truncate_json as _truncate_json
-
-    return _truncate_json(obj, max_keys, max_depth)
-
-
-def extract_json(text: str) -> dict[str, Any] | list[Any]:
-    """Extract JSON from LLM response text, handling markdown code blocks."""
-    text = text.strip()
-    try:
-        parsed: dict[str, Any] | list[Any] = json.loads(text)
-        return parsed
-    except json.JSONDecodeError:
-        pass
-
-    # Try extracting from markdown code block
-    match = re.search(r"```(?:json)?\s*\n?(.*?)```", text, re.DOTALL)
-    if match:
-        try:
-            parsed = json.loads(match.group(1).strip())
-            return parsed
-        except json.JSONDecodeError:
-            pass
-
-    # Try finding first { ... } or [ ... ] block
-    for start_char, end_char in [("{", "}"), ("[", "]")]:
-        start = text.find(start_char)
-        if start == -1:
-            continue
-        depth = 0
-        for i in range(start, len(text)):
-            if text[i] == start_char:
-                depth += 1
-            elif text[i] == end_char:
-                depth -= 1
-                if depth == 0:
-                    try:
-                        parsed = json.loads(text[start : i + 1])
-                        return parsed
-                    except json.JSONDecodeError:
-                        break
-
-    raise ValueError(f"Could not extract JSON from LLM response: {text[:200]}")
-
-
-def _reformat_debug_text(text: str) -> str:
-    """Reformat JSON blobs in debug prose for readability.
-
-    Splits on newlines, tries ``json.loads`` on each line, and replaces
-    parseable ones with compact output.  This handles minified JSON lines
-    (including those inside markdown code fences) while leaving non-JSON
-    lines untouched.
-    """
-    from cli.helpers.json import compact
-
-    lines = text.split("\n")
-    result: list[str] = []
-    for line in lines:
-        stripped = line.strip()
-        if not stripped:
-            result.append(line)
-            continue
-        try:
-            obj = json.loads(stripped)
-            result.append(compact(obj))
-        except (json.JSONDecodeError, ValueError):
-            result.append(line)
-    return "\n".join(result)
 
 
 def _extract_text(content: list[Any]) -> str:

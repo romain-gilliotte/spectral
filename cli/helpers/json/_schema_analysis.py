@@ -228,8 +228,10 @@ async def _resolve_map_candidates(schema: dict[str, Any]) -> None:
         '[{"group": 1, "is_map": true}, ...]'
     )
 
+    from cli.helpers.json import extract_json
+
     raw = await llm.ask(prompt, label="resolve-map-candidates")
-    parsed = llm.extract_json(raw)
+    parsed = extract_json(raw)
     decisions: list[dict[str, Any]] = parsed if isinstance(parsed, list) else [parsed]
 
     decision_map: dict[int, bool] = {}

@@ -631,7 +631,7 @@ class TestStructuralAnnotation:
         mock_ask = AsyncMock(return_value='[{"group": 1, "is_map": true}]')
         with patch("cli.helpers.json._schema_analysis.llm") as mock_llm:
             mock_llm.ask = mock_ask
-            mock_llm.extract_json = __import__("cli.helpers.llm", fromlist=["extract_json"]).extract_json
+
             schema = await analyze_schema(samples)
 
         assert "additionalProperties" in schema
@@ -696,7 +696,7 @@ class TestResolveMapCandidates:
         mock_ask = AsyncMock(return_value='[{"group": 1, "is_map": true}]')
         with patch("cli.helpers.json._schema_analysis.llm") as mock_llm:
             mock_llm.ask = mock_ask
-            mock_llm.extract_json = __import__("cli.helpers.llm", fromlist=["extract_json"]).extract_json
+
             await _resolve_map_candidates(schema)
 
         assert "additionalProperties" in schema
@@ -723,7 +723,7 @@ class TestResolveMapCandidates:
         mock_ask = AsyncMock(return_value='[{"group": 1, "is_map": false}]')
         with patch("cli.helpers.json._schema_analysis.llm") as mock_llm:
             mock_llm.ask = mock_ask
-            mock_llm.extract_json = __import__("cli.helpers.llm", fromlist=["extract_json"]).extract_json
+
             await _resolve_map_candidates(schema)
 
         assert "properties" in schema
@@ -770,7 +770,7 @@ class TestResolveMapCandidates:
         mock_ask = AsyncMock(return_value='[{"group": 1, "is_map": true}]')
         with patch("cli.helpers.json._schema_analysis.llm") as mock_llm:
             mock_llm.ask = mock_ask
-            mock_llm.extract_json = __import__("cli.helpers.llm", fromlist=["extract_json"]).extract_json
+
             await _resolve_map_candidates(schema)
 
         # The inner schema should be collapsed

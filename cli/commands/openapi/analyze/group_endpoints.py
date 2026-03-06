@@ -7,6 +7,7 @@ from typing import Any, cast
 from cli.commands.openapi.analyze.types import EndpointGroup
 from cli.helpers.detect_base_url import MethodUrlPair
 from cli.helpers.http import compact_url
+from cli.helpers.json import extract_json
 import cli.helpers.llm as llm
 from cli.helpers.llm_tools import INVESTIGATION_TOOLS, TOOL_EXECUTORS
 
@@ -53,7 +54,7 @@ Your response MUST be a raw JSON array and nothing else — no explanation, no m
         executors=TOOL_EXECUTORS,
     )
 
-    result = llm.extract_json(text)
+    result = extract_json(text)
     if not isinstance(result, list):
         raise ValueError("Expected a JSON array from analyze_endpoints")
 
