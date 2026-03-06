@@ -42,9 +42,13 @@ def analyze(app_name: str, model: str, debug: bool, skip_enrich: bool) -> None:
     from datetime import datetime, timezone
     from pathlib import Path
 
-    from cli.commands.analyze.cmd import run_mcp_analysis
     import cli.helpers.llm as llm
-    from cli.helpers.storage import list_captures, load_app_bundle
+    from cli.helpers.storage import (
+        list_captures,
+        load_app_bundle,
+        update_app_meta,
+        write_tools,
+    )
 
     cap_count = len(list_captures(app_name))
     console.print(f"[bold]Loading captures for app:[/bold] {app_name}")
@@ -68,4 +72,30 @@ def analyze(app_name: str, model: str, debug: bool, skip_enrich: bool) -> None:
     def on_progress(msg: str) -> None:
         console.print(f"  {msg}")
 
-    run_mcp_analysis(app_name, bundle, model, on_progress, skip_enrich)
+    from cli.commands.mcp.analyze import build_mcp_tools
+
+    console.print(f"[bold]Generating MCP tools with LLM ({model})...[/bold]")
+    result = asyncio.run(
+        build_mcp_tools(
+            bundle,
+            app_name,
+            on_progress=on_progress,
+            skip_enrich=skip_enrich,
+        )
+    )
+
+    inp_tok, out_tok = llm.get_usage()
+    if inp_tok or out_tok:
+        cache_read, cache_create = llm.get_cache_usage()
+        cost = llm.estimate_cost(model, inp_tok, out_tok, cache_read, cache_create)
+        cost_str = f" (~${cost:.2f})" if cost is not None else ""
+        console.print(f"  LLM token usage: {inp_tok:,} input, {out_tok:,} output{cost_str}")
+
+    write_tools(app_name, result.tools)
+    console.print(f"[green]Wrote {len(result.tools)} tool(s) to storage[/green]")
+
+    update_app_meta(app_name, base_url=result.base_url)
+    console.print(f"  Base URL: {result.base_url}")
+
+    for tool in result.tools:
+        console.print(f"  Tool: {tool.name} — {tool.request.method} {tool.request.path}")
