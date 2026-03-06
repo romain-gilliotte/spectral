@@ -6,6 +6,7 @@
 export const state = {
   currentTabId: null,
   lastStats: null,
+  sentCount: null,
   hostConnected: false,
 };
 
@@ -41,7 +42,6 @@ export function updateUI(uiState, stats = null) {
   const statsEl = document.getElementById('stats');
   const btnStart = document.getElementById('btn-start');
   const btnStop = document.getElementById('btn-stop');
-  const btnExport = document.getElementById('btn-export');
   const btnGrabAuth = document.getElementById('btn-grab-auth');
   const btnRow = btnStart.closest('.btn-row');
   const captureSettings = document.getElementById('capture-settings');
@@ -49,7 +49,6 @@ export function updateUI(uiState, stats = null) {
   // Reset all buttons
   btnRow.classList.add('hidden');
   btnStop.classList.add('hidden');
-  btnExport.classList.add('hidden');
   btnGrabAuth.classList.add('hidden');
   captureSettings.classList.add('collapsed');
 
@@ -67,9 +66,10 @@ export function updateUI(uiState, stats = null) {
         btnGrabAuth.classList.remove('hidden');
       }
 
-      if (state.lastStats && state.lastStats.trace_count > 0 && state.hostConnected) {
-        btnExport.classList.remove('hidden');
-        btnGrabAuth.classList.remove('hidden');
+      if (state.sentCount) {
+        statusTextEl.textContent = `Sent ${state.sentCount} requests to CLI`;
+        state.sentCount = null;
+      } else if (state.lastStats && state.lastStats.trace_count > 0 && state.hostConnected) {
         statusEl.className = 'status status-stopped';
         statusTextEl.textContent = `Captured ${state.lastStats.trace_count} requests`;
       }

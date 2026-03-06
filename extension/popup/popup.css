@@ -40,8 +40,8 @@ body {
 .hidden    { display: none !important; }
 
 header { text-align: center; margin-bottom: 16px; }
-h1     { font-size: 18px; font-weight: 600; color: var(--c-text-strong); margin-bottom: 4px; }
-.subtitle { font-size: 12px; color: var(--c-text-muted); }
+.header-logo { width: 100%; height: auto; }
+.subtitle { font-size: 12px; color: var(--c-text-muted); margin-top: 4px; }
 
 code {
   font-family: var(--c-mono);
@@ -298,3 +298,48 @@ footer code { background: var(--c-surface); font-size: 11px; padding: 2px 6px; b
   line-height: 1;
 }
 .btn-copy:hover { background: var(--c-red-bg); }
+
+/* ── Dark mode ───────────────────────────────────────────────────────────── */
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --c-text:       #e0e0e0;
+    --c-text-strong:#f0f0f0;
+    --c-text-muted: #aaa;
+    --c-text-dim:   #777;
+    --c-bg:         #1e1e2e;
+    --c-surface:    #2a2a3e;
+    --c-border:     #3a3a4e;
+    --c-code-bg:    #2a2a3e;
+
+    --c-green-bg:   #1a3a1e;  --c-green-text: #81c784;
+    --c-red-bg:     #3a1a1a;  --c-red-text:   #ef9a9a;  --c-red-border: #5a2a2a;
+    --c-blue-bg:    #1a2a3a;  --c-blue-text:  #90caf9;
+    --c-orange-bg:  #3a2a1a;  --c-orange-text:#ffcc80;
+
+    --c-green:    #388e3c;  --c-green-dk:  #2e7d32;
+    --c-red:      #c62828;  --c-red-dk:    #b71c1c;
+    --c-blue:     #1565c0;  --c-blue-dk:   #0d47a1;
+    --c-amber:    #c48a0c;  --c-amber-dk:  #a67508;
+  }
+
+  .btn-primary   { --_bg: rgba(76, 175, 80, 0.15);  --_bg-hover: rgba(76, 175, 80, 0.25);  color: #81c784; }
+  .btn-danger    { --_bg: rgba(244, 67, 54, 0.15);  --_bg-hover: rgba(244, 67, 54, 0.25);  color: #ef9a9a; }
+  .btn-secondary { --_bg: rgba(33, 150, 243, 0.15);  --_bg-hover: rgba(33, 150, 243, 0.25);  color: #90caf9; }
+  .btn-accent    { --_bg: rgba(245, 158, 11, 0.15);  --_bg-hover: rgba(245, 158, 11, 0.25);  color: #ffcc80; }
+
+  .btn:hover:not(:disabled) { box-shadow: 0 2px 8px rgba(0,0,0,.3); }
+
+  .btn-toggle {
+    background: rgba(76, 175, 80, 0.15);
+    color: #81c784;
+    border-left-color: rgba(255, 255, 255, 0.1);
+  }
+  .btn-toggle:hover { background: rgba(76, 175, 80, 0.25); }
+
+  .btn-copy {
+    border-color: var(--c-red-border);
+    background: var(--c-surface);
+  }
+  .btn-copy:hover { background: var(--c-red-bg); }
+}

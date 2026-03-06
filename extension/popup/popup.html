@@ -3,14 +3,18 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=320">
-  <title>API Discover</title>
+  <title>Spectral</title>
   <link rel="stylesheet" href="popup.css">
 </head>
 <body>
   <div class="container">
     <header>
-      <h1>API Discover</h1>
-      <p class="subtitle">Capture network traffic & UI context</p>
+      <picture>
+        <source media="(prefers-color-scheme: dark)" srcset="banner-wide-dark.png">
+        <source media="(prefers-color-scheme: light)" srcset="banner-wide-light.png">
+        <img src="banner-wide-dark.png" alt="Spectral" class="header-logo">
+      </picture>
+      <p class="subtitle">API capture & analysis</p>
     </header>
 
     <div id="status" class="status status-idle">
@@ -39,13 +43,13 @@
 
     <div class="actions">
       <button id="btn-grab-auth" class="btn btn-accent hidden">
-        <span class="btn-icon">&#128274;</span>
-        Grab Auth
+        <span class="btn-icon">&#128273;</span>
+        Extract Login
       </button>
       <div class="btn-row">
         <button id="btn-start" class="btn btn-primary">
-          <span class="btn-icon">&#9658;</span>
-          Start Capture
+          <span class="btn-icon">&#9210;</span>
+          Record
         </button>
         <button id="btn-toggle-settings" class="btn-toggle" aria-expanded="false" title="Capture settings">&#9881;</button>
       </div>
@@ -63,12 +67,8 @@
         </label>
       </div>
       <button id="btn-stop" class="btn btn-danger hidden">
-        <span class="btn-icon">&#9632;</span>
-        Stop Capture
-      </button>
-      <button id="btn-export" class="btn btn-secondary hidden">
-        <span class="btn-icon">&#10148;</span>
-        Send to Spectral
+        <span class="btn-icon">&#9209;</span>
+        Stop &amp; Send
       </button>
     </div>
 

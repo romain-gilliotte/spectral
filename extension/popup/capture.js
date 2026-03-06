@@ -1,5 +1,5 @@
 /**
- * Capture flow: start, stop, send, and status polling.
+ * Capture flow: start, stop+send, and status polling.
  */
 
 import { state, showError, updateUI, formatDuration } from './ui.js';
@@ -35,7 +35,7 @@ export async function startCapture() {
 }
 
 /**
- * Stop capture.
+ * Stop capture and automatically send to CLI via native messaging.
  */
 export async function stopCapture() {
   const btnStop = document.getElementById('btn-stop');
@@ -43,56 +43,42 @@ export async function stopCapture() {
     btnStop.disabled = true;
     stopStatusPolling();
 
-    const response = await chrome.runtime.sendMessage({
+    const stopResponse = await chrome.runtime.sendMessage({
       type: 'STOP_CAPTURE',
     });
 
-    if (response.error) {
-      throw new Error(response.error);
+    if (stopResponse.error) {
+      throw new Error(stopResponse.error);
     }
 
-    state.lastStats = response.stats;
-    updateUI('idle');
-  } catch (error) {
-    showError(`Failed to stop: ${error.message}`);
-  } finally {
-    btnStop.disabled = false;
-  }
-}
+    const stats = stopResponse.stats;
 
-/**
- * Send capture to spectral CLI via native messaging.
- */
-export async function sendCapture() {
-  const btnExport = document.getElementById('btn-export');
-  try {
-    btnExport.disabled = true;
+    if (!stats || stats.trace_count === 0) {
+      state.lastStats = null;
+      updateUI('idle');
+      showError('Nothing captured');
+      return;
+    }
+
+    state.lastStats = stats;
     updateUI('sending');
 
-    const response = await chrome.runtime.sendMessage({
+    const sendResponse = await chrome.runtime.sendMessage({
       type: 'SEND_CAPTURE',
     });
 
-    if (response.error) {
-      if (chrome.runtime.lastError &&
-          chrome.runtime.lastError.message &&
-          chrome.runtime.lastError.message.includes('native messaging host not found')) {
-        throw new Error(`Native host not found. Run: spectral extension install --extension-id ${chrome.runtime.id}`);
-      }
-      throw new Error(response.error);
+    if (sendResponse.error) {
+      throw new Error(sendResponse.error);
     }
 
+    state.sentCount = stats.trace_count;
     state.lastStats = null;
     updateUI('idle');
   } catch (error) {
-    if (error.message && error.message.includes('native messaging host not found')) {
-      showError(`Native host not found. Run: spectral extension install --extension-id ${chrome.runtime.id}`);
-    } else {
-      showError(`Failed to send: ${error.message}`);
-    }
+    showError(`Failed: ${error.message}`);
     updateUI('idle');
   } finally {
-    btnExport.disabled = false;
+    btnStop.disabled = false;
   }
 }
 
