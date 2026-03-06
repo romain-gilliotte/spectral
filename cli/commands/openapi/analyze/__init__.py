@@ -23,7 +23,6 @@ from cli.commands.openapi.analyze.types import (
 )
 from cli.helpers.correlator import Correlation
 from cli.helpers.detect_base_url import MethodUrlPair
-from cli.helpers.schemas import resolve_map_candidates
 
 
 async def rest_analyze(
@@ -36,12 +35,8 @@ async def rest_analyze(
     on_progress: Callable[[str], None],
 ) -> dict[str, Any]:
     """Run the full REST analysis pipeline and return an OpenAPI 3.1 dict."""
-    # Phase A: Mechanical extraction
+    # Phase A: Mechanical extraction (includes map resolution via analyze_schema)
     endpoints, _ = await _rest_extract(traces, base_url, on_progress)
-
-    # Phase A.5: LLM map candidate resolution (before enrichment)
-    if not skip_enrich:
-        await _resolve_endpoint_maps(endpoints)
 
     # Phase B: Enrichment (optional)
     enriched: list[EndpointSpec] | None = None
@@ -100,13 +95,3 @@ async def _rest_extract(
     return endpoints, endpoint_groups
 
 
-async def _resolve_endpoint_maps(endpoints: list[EndpointSpec]) -> None:
-    """Collect all endpoint schemas and resolve map candidates via LLM."""
-    all_schemas: list[dict[str, Any]] = []
-    for ep in endpoints:
-        if ep.request.body_schema:
-            all_schemas.append(ep.request.body_schema)
-        for resp in ep.responses:
-            if resp.schema_:
-                all_schemas.append(resp.schema_)
-    await resolve_map_candidates(all_schemas)

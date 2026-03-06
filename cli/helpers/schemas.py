@@ -10,26 +10,31 @@ from __future__ import annotations
 
 from collections import defaultdict
 import re
-from typing import Any, cast
+from typing import Any
 from urllib.parse import parse_qs, urlparse
 
 from cli.commands.capture.types import Trace
-from cli.helpers.json.schema_inference import (
-    collect_observed,
-    detect_format,
-    infer_schema,
-    infer_type_from_values,
-    merge_property_schemas,
-)
-import cli.helpers.llm as llm
+from cli.helpers.json import infer_schema
 
 # Re-export for convenience
 __all__ = [
     "infer_schema",
     "infer_path_schema",
     "infer_query_schema",
-    "resolve_map_candidates",
 ]
+
+
+def _coerce_value(s: str) -> Any:
+    """Convert a string value to its natural Python type."""
+    if s.isdigit():
+        return int(s)
+    try:
+        return float(s)
+    except ValueError:
+        pass
+    if s.lower() in ("true", "false"):
+        return s.lower() == "true"
+    return s
 
 
 def _extract_path_param_values(
@@ -62,6 +67,30 @@ def _extract_path_param_values(
     return result
 
 
+def _build_samples(
+    observed: dict[str, list[str]],
+) -> list[dict[str, Any]]:
+    """Zip per-param value lists into sample dicts with coerced values.
+
+    Each sample dict maps parameter names to coerced Python values.  The
+    number of samples equals the length of the longest value list; shorter
+    lists are padded by repeating the last value.
+    """
+    if not observed:
+        return []
+    max_len = max(len(vals) for vals in observed.values())
+    if max_len == 0:
+        return []
+    samples: list[dict[str, Any]] = []
+    for i in range(max_len):
+        sample: dict[str, Any] = {}
+        for name, vals in observed.items():
+            raw = vals[i] if i < len(vals) else vals[-1]
+            sample[name] = _coerce_value(raw)
+        samples.append(sample)
+    return samples
+
+
 def infer_path_schema(
     traces: list[Trace], path_pattern: str
 ) -> dict[str, Any] | None:
@@ -79,24 +108,10 @@ def infer_path_schema(
         return None
 
     observed = _extract_path_param_values(traces, path_pattern, param_names)
-
-    properties: dict[str, Any] = {}
-    for name in param_names:
-        values = observed.get(name, [])
-        ptype = infer_type_from_values(values) if values else "string"
-        prop: dict[str, Any] = {"type": ptype}
-        if ptype == "string" and values:
-            fmt = detect_format(values)
-            if fmt:
-                prop["format"] = fmt
-        prop["observed"] = collect_observed(values)
-        properties[name] = prop
-
-    return {
-        "type": "object",
-        "properties": properties,
-        "required": list(param_names),
-    }
+    samples = _build_samples(observed)
+    schema = infer_schema(samples) if samples else infer_schema([{name: "" for name in param_names}])
+    schema["required"] = list(param_names)
+    return schema
 
 
 def infer_query_schema(traces: list[Trace]) -> dict[str, Any] | None:
@@ -108,6 +123,7 @@ def infer_query_schema(traces: list[Trace]) -> dict[str, Any] | None:
 
     Returns ``None`` when no query parameters are found.
     """
+    # Collect raw string values per query parameter across all traces.
     raw_params: dict[str, list[str]] = defaultdict(list)
     for trace in traces:
         parsed = urlparse(trace.meta.request.url)
@@ -118,123 +134,18 @@ def infer_query_schema(traces: list[Trace]) -> dict[str, Any] | None:
     if not raw_params:
         return None
 
-    properties: dict[str, Any] = {}
-    for name, values in raw_params.items():
-        ptype = infer_type_from_values(values)
-        prop: dict[str, Any] = {"type": ptype}
-        if ptype == "string" and values:
-            fmt = detect_format(values)
-            if fmt:
-                prop["format"] = fmt
-        prop["observed"] = collect_observed(values)
-        properties[name] = prop
+    # Build one sample dict per trace, coercing string values to Python types.
+    samples: list[dict[str, Any]] = []
+    for trace in traces:
+        parsed = urlparse(trace.meta.request.url)
+        qs = parse_qs(parsed.query)
+        if qs:
+            sample: dict[str, Any] = {}
+            for key, values in qs.items():
+                sample[key] = _coerce_value(values[0])
+            samples.append(sample)
 
-    return {"type": "object", "properties": properties}
+    if not samples:
+        return None
 
-
-# ---------------------------------------------------------------------------
-# LLM-based map candidate resolution
-# ---------------------------------------------------------------------------
-
-
-def _collect_map_candidates(
-    schema: dict[str, Any], path: str = ""
-) -> list[tuple[str, dict[str, Any], dict[str, Any]]]:
-    """Walk *schema* recursively, returning ``(path, parent, candidate)`` tuples.
-
-    Each tuple contains the dotted path to the annotated node, a reference to
-    the node itself (so it can be mutated in-place), and the ``x-map-candidate``
-    dict.
-    """
-    results: list[tuple[str, dict[str, Any], dict[str, Any]]] = []
-    candidate: dict[str, Any] | None = schema.get("x-map-candidate")  # pyright: ignore[reportAssignmentType]
-    if isinstance(candidate, dict):
-        results.append((path or "(root)", schema, candidate))
-
-    # Recurse into properties
-    for key, prop in schema.get("properties", {}).items():
-        if isinstance(prop, dict):
-            child_path = f"{path}.{key}" if path else key
-            results.extend(_collect_map_candidates(cast(dict[str, Any], prop), child_path))
-
-    # Recurse into additionalProperties
-    addl: dict[str, Any] | None = schema.get("additionalProperties")  # pyright: ignore[reportAssignmentType]
-    if isinstance(addl, dict):
-        child_path = f"{path}[*]" if path else "[*]"
-        results.extend(_collect_map_candidates(addl, child_path))
-
-    # Recurse into array items
-    items_val: dict[str, Any] | None = schema.get("items")  # pyright: ignore[reportAssignmentType]
-    if isinstance(items_val, dict):
-        child_path = f"{path}[]" if path else "[]"
-        results.extend(_collect_map_candidates(items_val, child_path))
-
-    return results
-
-
-async def resolve_map_candidates(schemas: list[dict[str, Any]]) -> None:
-    """Resolve ``x-map-candidate`` annotations via one batched LLM call.
-
-    Walks all *schemas* (mutating them in-place), collects every
-    ``x-map-candidate`` annotation, and asks the LLM whether each group of
-    keys represents a dynamic map or fixed properties.  Confirmed maps are
-    collapsed to ``additionalProperties``; denied candidates keep their
-    ``properties`` unchanged.
-
-    Skips the LLM call entirely when no candidates are found.
-    """
-    all_candidates: list[tuple[str, dict[str, Any], dict[str, Any]]] = []
-    for schema in schemas:
-        all_candidates.extend(_collect_map_candidates(schema))
-
-    if not all_candidates:
-        return
-
-    # Build a compact prompt with one group per candidate.
-    groups: list[str] = []
-    for i, (_path, _node, candidate) in enumerate(all_candidates, 1):
-        keys_str = ", ".join(f'"{k}"' for k in candidate["keys"])
-        shared_str = ", ".join(candidate["shared_properties"])
-        extra_str = ", ".join(candidate["extra_properties"]) or "(none)"
-        groups.append(
-            f"Group {i}:\n"
-            f"  keys: [{keys_str}]\n"
-            f"  shared properties: [{shared_str}]\n"
-            f"  extra properties: [{extra_str}]"
-        )
-
-    prompt = (
-        "For each group below, determine whether the keys are dynamic IDs "
-        "(a map/dictionary where each key is a unique identifier) or fixed "
-        "property names.\n\n"
-        + "\n\n".join(groups)
-        + "\n\nRespond as a JSON array: "
-        '[{"group": 1, "is_map": true}, ...]'
-    )
-
-    raw = await llm.ask(prompt, label="resolve-map-candidates")
-    parsed = llm.extract_json(raw)
-    decisions: list[dict[str, Any]] = parsed if isinstance(parsed, list) else [parsed]
-
-    decision_map: dict[int, bool] = {}
-    for d in decisions:
-        gnum = d.get("group")
-        is_map = d.get("is_map")
-        if isinstance(gnum, int) and isinstance(is_map, bool):
-            decision_map[gnum] = is_map
-
-    for i, (_path, node, candidate) in enumerate(all_candidates, 1):
-        is_map = decision_map.get(i)
-        if is_map is True:
-            # Collapse properties into additionalProperties.
-            props = node.get("properties", {})
-            all_values: list[Any] = []
-            for prop_schema in props.values():
-                all_values.append(prop_schema)
-            value_schema = merge_property_schemas(all_values) if all_values else {}
-            node.pop("properties", None)
-            node["additionalProperties"] = value_schema
-            node["x-key-pattern"] = "dynamic"
-            node["x-key-examples"] = candidate["keys"][:5]
-        # Always remove the temporary annotation.
-        node.pop("x-map-candidate", None)
+    return infer_schema(samples)

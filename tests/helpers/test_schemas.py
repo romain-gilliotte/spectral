@@ -6,16 +6,13 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
-from cli.helpers.json.schema_inference import (
-    detect_format,
-    infer_schema,
-    infer_type,
-    infer_type_from_values,
-)
+from cli.helpers.json import analyze_schema, infer_schema
+from cli.helpers.json._schema_analysis import _resolve_map_candidates
+from cli.helpers.json._schema_inference import _detect_format, _infer_type
 from cli.helpers.schemas import (
+    _coerce_value,
     infer_path_schema,
     infer_query_schema,
-    resolve_map_candidates,
 )
 from tests.conftest import make_trace
 
@@ -180,57 +177,60 @@ class TestInferSchema:
 
 class TestInferType:
     def test_bool_before_int(self):
-        assert infer_type(True) == "boolean"
+        assert _infer_type(True) == "boolean"
 
     def test_int(self):
-        assert infer_type(42) == "integer"
+        assert _infer_type(42) == "integer"
 
     def test_float(self):
-        assert infer_type(3.14) == "number"
+        assert _infer_type(3.14) == "number"
 
     def test_string(self):
-        assert infer_type("hello") == "string"
+        assert _infer_type("hello") == "string"
 
     def test_list(self):
-        assert infer_type([1, 2]) == "array"
+        assert _infer_type([1, 2]) == "array"
 
     def test_dict(self):
-        assert infer_type({"a": 1}) == "object"
+        assert _infer_type({"a": 1}) == "object"
 
     def test_none(self):
-        assert infer_type(None) == "string"
+        assert _infer_type(None) == "string"
 
 
-class TestInferTypeFromValues:
-    def test_integers(self):
-        assert infer_type_from_values(["1", "2", "3"]) == "integer"
+class TestCoerceValue:
+    def test_integer(self):
+        assert _coerce_value("123") == 123
 
-    def test_numbers(self):
-        assert infer_type_from_values(["1.5", "2.3"]) == "number"
+    def test_float(self):
+        assert _coerce_value("1.5") == 1.5
 
-    def test_booleans(self):
-        assert infer_type_from_values(["true", "false"]) == "boolean"
+    def test_boolean_true(self):
+        assert _coerce_value("true") is True
 
-    def test_strings(self):
-        assert infer_type_from_values(["hello", "world"]) == "string"
+    def test_boolean_false(self):
+        assert _coerce_value("False") is False
+
+    def test_string(self):
+        assert _coerce_value("hello") == "hello"
 
 
 class TestDetectFormat:
     def test_date_time(self):
         assert (
-            detect_format(["2024-01-15T10:30:00Z", "2024-02-20T14:00:00Z"])
+            _detect_format(["2024-01-15T10:30:00Z", "2024-02-20T14:00:00Z"])
             == "date-time"
         )
 
     def test_date_only(self):
-        assert detect_format(["2024-01-15", "2024-02-20"]) == "date"
+        assert _detect_format(["2024-01-15", "2024-02-20"]) == "date"
 
     def test_email(self):
-        assert detect_format(["alice@example.com", "bob@test.org"]) == "email"
+        assert _detect_format(["alice@example.com", "bob@test.org"]) == "email"
 
     def test_uuid(self):
         assert (
-            detect_format(
+            _detect_format(
                 [
                     "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
                     "11111111-2222-3333-4444-555555555555",
@@ -241,15 +241,15 @@ class TestDetectFormat:
 
     def test_uri(self):
         assert (
-            detect_format(["https://example.com/page1", "https://example.com/page2"])
+            _detect_format(["https://example.com/page1", "https://example.com/page2"])
             == "uri"
         )
 
     def test_no_format(self):
-        assert detect_format(["hello", "world"]) is None
+        assert _detect_format(["hello", "world"]) is None
 
     def test_non_string_values(self):
-        assert detect_format([42, 100]) is None
+        assert _detect_format([42, 100]) is None
 
 
 class TestInferPathSchema:
@@ -269,8 +269,8 @@ class TestInferPathSchema:
         assert schema["type"] == "object"
         assert "user_id" in schema["properties"]
         assert schema["required"] == ["user_id"]
-        assert "123" in schema["properties"]["user_id"]["observed"]
-        assert "456" in schema["properties"]["user_id"]["observed"]
+        assert 123 in schema["properties"]["user_id"]["observed"]
+        assert 456 in schema["properties"]["user_id"]["observed"]
 
     def test_uuid_format_detection(self):
         traces = [
@@ -411,7 +411,8 @@ class TestQueryParamExtraction:
 
 
 class TestDynamicKeyDetection:
-    def test_date_keys_detected(self):
+    @pytest.mark.asyncio
+    async def test_date_keys_detected(self):
         samples = [
             {
                 "2025-01-01": 100,
@@ -421,14 +422,15 @@ class TestDynamicKeyDetection:
                 "2025-05-01": 500,
             }
         ]
-        schema = infer_schema(samples)
+        schema = await analyze_schema(samples)
         assert "additionalProperties" in schema
         assert "properties" not in schema
         assert schema["x-key-pattern"] == "date"
         assert schema["additionalProperties"]["type"] == "integer"
         assert len(schema["x-key-examples"]) == 5
 
-    def test_year_keys_detected(self):
+    @pytest.mark.asyncio
+    async def test_year_keys_detected(self):
         samples = [
             {
                 "2022": {"total": 100, "avg": 25},
@@ -437,7 +439,7 @@ class TestDynamicKeyDetection:
                 "2025": {"total": 400, "avg": 100},
             }
         ]
-        schema = infer_schema(samples)
+        schema = await analyze_schema(samples)
         assert "additionalProperties" in schema
         assert "properties" not in schema
         assert schema["x-key-pattern"] == "year"
@@ -446,7 +448,8 @@ class TestDynamicKeyDetection:
         assert "total" in val_schema["properties"]
         assert "avg" in val_schema["properties"]
 
-    def test_numeric_id_keys_detected(self):
+    @pytest.mark.asyncio
+    async def test_numeric_id_keys_detected(self):
         samples = [
             {
                 "706001": "active",
@@ -454,12 +457,13 @@ class TestDynamicKeyDetection:
                 "706003": "active",
             }
         ]
-        schema = infer_schema(samples)
+        schema = await analyze_schema(samples)
         assert "additionalProperties" in schema
         assert schema["x-key-pattern"] == "numeric-id"
         assert schema["additionalProperties"]["type"] == "string"
 
-    def test_uuid_keys_detected(self):
+    @pytest.mark.asyncio
+    async def test_uuid_keys_detected(self):
         samples = [
             {
                 "a1b2c3d4-e5f6-7890-abcd-ef1234567890": 1,
@@ -467,18 +471,20 @@ class TestDynamicKeyDetection:
                 "22222222-3333-4444-5555-666666666666": 3,
             }
         ]
-        schema = infer_schema(samples)
+        schema = await analyze_schema(samples)
         assert "additionalProperties" in schema
         assert schema["x-key-pattern"] == "uuid"
 
-    def test_below_threshold_not_detected(self):
+    @pytest.mark.asyncio
+    async def test_below_threshold_not_detected(self):
         """Two numeric keys are below the minimum threshold — stay as properties."""
         samples = [{"100": "a", "200": "b"}]
-        schema = infer_schema(samples)
+        schema = await analyze_schema(samples)
         assert "properties" in schema
         assert "additionalProperties" not in schema
 
-    def test_mixed_types_not_detected(self):
+    @pytest.mark.asyncio
+    async def test_mixed_types_not_detected(self):
         """Keys match a pattern but values have different types — stay as properties."""
         samples = [
             {
@@ -487,18 +493,20 @@ class TestDynamicKeyDetection:
                 "2025-03-01": 300,
             }
         ]
-        schema = infer_schema(samples)
+        schema = await analyze_schema(samples)
         assert "properties" in schema
         assert "additionalProperties" not in schema
 
-    def test_non_matching_keys_not_detected(self):
+    @pytest.mark.asyncio
+    async def test_non_matching_keys_not_detected(self):
         """Regular field names should not trigger dynamic key detection."""
         samples = [{"name": "Alice", "email": "a@b.com", "age": 30}]
-        schema = infer_schema(samples)
+        schema = await analyze_schema(samples)
         assert "properties" in schema
         assert "additionalProperties" not in schema
 
-    def test_nested_dynamic_keys(self):
+    @pytest.mark.asyncio
+    async def test_nested_dynamic_keys(self):
         """Dynamic keys nested inside a regular object property."""
         samples = [
             {
@@ -509,21 +517,23 @@ class TestDynamicKeyDetection:
                 }
             }
         ]
-        schema = infer_schema(samples)
+        schema = await analyze_schema(samples)
         assert "properties" in schema
         data_prop = schema["properties"]["data"]
         assert data_prop["type"] == "object"
         assert "additionalProperties" in data_prop
         assert data_prop["x-key-pattern"] == "date"
 
-    def test_key_examples_limited(self):
+    @pytest.mark.asyncio
+    async def test_key_examples_limited(self):
         """More than 5 keys should produce at most 5 x-key-examples."""
         samples = [{f"2025-{m:02d}-01": m for m in range(1, 13)}]
-        schema = infer_schema(samples)
+        schema = await analyze_schema(samples)
         assert "additionalProperties" in schema
         assert len(schema["x-key-examples"]) <= 5
 
-    def test_value_schema_merged(self):
+    @pytest.mark.asyncio
+    async def test_value_schema_merged(self):
         """Values from different keys are merged into a unified schema."""
         samples = [
             {
@@ -532,14 +542,15 @@ class TestDynamicKeyDetection:
                 "2025": {"total": 300, "count": 10},
             }
         ]
-        schema = infer_schema(samples)
+        schema = await analyze_schema(samples)
         assert "additionalProperties" in schema
         val_schema = schema["additionalProperties"]
         assert val_schema["type"] == "object"
         assert "total" in val_schema["properties"]
         assert "count" in val_schema["properties"]
 
-    def test_prefixed_uuid_keys_detected(self):
+    @pytest.mark.asyncio
+    async def test_prefixed_uuid_keys_detected(self):
         """Prefixed UUID keys like journey-<uuid> should be detected."""
         samples = [
             {
@@ -548,11 +559,12 @@ class TestDynamicKeyDetection:
                 "fare-a1b2c3d4-e5f6-7890-abcd-ef1234567890": {"id": 3},
             }
         ]
-        schema = infer_schema(samples)
+        schema = await analyze_schema(samples)
         assert "additionalProperties" in schema
         assert schema["x-key-pattern"] == "prefixed-uuid"
 
-    def test_hex_id_keys_detected(self):
+    @pytest.mark.asyncio
+    async def test_hex_id_keys_detected(self):
         """40-char hex hashes (SHA-1) should be detected as hex-id."""
         samples = [
             {
@@ -561,11 +573,12 @@ class TestDynamicKeyDetection:
                 "f1e2d3c4b5a697081234567890abcdef12345678": "val3",
             }
         ]
-        schema = infer_schema(samples)
+        schema = await analyze_schema(samples)
         assert "additionalProperties" in schema
         assert schema["x-key-pattern"] == "hex-id"
 
-    def test_short_hex_not_detected(self):
+    @pytest.mark.asyncio
+    async def test_short_hex_not_detected(self):
         """Hex strings under 20 chars should not be detected as hex-id."""
         samples = [
             {
@@ -574,11 +587,12 @@ class TestDynamicKeyDetection:
                 "789abc": "val3",
             }
         ]
-        schema = infer_schema(samples)
+        schema = await analyze_schema(samples)
         assert "properties" in schema
         assert "additionalProperties" not in schema
 
-    def test_single_hex_id_detected(self):
+    @pytest.mark.asyncio
+    async def test_single_hex_id_detected(self):
         """A single 40-char hex key is enough to trigger hex-id detection."""
         samples = [
             {
@@ -588,49 +602,55 @@ class TestDynamicKeyDetection:
                 }
             }
         ]
-        schema = infer_schema(samples)
+        schema = await analyze_schema(samples)
         assert "additionalProperties" in schema
         assert schema["x-key-pattern"] == "hex-id"
 
-    def test_single_uuid_key_detected(self):
+    @pytest.mark.asyncio
+    async def test_single_uuid_key_detected(self):
         """A single UUID key is enough to trigger uuid detection."""
         samples = [
             {
                 "a1b2c3d4-e5f6-7890-abcd-ef1234567890": {"status": "active"}
             }
         ]
-        schema = infer_schema(samples)
+        schema = await analyze_schema(samples)
         assert "additionalProperties" in schema
         assert schema["x-key-pattern"] == "uuid"
 
 
 class TestStructuralAnnotation:
-    def test_structural_candidate_annotated(self):
-        """5+ keys with same-shape object values should get x-map-candidate."""
+    @pytest.mark.asyncio
+    async def test_structural_candidate_resolved(self):
+        """5+ keys with same-shape object values → LLM asked to resolve."""
         samples = [
             {
                 f"key-{i}": {"id": i, "name": f"item-{i}", "active": True}
                 for i in range(6)
             }
         ]
-        schema = infer_schema(samples)
-        assert "x-map-candidate" in schema
-        assert "properties" in schema  # properties preserved
-        candidate = schema["x-map-candidate"]
-        assert len(candidate["keys"]) <= 10
-        assert "id" in candidate["shared_properties"]
-        assert "name" in candidate["shared_properties"]
+        mock_ask = AsyncMock(return_value='[{"group": 1, "is_map": true}]')
+        with patch("cli.helpers.json._schema_analysis.llm") as mock_llm:
+            mock_llm.ask = mock_ask
+            mock_llm.extract_json = __import__("cli.helpers.llm", fromlist=["extract_json"]).extract_json
+            schema = await analyze_schema(samples)
 
-    def test_structural_ignores_scalars(self):
+        assert "additionalProperties" in schema
+        assert "properties" not in schema
+        assert schema["x-key-pattern"] == "dynamic"
+
+    @pytest.mark.asyncio
+    async def test_structural_ignores_scalars(self):
         """5+ keys with scalar values should not be annotated."""
         samples = [
             {f"key-{i}": f"value-{i}" for i in range(6)}
         ]
-        schema = infer_schema(samples)
+        schema = await analyze_schema(samples)
         assert "x-map-candidate" not in schema
         assert "properties" in schema
 
-    def test_structural_below_threshold(self):
+    @pytest.mark.asyncio
+    async def test_structural_below_threshold(self):
         """4 keys same shape should not be annotated (below _MIN_STRUCTURAL_KEYS)."""
         samples = [
             {
@@ -638,10 +658,11 @@ class TestStructuralAnnotation:
                 for i in range(4)
             }
         ]
-        schema = infer_schema(samples)
+        schema = await analyze_schema(samples)
         assert "x-map-candidate" not in schema
 
-    def test_structural_low_overlap(self):
+    @pytest.mark.asyncio
+    async def test_structural_low_overlap(self):
         """5+ keys with <50% property overlap should not be annotated."""
         samples = [
             {
@@ -652,7 +673,7 @@ class TestStructuralAnnotation:
                 "key-4": {"i": 9, "j": 10},
             }
         ]
-        schema = infer_schema(samples)
+        schema = await analyze_schema(samples)
         assert "x-map-candidate" not in schema
 
 
@@ -674,10 +695,10 @@ class TestResolveMapCandidates:
         }
 
         mock_ask = AsyncMock(return_value='[{"group": 1, "is_map": true}]')
-        with patch("cli.helpers.schemas.llm") as mock_llm:
+        with patch("cli.helpers.json._schema_analysis.llm") as mock_llm:
             mock_llm.ask = mock_ask
             mock_llm.extract_json = __import__("cli.helpers.llm", fromlist=["extract_json"]).extract_json
-            await resolve_map_candidates([schema])
+            await _resolve_map_candidates(schema)
 
         assert "additionalProperties" in schema
         assert "properties" not in schema
@@ -701,10 +722,10 @@ class TestResolveMapCandidates:
         }
 
         mock_ask = AsyncMock(return_value='[{"group": 1, "is_map": false}]')
-        with patch("cli.helpers.schemas.llm") as mock_llm:
+        with patch("cli.helpers.json._schema_analysis.llm") as mock_llm:
             mock_llm.ask = mock_ask
             mock_llm.extract_json = __import__("cli.helpers.llm", fromlist=["extract_json"]).extract_json
-            await resolve_map_candidates([schema])
+            await _resolve_map_candidates(schema)
 
         assert "properties" in schema
         assert "additionalProperties" not in schema
@@ -719,9 +740,9 @@ class TestResolveMapCandidates:
         }
 
         mock_ask = AsyncMock()
-        with patch("cli.helpers.schemas.llm") as mock_llm:
+        with patch("cli.helpers.json._schema_analysis.llm") as mock_llm:
             mock_llm.ask = mock_ask
-            await resolve_map_candidates([schema])
+            await _resolve_map_candidates(schema)
 
         mock_ask.assert_not_called()
 
@@ -748,10 +769,10 @@ class TestResolveMapCandidates:
         }
 
         mock_ask = AsyncMock(return_value='[{"group": 1, "is_map": true}]')
-        with patch("cli.helpers.schemas.llm") as mock_llm:
+        with patch("cli.helpers.json._schema_analysis.llm") as mock_llm:
             mock_llm.ask = mock_ask
             mock_llm.extract_json = __import__("cli.helpers.llm", fromlist=["extract_json"]).extract_json
-            await resolve_map_candidates([schema])
+            await _resolve_map_candidates(schema)
 
         # The inner schema should be collapsed
         data_prop = schema["properties"]["data"]

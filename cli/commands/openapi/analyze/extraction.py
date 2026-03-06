@@ -17,11 +17,8 @@ from cli.commands.openapi.analyze.types import (
     ResponseSpec,
 )
 from cli.helpers.http import get_header
-from cli.helpers.schemas import (
-    infer_path_schema,
-    infer_query_schema,
-    infer_schema,
-)
+from cli.helpers.json import analyze_schema
+from cli.helpers.schemas import infer_path_schema, infer_query_schema
 
 
 def pattern_to_regex(pattern: str) -> re.Pattern[str]:
@@ -45,7 +42,7 @@ async def mechanical_extraction(
     endpoints: list[EndpointSpec] = []
     for group in groups:
         group_traces = find_traces_for_group(group, traces)
-        endpoint = _build_endpoint_mechanical(
+        endpoint = await _build_endpoint_mechanical(
             group.method, group.pattern, group_traces,
         )
         endpoints.append(endpoint)
@@ -102,7 +99,7 @@ def _collect_json_bodies(
     return results
 
 
-def _build_endpoint_mechanical(
+async def _build_endpoint_mechanical(
     method: str,
     path_pattern: str,
     traces: list[Trace],
@@ -110,8 +107,8 @@ def _build_endpoint_mechanical(
     """Build an endpoint spec from grouped traces (mechanical only)."""
     endpoint_id = _make_endpoint_id(method, path_pattern)
 
-    request_spec = _build_request_spec(traces, path_pattern)
-    response_specs = _build_response_specs(traces)
+    request_spec = await _build_request_spec(traces, path_pattern)
+    response_specs = await _build_response_specs(traces)
 
     return EndpointSpec(
         id=endpoint_id,
@@ -129,7 +126,7 @@ def _make_endpoint_id(method: str, path: str) -> str:
     return f"{method.lower()}_{clean}" if clean else method.lower()
 
 
-def _build_request_spec(traces: list[Trace], path_pattern: str) -> RequestSpec:
+async def _build_request_spec(traces: list[Trace], path_pattern: str) -> RequestSpec:
     """Build request spec from observed traces using annotated schemas."""
     path_schema = infer_path_schema(traces, path_pattern)
     query_schema = infer_query_schema(traces)
@@ -141,7 +138,7 @@ def _build_request_spec(traces: list[Trace], path_pattern: str) -> RequestSpec:
             content_type = ct
 
     body_samples = _collect_json_bodies(traces, lambda t: t.request_body)
-    body_schema = infer_schema(body_samples) if body_samples else None
+    body_schema = await analyze_schema(body_samples) if body_samples else None
 
     return RequestSpec(
         content_type=content_type,
@@ -151,7 +148,7 @@ def _build_request_spec(traces: list[Trace], path_pattern: str) -> RequestSpec:
     )
 
 
-def _build_response_specs(traces: list[Trace]) -> list[ResponseSpec]:
+async def _build_response_specs(traces: list[Trace]) -> list[ResponseSpec]:
     """Build response specs from observed traces, grouped by status code."""
     by_status: dict[int, list[Trace]] = defaultdict(list)
     for t in traces:
@@ -172,7 +169,7 @@ def _build_response_specs(traces: list[Trace]) -> list[ResponseSpec]:
 
         body_samples = _collect_json_bodies(status_traces, lambda t: t.response_body)
         if body_samples:
-            schema = infer_schema(body_samples)
+            schema = await analyze_schema(body_samples)
 
         specs.append(
             ResponseSpec(

@@ -15,8 +15,7 @@ import jq
 
 from cli.commands.capture.types import Context, Trace
 from cli.helpers.http import sanitize_headers
-from cli.helpers.json import minified, truncate_json
-from cli.helpers.json.schema_inference import infer_schema
+from cli.helpers.json import infer_schema, minified, truncate_json
 from cli.helpers.llm_tools import INVESTIGATION_TOOLS, TOOL_EXECUTORS
 
 
@@ -41,9 +40,7 @@ def make_inspect_trace_tool() -> dict[str, Any]:
     }
 
 
-def execute_inspect_trace(
-    inp: dict[str, Any], index: dict[str, Trace]
-) -> str:
+def execute_inspect_trace(inp: dict[str, Any], index: dict[str, Trace]) -> str:
     trace = index.get(inp["trace_id"])
     if trace is None:
         return f"Trace {inp['trace_id']} not found"
@@ -65,18 +62,18 @@ def execute_inspect_trace(
                 json.loads(trace.request_body), max_keys=30
             )
         except (json.JSONDecodeError, UnicodeDecodeError):
-            result["request_body_raw"] = trace.request_body.decode(
-                errors="replace"
-            )[:2000]
+            result["request_body_raw"] = trace.request_body.decode(errors="replace")[
+                :2000
+            ]
     if trace.response_body:
         try:
             result["response_body"] = truncate_json(
                 json.loads(trace.response_body), max_keys=30
             )
         except (json.JSONDecodeError, UnicodeDecodeError):
-            result["response_body_raw"] = trace.response_body.decode(
-                errors="replace"
-            )[:2000]
+            result["response_body_raw"] = trace.response_body.decode(errors="replace")[
+                :2000
+            ]
     serialized = minified(result)
     if len(serialized) > 4000:
         # Re-truncate with tighter limits to stay under budget
@@ -113,9 +110,7 @@ def _make_inspect_request_tool() -> dict[str, Any]:
     }
 
 
-def _execute_inspect_request(
-    inp: dict[str, Any], index: dict[str, Trace]
-) -> str:
+def _execute_inspect_request(inp: dict[str, Any], index: dict[str, Trace]) -> str:
     trace = index.get(inp["trace_id"])
     if trace is None:
         return f"Trace {inp['trace_id']} not found"
@@ -134,9 +129,9 @@ def _execute_inspect_request(
                 json.loads(trace.request_body), max_keys=20
             )
         except (json.JSONDecodeError, UnicodeDecodeError):
-            result["request_body_raw"] = trace.request_body.decode(
-                errors="replace"
-            )[:1000]
+            result["request_body_raw"] = trace.request_body.decode(errors="replace")[
+                :1000
+            ]
     return minified(result)
 
 
@@ -162,9 +157,7 @@ def _make_infer_request_schema_tool() -> dict[str, Any]:
     }
 
 
-def _execute_infer_request_schema(
-    inp: dict[str, Any], index: dict[str, Trace]
-) -> str:
+def _execute_infer_request_schema(inp: dict[str, Any], index: dict[str, Trace]) -> str:
     trace_ids: list[str] = inp["trace_ids"]
     samples: list[dict[str, Any]] = []
     for tid in trace_ids:
@@ -240,9 +233,7 @@ def _build_trace_record(trace: Trace) -> dict[str, Any]:
     return record
 
 
-def _execute_query_traces(
-    inp: dict[str, Any], traces: list[Trace]
-) -> str:
+def _execute_query_traces(inp: dict[str, Any], traces: list[Trace]) -> str:
     expression: str = inp.get("expression", "")
     if not expression:
         return "The 'expression' parameter is required."
@@ -289,9 +280,7 @@ def _make_inspect_context_tool() -> dict[str, Any]:
     }
 
 
-def _execute_inspect_context(
-    inp: dict[str, Any], index: dict[str, Context]
-) -> str:
+def _execute_inspect_context(inp: dict[str, Any], index: dict[str, Context]) -> str:
     ctx = index.get(inp["context_id"])
     if ctx is None:
         return f"Context {inp['context_id']} not found"
@@ -345,9 +334,7 @@ def make_mcp_tools(
 
     executors: dict[str, Callable[[dict[str, Any]], str]] = {
         **TOOL_EXECUTORS,
-        "inspect_request": lambda inp: _execute_inspect_request(
-            inp, trace_index
-        ),
+        "inspect_request": lambda inp: _execute_inspect_request(inp, trace_index),
         "inspect_trace": lambda inp: execute_inspect_trace(inp, trace_index),
         "infer_request_schema": lambda inp: _execute_infer_request_schema(
             inp, trace_index

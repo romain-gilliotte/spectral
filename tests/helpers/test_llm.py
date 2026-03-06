@@ -388,7 +388,7 @@ class TestCompactJson:
 
 class TestReadableJson:
     def test_collapses_short_blocks(self):
-        from cli.helpers.json.serialization import compact
+        from cli.helpers.json import compact
 
         obj = {"name": "Alice", "tags": ["admin", "user"], "address": {"city": "Paris", "zip": "75001"}}
         result = compact(obj)
@@ -399,7 +399,7 @@ class TestReadableJson:
         assert "\n" in result
 
     def test_expands_large_blocks(self):
-        from cli.helpers.json.serialization import compact
+        from cli.helpers.json import compact
 
         obj = {"data": ["a" * 30, "b" * 30, "c" * 30]}
         result = compact(obj)

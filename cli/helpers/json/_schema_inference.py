@@ -1,0 +1,182 @@
+"""Pure JSON schema inference from object samples.
+
+Operates solely on ``list[dict[str, Any]]`` inputs.  Never produces
+``additionalProperties`` or map-candidate annotations — that logic lives
+in ``_schema_analysis``.
+"""
+
+from __future__ import annotations
+
+from collections import defaultdict
+import re
+from typing import Any
+
+
+def _infer_type(value: Any) -> str:
+    """Infer JSON schema type from a Python value."""
+    if isinstance(value, bool):
+        return "boolean"
+    if isinstance(value, int):
+        return "integer"
+    if isinstance(value, float):
+        return "number"
+    if isinstance(value, str):
+        return "string"
+    if isinstance(value, list):
+        return "array"
+    if isinstance(value, dict):
+        return "object"
+    return "string"
+
+
+def _detect_format(values: list[Any]) -> str | None:
+    """Detect common string formats."""
+    str_values = [v for v in values if isinstance(v, str)]
+    if not str_values:
+        return None
+
+    if all(re.match(r"^\d{4}-\d{2}-\d{2}", v) for v in str_values):
+        return "date-time" if any("T" in v for v in str_values) else "date"
+
+    if all(re.match(r"^[^@]+@[^@]+\.[^@]+$", v) for v in str_values):
+        return "email"
+
+    if all(
+        re.match(
+            r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$", v, re.I
+        )
+        for v in str_values
+    ):
+        return "uuid"
+
+    if all(re.match(r"^https?://", v) for v in str_values):
+        return "uri"
+
+    return None
+
+
+def _collect_observed(values: list[Any], max_count: int = 5) -> list[Any]:
+    """Collect up to *max_count* distinct observed values."""
+    seen: list[Any] = []
+    seen_set: set[str | int | float | bool | None] = set()
+    for v in values:
+        try:
+            hashable: str | int | float | bool | None = (
+                v if not isinstance(v, (dict, list)) else str(v)  # pyright: ignore[reportUnknownArgumentType]
+            )
+            if hashable not in seen_set:
+                seen_set.add(hashable)
+                seen.append(v)
+                if len(seen) >= max_count:
+                    break
+        except TypeError:
+            seen.append(v)
+            if len(seen) >= max_count:
+                break
+    return seen
+
+
+def infer_schema(samples: list[dict[str, Any]]) -> dict[str, Any]:
+    """Infer a JSON schema from multiple object samples, annotated with observed values.
+
+    Recursively explores nested objects and arrays of objects so that the
+    resulting schema fully describes the structure at every level.
+
+    Each property carries its type, optional format, and an "observed" list of up
+    to 5 distinct values seen across samples.
+
+    Returns a dict like:
+    {
+        "type": "object",
+        "properties": {
+            "status": {"type": "string", "observed": ["active", "inactive"]},
+            "count": {"type": "integer", "observed": [1, 5, 10]},
+            "address": {
+                "type": "object",
+                "properties": {
+                    "city": {"type": "string", "observed": ["Paris"]}
+                }
+            }
+        }
+    }
+    """
+    return _infer_object_schema(samples)
+
+
+def _infer_object_schema(samples: list[dict[str, Any]]) -> dict[str, Any]:
+    """Infer schema for a list of object samples (recursive)."""
+    all_keys: dict[str, list[Any]] = defaultdict(list)
+    for sample in samples:
+        for key, value in sample.items():
+            all_keys[key].append(value)
+
+    properties: dict[str, Any] = {}
+    for key, values in all_keys.items():
+        properties[key] = _infer_property(values)
+
+    return {"type": "object", "properties": properties}
+
+
+def _infer_property(values: list[Any]) -> dict[str, Any]:
+    """Infer schema for a single property from its observed values."""
+    # Skip None values when determining the type so that a leading null
+    # doesn't shadow the real type (e.g. [None, {"lon": 4.8}] → object).
+    non_null = [v for v in values if v is not None]
+    representative = non_null[0] if non_null else None
+    prop_type = _infer_type(representative)
+    prop: dict[str, Any] = {"type": prop_type}
+
+    if prop_type == "string" and non_null:
+        fmt = _detect_format(non_null)
+        if fmt:
+            prop["format"] = fmt
+
+    if prop_type == "object":
+        # Recurse into nested objects
+        dict_values: list[dict[str, Any]] = [v for v in non_null if isinstance(v, dict)]
+        if dict_values:
+            nested = _infer_object_schema(dict_values)
+            for k, v in nested.items():
+                if k != "type":
+                    prop[k] = v
+
+    if prop_type == "array":
+        # Infer items schema from array contents — observed goes on items, not here
+        items_schema = _infer_array_items(non_null)
+        if items_schema:
+            prop["items"] = items_schema
+        return prop
+
+    prop["observed"] = _collect_observed(values)
+    return prop
+
+
+def _infer_array_items(array_values: list[Any]) -> dict[str, Any] | None:
+    """Infer the items schema for an array property.
+
+    Collects all elements from all observed arrays and infers a unified schema.
+    """
+    all_elements: list[Any] = []
+    for v in array_values:
+        if isinstance(v, list):
+            all_elements.extend(v)  # pyright: ignore[reportUnknownArgumentType]
+
+    if not all_elements:
+        return None
+
+    # If all elements are objects, recurse
+    dict_elements: list[dict[str, Any]] = [
+        e for e in all_elements if isinstance(e, dict)
+    ]
+    if dict_elements and len(dict_elements) == len(all_elements):
+        return _infer_object_schema(dict_elements)
+
+    # Otherwise infer a scalar type from the first element
+    item_type = _infer_type(all_elements[0])
+    schema: dict[str, Any] = {"type": item_type}
+    if item_type == "string":
+        fmt = _detect_format(all_elements)
+        if fmt:
+            schema["format"] = fmt
+    schema["observed"] = _collect_observed(all_elements)
+    return schema

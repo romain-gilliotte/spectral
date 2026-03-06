@@ -548,7 +548,7 @@ def compact_json(obj: Any) -> str:
 
     .. deprecated:: Use :func:`cli.helpers.json.minified` instead.
     """
-    from cli.helpers.json.serialization import minified
+    from cli.helpers.json import minified
 
     return minified(obj)
 
@@ -558,7 +558,7 @@ def truncate_json(obj: Any, max_keys: int = 10, max_depth: int = 4) -> Any:
 
     .. deprecated:: Use :func:`cli.helpers.json.truncate_json` instead.
     """
-    from cli.helpers.json.simplification import truncate_json as _truncate_json
+    from cli.helpers.json import truncate_json as _truncate_json
 
     return _truncate_json(obj, max_keys, max_depth)
 
@@ -610,7 +610,7 @@ def _reformat_debug_text(text: str) -> str:
     (including those inside markdown code fences) while leaving non-JSON
     lines untouched.
     """
-    from cli.helpers.json.serialization import compact
+    from cli.helpers.json import compact
 
     lines = text.split("\n")
     result: list[str] = []
