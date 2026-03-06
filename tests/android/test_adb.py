@@ -8,7 +8,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from cli.commands.android.adb import (
+from cli.commands.android.external_tools.adb import (
     AdbError,
     check_adb,
     clear_proxy,

@@ -81,8 +81,8 @@ class TestSignApk:
         keystore = tmp_path / "debug.keystore"
         keystore.write_bytes(b"fake-keystore")
 
-        with patch("cli.commands.android.patch._ensure_tools"):
-            with patch("cli.commands.android.patch._sign_apk") as mock_sign:
+        with patch("cli.commands.android.external_tools.uber_signer.ensure"):
+            with patch("cli.commands.android.external_tools.uber_signer.sign") as mock_sign:
                 result = sign_apk(input_apk, output_apk, keystore)
                 mock_sign.assert_called_once_with(input_apk, output_apk, keystore)
                 assert result == output_apk
@@ -97,24 +97,23 @@ class TestPatchApkDir:
         (input_dir / "split_config.fr.apk").write_bytes(b"split2")
         output_dir = tmp_path / "output"
 
-        with patch("cli.commands.android.patch._ensure_tools"):
-            with patch("cli.commands.android.patch._ensure_debug_keystore"):
-                with patch("cli.commands.android.patch.patch_apk") as mock_patch:
-                    with patch("cli.commands.android.patch.sign_apk") as mock_sign:
+        with patch("cli.commands.android.external_tools.uber_signer.ensure_debug_keystore"), \
+             patch("cli.commands.android.patch.patch_apk") as mock_patch, \
+             patch("cli.commands.android.patch.sign_apk") as mock_sign:
 
-                        def fake_patch(apk: Path, out: Path, keystore: Path) -> Path:
-                            out.parent.mkdir(parents=True, exist_ok=True)
-                            out.write_bytes(b"patched")
-                            return out
+            def fake_patch(apk: Path, out: Path, keystore: Path) -> Path:
+                out.parent.mkdir(parents=True, exist_ok=True)
+                out.write_bytes(b"patched")
+                return out
 
-                        def fake_sign(apk: Path, out: Path, ks: Path) -> Path:
-                            out.write_bytes(b"signed")
-                            return out
+            def fake_sign(apk: Path, out: Path, ks: Path) -> Path:
+                out.write_bytes(b"signed")
+                return out
 
-                        mock_patch.side_effect = fake_patch
-                        mock_sign.side_effect = fake_sign
+            mock_patch.side_effect = fake_patch
+            mock_sign.side_effect = fake_sign
 
-                        result = patch_apk_dir(input_dir, output_dir)
+            result = patch_apk_dir(input_dir, output_dir)
 
         assert result == output_dir
         assert result.is_dir()
@@ -137,24 +136,23 @@ class TestPatchApkDir:
         (input_dir / "split.apk").write_bytes(b"split-data")
         output_dir = tmp_path / "output"
 
-        with patch("cli.commands.android.patch._ensure_tools"):
-            with patch("cli.commands.android.patch._ensure_debug_keystore"):
-                with patch("cli.commands.android.patch.patch_apk") as mock_patch:
-                    with patch("cli.commands.android.patch.sign_apk") as mock_sign:
+        with patch("cli.commands.android.external_tools.uber_signer.ensure_debug_keystore"), \
+             patch("cli.commands.android.patch.patch_apk") as mock_patch, \
+             patch("cli.commands.android.patch.sign_apk") as mock_sign:
 
-                        def fake_patch_fn(apk: Path, out: Path, keystore: Path) -> Path:
-                            out.parent.mkdir(parents=True, exist_ok=True)
-                            out.write_bytes(b"patched")
-                            return out
+            def fake_patch_fn(apk: Path, out: Path, keystore: Path) -> Path:
+                out.parent.mkdir(parents=True, exist_ok=True)
+                out.write_bytes(b"patched")
+                return out
 
-                        def fake_sign_fn(apk: Path, out: Path, ks: Path) -> Path:
-                            out.write_bytes(b"signed")
-                            return out
+            def fake_sign_fn(apk: Path, out: Path, ks: Path) -> Path:
+                out.write_bytes(b"signed")
+                return out
 
-                        mock_patch.side_effect = fake_patch_fn
-                        mock_sign.side_effect = fake_sign_fn
+            mock_patch.side_effect = fake_patch_fn
+            mock_sign.side_effect = fake_sign_fn
 
-                        patch_apk_dir(input_dir, output_dir)
+            patch_apk_dir(input_dir, output_dir)
 
         # First sorted APK (app.apk) used as base
         patched_apk = mock_patch.call_args[0][0]
@@ -181,26 +179,25 @@ class TestPatchApkDir:
 
         keystores_used: list[Path] = []
 
-        with patch("cli.commands.android.patch._ensure_tools"):
-            with patch("cli.commands.android.patch._ensure_debug_keystore"):
-                with patch("cli.commands.android.patch.patch_apk") as mock_patch:
-                    with patch("cli.commands.android.patch.sign_apk") as mock_sign:
+        with patch("cli.commands.android.external_tools.uber_signer.ensure_debug_keystore"), \
+             patch("cli.commands.android.patch.patch_apk") as mock_patch, \
+             patch("cli.commands.android.patch.sign_apk") as mock_sign:
 
-                        def capture_patch(apk: Path, out: Path, keystore: Path) -> Path:
-                            keystores_used.append(keystore)
-                            out.parent.mkdir(parents=True, exist_ok=True)
-                            out.write_bytes(b"patched")
-                            return out
+            def capture_patch(apk: Path, out: Path, keystore: Path) -> Path:
+                keystores_used.append(keystore)
+                out.parent.mkdir(parents=True, exist_ok=True)
+                out.write_bytes(b"patched")
+                return out
 
-                        def capture_sign(apk: Path, out: Path, ks: Path) -> Path:
-                            keystores_used.append(ks)
-                            out.write_bytes(b"signed")
-                            return out
+            def capture_sign(apk: Path, out: Path, ks: Path) -> Path:
+                keystores_used.append(ks)
+                out.write_bytes(b"signed")
+                return out
 
-                        mock_patch.side_effect = capture_patch
-                        mock_sign.side_effect = capture_sign
+            mock_patch.side_effect = capture_patch
+            mock_sign.side_effect = capture_sign
 
-                        patch_apk_dir(input_dir, output_dir)
+            patch_apk_dir(input_dir, output_dir)
 
         # Both calls should use the same keystore
         assert len(keystores_used) == 2

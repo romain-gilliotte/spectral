@@ -4,12 +4,10 @@ from __future__ import annotations
 
 from pathlib import Path
 import re
-import shutil
 import tempfile
-import urllib.request
 from xml.etree import ElementTree as ET
 
-from cli.helpers.subprocess import run_cmd
+from cli.commands.android.external_tools import apktool, uber_signer
 
 NETWORK_SECURITY_CONFIG = """\
 <?xml version="1.0" encoding="utf-8"?>
@@ -25,52 +23,9 @@ NETWORK_SECURITY_CONFIG = """\
 
 ANDROID_NS = "http://schemas.android.com/apk/res/android"
 
-# tools/ directory at project root, auto-downloaded jars live here
-_TOOLS_DIR = Path(__file__).resolve().parent.parent.parent.parent / "tools"
-
-# Pinned versions — downloaded on first use
-_APKTOOL_VERSION = "2.11.1"
-_APKTOOL_URL = f"https://github.com/iBotPeaches/Apktool/releases/download/v{_APKTOOL_VERSION}/apktool_{_APKTOOL_VERSION}.jar"
-_APKTOOL_JAR = _TOOLS_DIR / "apktool.jar"
-
-_UBER_SIGNER_VERSION = "1.3.0"
-_UBER_SIGNER_URL = f"https://github.com/patrickfav/uber-apk-signer/releases/download/v{_UBER_SIGNER_VERSION}/uber-apk-signer-{_UBER_SIGNER_VERSION}.jar"
-_UBER_SIGNER_JAR = _TOOLS_DIR / "uber-apk-signer.jar"
-
 
 class PatchError(Exception):
     """Raised when APK patching fails."""
-
-
-# ── Tool bootstrap ───────────────────────────────────────────────
-
-
-def _download_jar(url: str, dest: Path, name: str) -> None:
-    """Download a JAR file if it doesn't already exist."""
-    if dest.exists():
-        return
-    dest.parent.mkdir(parents=True, exist_ok=True)
-    try:
-        urllib.request.urlretrieve(url, dest)
-    except Exception as e:
-        dest.unlink(missing_ok=True)
-        raise PatchError(f"Failed to download {name}: {e}")
-
-
-def _ensure_tools() -> None:
-    """Download apktool + uber-apk-signer on first use. Requires Java."""
-    if shutil.which("java") is None:
-        raise PatchError("java not found. Install Java JDK 11+.")
-    _download_jar(_APKTOOL_URL, _APKTOOL_JAR, "apktool")
-    _download_jar(_UBER_SIGNER_URL, _UBER_SIGNER_JAR, "uber-apk-signer")
-
-
-def _apktool() -> list[str]:
-    return ["java", "-jar", str(_APKTOOL_JAR)]
-
-
-def _uber_signer() -> list[str]:
-    return ["java", "-jar", str(_UBER_SIGNER_JAR)]
 
 
 # ── Public API ────────────────────────────────────────────────────
@@ -92,18 +47,15 @@ def patch_apk(apk_path: Path, output_path: Path, keystore: Path | None = None) -
     Returns:
         Path to the signed, patched APK.
     """
-    _ensure_tools()
+    apktool.ensure()
+    uber_signer.ensure()
 
     with tempfile.TemporaryDirectory(prefix="apk_patch_") as tmpdir:
         work_dir = Path(tmpdir) / "decompiled"
         unsigned_apk = Path(tmpdir) / "unsigned.apk"
 
         # 1. Decompile (--no-src skips DEX disassembly — much faster)
-        run_cmd(
-            [*_apktool(), "d", "--no-src", str(apk_path), "-o", str(work_dir), "-f"],
-            "Decompiling APK",
-            timeout=300,
-        )
+        apktool.decompile(apk_path, work_dir)
 
         # 2. Inject/replace network_security_config.xml
         _inject_nsc(work_dir)
@@ -115,17 +67,13 @@ def patch_apk(apk_path: Path, output_path: Path, keystore: Path | None = None) -
         _fix_resources(work_dir)
 
         # 5. Recompile
-        run_cmd(
-            [*_apktool(), "b", str(work_dir), "-o", str(unsigned_apk)],
-            "Recompiling APK",
-            timeout=300,
-        )
+        apktool.build(work_dir, unsigned_apk)
 
         # 6. Sign
         if keystore is None:
             keystore = Path(tmpdir) / "debug.keystore"
-        _ensure_debug_keystore(keystore)
-        _sign_apk(unsigned_apk, output_path, keystore)
+        uber_signer.ensure_debug_keystore(keystore)
+        uber_signer.sign(unsigned_apk, output_path, keystore)
 
     return output_path
 
@@ -143,8 +91,8 @@ def sign_apk(apk_path: Path, output_path: Path, keystore: Path) -> Path:
     Returns:
         Path to the signed APK.
     """
-    _ensure_tools()
-    _sign_apk(apk_path, output_path, keystore)
+    uber_signer.ensure()
+    uber_signer.sign(apk_path, output_path, keystore)
     return output_path
 
 
@@ -180,7 +128,7 @@ def patch_apk_dir(input_dir: Path, output_dir: Path) -> Path:
     # Create a shared debug keystore
     with tempfile.TemporaryDirectory(prefix="apk_ks_") as ks_dir:
         keystore = Path(ks_dir) / "debug.keystore"
-        _ensure_debug_keystore(keystore)
+        uber_signer.ensure_debug_keystore(keystore)
 
         # Patch the base APK (decompile + inject + recompile + sign)
         patch_apk(base_apk, output_dir / base_apk.name, keystore=keystore)
@@ -249,68 +197,3 @@ def _fix_resources(work_dir: Path) -> None:
                 content,
             )
             manifest.write_text(fixed)
-
-
-def _ensure_debug_keystore(keystore_path: Path) -> None:
-    """Create a debug keystore if it doesn't exist."""
-    if keystore_path.exists():
-        return
-
-    run_cmd(
-        [
-            "keytool",
-            "-genkey",
-            "-v",
-            "-keystore",
-            str(keystore_path),
-            "-alias",
-            "debug",
-            "-keyalg",
-            "RSA",
-            "-keysize",
-            "2048",
-            "-validity",
-            "10000",
-            "-storepass",
-            "android",
-            "-keypass",
-            "android",
-            "-dname",
-            "CN=Debug,O=Debug,C=US",
-        ],
-        "Generating debug keystore",
-    )
-
-
-def _sign_apk(unsigned_apk: Path, output_path: Path, keystore: Path) -> None:
-    """Sign an APK with v1+v2+v3 schemes using uber-apk-signer."""
-    with tempfile.TemporaryDirectory(prefix="apk_sign_") as sign_dir:
-        staging = Path(sign_dir) / "input" / unsigned_apk.name
-        staging.parent.mkdir()
-        shutil.copy2(unsigned_apk, staging)
-
-        run_cmd(
-            [
-                *_uber_signer(),
-                "--apks",
-                str(staging.parent),
-                "--ks",
-                str(keystore),
-                "--ksPass",
-                "android",
-                "--ksAlias",
-                "debug",
-                "--ksKeyPass",
-                "android",
-                "--out",
-                str(Path(sign_dir) / "out"),
-                "--allowResign",
-            ],
-            "Signing APK",
-            timeout=300,
-        )
-
-        signed_files = list((Path(sign_dir) / "out").glob("*-aligned-signed.apk"))
-        if not signed_files:
-            raise PatchError("uber-apk-signer produced no output")
-        shutil.copy2(signed_files[0], output_path)
