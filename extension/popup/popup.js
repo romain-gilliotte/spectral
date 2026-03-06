@@ -4,7 +4,6 @@
 
 import { state, showError, updateUI } from './ui.js';
 import { startCapture, stopCapture, startStatusPolling } from './capture.js';
-import { grabAuthFromPage, saveAuth } from './auth.js';
 
 // ============================================================================
 // Host connection check
@@ -91,9 +90,6 @@ async function initialize() {
 
 document.getElementById('btn-start').addEventListener('click', startCapture);
 document.getElementById('btn-stop').addEventListener('click', stopCapture);
-document.getElementById('btn-grab-auth').addEventListener('click', grabAuthFromPage);
-document.getElementById('btn-save-auth').addEventListener('click', saveAuth);
-
 document.getElementById('btn-toggle-settings').addEventListener('click', () => {
   const drawer = document.getElementById('capture-settings');
   const toggle = document.getElementById('btn-toggle-settings');

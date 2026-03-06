@@ -121,20 +121,3 @@ export async function sendCapture() {
     throw error;
   }
 }
-
-/**
- * Send auth headers to the spectral CLI via Chrome Native Messaging.
- */
-export async function sendAuth(appName, displayName, headers) {
-  const payload = {
-    type: 'set_auth',
-    app_name: appName,
-    display_name: displayName,
-    headers,
-  };
-
-  return chrome.runtime.sendNativeMessage(
-    'com.spectral.capture_host',
-    payload
-  );
-}

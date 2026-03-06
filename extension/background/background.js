@@ -32,8 +32,7 @@ import {
   activateContentScript,
   deactivateContentScript,
 } from './capture.js';
-import { sendCapture, sendAuth } from './native.js';
-import { grabAuth } from './auth.js';
+import { sendCapture } from './native.js';
 
 // ============================================================================
 // Debugger event handler
@@ -164,18 +163,6 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         case 'ADD_CONTEXT': {
           addContext(message.context);
           sendResponse({ success: true });
-          break;
-        }
-
-        case 'GRAB_AUTH': {
-          const authData = await grabAuth(message.url, message.tabId);
-          sendResponse(authData);
-          break;
-        }
-
-        case 'SEND_AUTH': {
-          const result = await sendAuth(message.appName, message.displayName, message.headers);
-          sendResponse(result);
           break;
         }
 

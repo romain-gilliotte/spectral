@@ -14,7 +14,6 @@
   --c-green:      #4caf50;  --c-green-dk:   #43a047;  --c-green-bg:  #e8f5e9;  --c-green-text: #2e7d32;
   --c-red:        #f44336;  --c-red-dk:     #e53935;  --c-red-bg:    #ffebee;  --c-red-text:   #c62828;  --c-red-border: #ffcdd2;
   --c-blue:       #2196f3;  --c-blue-dk:    #1e88e5;  --c-blue-bg:   #e3f2fd;  --c-blue-text:  #1565c0;
-  --c-amber:      #f59e0b;  --c-amber-dk:   #d97706;
   --c-orange:     #ff9800;  --c-orange-bg:  #fff3e0;  --c-orange-text:#e65100;
 
   --radius:       8px;
@@ -139,7 +138,6 @@ code {
 .btn-primary   { --_bg: var(--c-green);  --_bg-hover: var(--c-green-dk); }
 .btn-danger    { --_bg: var(--c-red);    --_bg-hover: var(--c-red-dk); }
 .btn-secondary { --_bg: var(--c-blue);   --_bg-hover: var(--c-blue-dk); }
-.btn-accent    { --_bg: var(--c-amber);  --_bg-hover: var(--c-amber-dk); }
 
 /* ── Button row (Start Capture + settings toggle) ────────────────────────── */
 
@@ -197,25 +195,7 @@ code {
   margin-bottom: 4px;
 }
 
-/* ── Card (shared: auth panel) ────────────────────────────────────────────── */
-
-.card {
-  margin-top: 12px;
-  padding: 10px 12px;
-  background: var(--c-surface);
-  border-radius: var(--radius);
-}
-
-.card-header {
-  font-size: 10px;
-  font-weight: 600;
-  color: var(--c-text-dim);
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
-  margin-bottom: 8px;
-}
-
-/* ── Check row (shared: settings rows, auth items) ────────────────────────── */
+/* ── Check row (settings rows) ───────────────────────────────────────────── */
 
 .check-row {
   display: flex;
@@ -236,21 +216,6 @@ code {
   text-decoration: none;
 }
 .check-row-link:hover { color: var(--c-text-muted); text-decoration: underline; }
-
-/* ── Auth panel specifics ─────────────────────────────────────────────────── */
-
-.auth-items { display: flex; flex-direction: column; gap: 6px; margin-bottom: 8px; }
-
-.auth-item {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  font-size: 13px;
-}
-
-.auth-item input[type="checkbox"] { margin: 0; cursor: pointer; flex-shrink: 0; }
-.auth-item-name  { font-family: var(--c-mono); font-size: 12px; font-weight: 500; white-space: nowrap; }
-.auth-item-value { color: var(--c-text-dim); font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 160px; }
 
 /* ── Utility text ─────────────────────────────────────────────────────────── */
 
@@ -320,14 +285,11 @@ footer code { background: var(--c-surface); font-size: 11px; padding: 2px 6px; b
     --c-green:    #388e3c;  --c-green-dk:  #2e7d32;
     --c-red:      #c62828;  --c-red-dk:    #b71c1c;
     --c-blue:     #1565c0;  --c-blue-dk:   #0d47a1;
-    --c-amber:    #c48a0c;  --c-amber-dk:  #a67508;
   }
 
   .btn-primary   { --_bg: rgba(76, 175, 80, 0.15);  --_bg-hover: rgba(76, 175, 80, 0.25);  color: #81c784; }
   .btn-danger    { --_bg: rgba(244, 67, 54, 0.15);  --_bg-hover: rgba(244, 67, 54, 0.25);  color: #ef9a9a; }
   .btn-secondary { --_bg: rgba(33, 150, 243, 0.15);  --_bg-hover: rgba(33, 150, 243, 0.25);  color: #90caf9; }
-  .btn-accent    { --_bg: rgba(245, 158, 11, 0.15);  --_bg-hover: rgba(245, 158, 11, 0.25);  color: #ffcc80; }
-
   .btn:hover:not(:disabled) { box-shadow: 0 2px 8px rgba(0,0,0,.3); }
 
   .btn-toggle {

@@ -3,7 +3,7 @@
   "name": "Spectral",
   "version": "0.1.0",
   "description": "Capture network traffic and UI actions for Spectral",
-  "permissions": ["debugger", "activeTab", "scripting", "nativeMessaging", "cookies"],
+  "permissions": ["debugger", "activeTab", "scripting", "nativeMessaging"],
   "host_permissions": ["<all_urls>"],
   "background": {
     "service_worker": "background/background.js",

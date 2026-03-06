@@ -2,7 +2,7 @@
  * Shared popup state, DOM helpers, and UI update logic.
  */
 
-// Shared mutable state — imported by capture.js and auth.js
+// Shared mutable state — imported by capture.js
 export const state = {
   currentTabId: null,
   lastStats: null,
@@ -42,14 +42,12 @@ export function updateUI(uiState, stats = null) {
   const statsEl = document.getElementById('stats');
   const btnStart = document.getElementById('btn-start');
   const btnStop = document.getElementById('btn-stop');
-  const btnGrabAuth = document.getElementById('btn-grab-auth');
   const btnRow = btnStart.closest('.btn-row');
   const captureSettings = document.getElementById('capture-settings');
 
   // Reset all buttons
   btnRow.classList.add('hidden');
   btnStop.classList.add('hidden');
-  btnGrabAuth.classList.add('hidden');
   captureSettings.classList.add('collapsed');
 
   switch (uiState) {
@@ -62,8 +60,6 @@ export function updateUI(uiState, stats = null) {
       if (!state.hostConnected) {
         statusTextEl.textContent = 'CLI not connected';
         btnStart.disabled = true;
-      } else {
-        btnGrabAuth.classList.remove('hidden');
       }
 
       if (state.sentCount) {

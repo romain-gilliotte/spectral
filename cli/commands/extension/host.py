@@ -117,32 +117,6 @@ def run_host() -> None:
         write_message(stdout, {"type": "pong", "version": "0.1.0"})
         return
 
-    if msg_type == "set_auth":
-        import time
-
-        from cli.formats.mcp_tool import TokenState
-        from cli.helpers.storage import ensure_app, write_token
-
-        app_name = msg.get("app_name")
-        headers = msg.get("headers", {})
-        if not app_name or not headers:
-            write_message(stdout, {
-                "type": "result",
-                "success": False,
-                "message": "Missing app_name or headers",
-            })
-            return
-
-        ensure_app(app_name, display_name=msg.get("display_name"))
-        token_state = TokenState(headers=headers, obtained_at=time.time())
-        write_token(app_name, token_state)
-        write_message(stdout, {
-            "type": "result",
-            "success": True,
-            "message": "Auth saved",
-        })
-        return
-
     if msg_type != "store_capture":
         write_message(stdout, {
             "type": "result",
