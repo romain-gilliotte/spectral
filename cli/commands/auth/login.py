@@ -89,6 +89,7 @@ def login(app_name: str, model: str, debug: bool) -> None:
                 )
             )
 
+            script_path.parent.mkdir(parents=True, exist_ok=True)
             script_path.write_text(fixed_script)
             console.print("[green]Script updated. Retrying login...[/green]")
             continue

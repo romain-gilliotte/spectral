@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+import shlex
 import shutil
 import sys
 
@@ -83,7 +84,7 @@ def write_wrapper_script(spectral_path: str) -> Path:
     """
     script = wrapper_script_path()
     script.parent.mkdir(parents=True, exist_ok=True)
-    script.write_text(f"#!/bin/sh\nexec {spectral_path} extension listen\n")
+    script.write_text(f"#!/bin/sh\nexec {shlex.quote(spectral_path)} extension listen\n")
     script.chmod(0o755)
     return script
 
@@ -97,7 +98,7 @@ def write_wrapper_script_python(python_path: str) -> Path:
     script = wrapper_script_path()
     script.parent.mkdir(parents=True, exist_ok=True)
     script.write_text(
-        f"#!/bin/sh\nexec {python_path} -m cli.main extension listen\n"
+        f"#!/bin/sh\nexec {shlex.quote(python_path)} -m cli.main extension listen\n"
     )
     script.chmod(0o755)
     return script

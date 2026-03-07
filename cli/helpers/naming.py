@@ -2,12 +2,8 @@
 
 from __future__ import annotations
 
+import keyword
 import re
-
-_PYTHON_KEYWORDS = frozenset({
-    "class", "type", "import", "from", "return", "def",
-    "if", "for", "in", "is",
-})
 
 _JSON_TO_PYTHON = {
     "string": "str",
@@ -24,7 +20,7 @@ def safe_name(name: str) -> str:
     name = re.sub(r"[^a-zA-Z0-9_]", "_", name)
     if name and name[0].isdigit():
         name = "_" + name
-    if name in _PYTHON_KEYWORDS:
+    if keyword.iskeyword(name) or name == "type":
         name = name + "_"
     return name
 

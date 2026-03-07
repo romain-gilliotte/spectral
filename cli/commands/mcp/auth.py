@@ -50,8 +50,8 @@ def get_auth_headers(app_name: str) -> dict[str, str]:
                 try:
                     new_token = refresh_auth(app_name, token)
                     return dict(new_token.headers)
-                except Exception:
-                    pass
+                except Exception as exc:
+                    click.echo(f"Warning: token refresh failed: {exc}", err=True)
 
     # Step 3: Auth required
     raise AuthError(

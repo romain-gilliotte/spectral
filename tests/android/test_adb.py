@@ -233,6 +233,8 @@ class TestGetHostLanIp:
         import socket as socket_mod
 
         mock_socket = MagicMock()
+        mock_socket.__enter__ = MagicMock(return_value=mock_socket)
+        mock_socket.__exit__ = MagicMock(return_value=False)
         mock_socket.getsockname.return_value = ("192.168.1.42", 12345)
         with patch.object(socket_mod, "socket", return_value=mock_socket):
             ip = get_host_lan_ip()
@@ -242,6 +244,8 @@ class TestGetHostLanIp:
         import socket as socket_mod
 
         mock_socket = MagicMock()
+        mock_socket.__enter__ = MagicMock(return_value=mock_socket)
+        mock_socket.__exit__ = MagicMock(return_value=False)
         mock_socket.connect.side_effect = OSError("Network unreachable")
         with patch.object(socket_mod, "socket", return_value=mock_socket):
             with pytest.raises(AdbError, match="Could not detect LAN IP"):

@@ -250,10 +250,9 @@ def get_host_lan_ip() -> str:
     # on the same subnet as our LAN IP.
     for target in ["8.8.8.8"]:
         try:
-            s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-            s.connect((target, 80))
-            ip = s.getsockname()[0]
-            s.close()
+            with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as s:
+                s.connect((target, 80))
+                ip = s.getsockname()[0]
             if ip and not ip.startswith("127."):
                 return ip
         except OSError:

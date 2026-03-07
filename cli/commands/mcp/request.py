@@ -53,7 +53,9 @@ def _resolve_value(value: Any, params: dict[str, Any]) -> Any:
         # Check if this is a $param marker
         if len(d) == 1 and "$param" in d:
             param_name: str = d["$param"]
-            return params.get(param_name, value)
+            if param_name not in params:
+                raise ValueError(f"Missing required parameter: {param_name!r}")
+            return params[param_name]
         # Recurse into dict
         return {k: _resolve_value(v, params) for k, v in d.items()}
     if isinstance(value, list):
