@@ -282,7 +282,7 @@ class TestProxyCommand:
 
 
 class TestDiscoverCommand:
-    @patch("cli.commands.capture.proxy.run_discover")
+    @patch("cli.commands.capture.discover.run_discover")
     def test_discover_shows_domains(self, mock_discover: MagicMock) -> None:
         mock_discover.return_value = {"api.example.com": 15, "cdn.example.com": 3}
         runner = CliRunner()
@@ -294,7 +294,7 @@ class TestDiscoverCommand:
         assert "Discovered 2 domain(s)" in result.output
         mock_discover.assert_called_once_with(8080)
 
-    @patch("cli.commands.capture.proxy.run_discover")
+    @patch("cli.commands.capture.discover.run_discover")
     def test_discover_empty(self, mock_discover: MagicMock) -> None:
         mock_discover.return_value = {}
         runner = CliRunner()
@@ -303,7 +303,7 @@ class TestDiscoverCommand:
         assert result.exit_code == 0
         assert "No domains discovered" in result.output
 
-    @patch("cli.commands.capture.proxy.run_discover")
+    @patch("cli.commands.capture.discover.run_discover")
     def test_discover_custom_port(self, mock_discover: MagicMock) -> None:
         mock_discover.return_value = {}
         runner = CliRunner()

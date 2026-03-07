@@ -1,155 +1,33 @@
-"""Generic MITM proxy capture engine, producing a CaptureBundle."""
+"""MITM proxy capture command: CaptureAddon + proxy CLI."""
 
 from __future__ import annotations
 
-import asyncio
 from datetime import datetime, timezone
-import json
 from pathlib import Path
-import re
-import signal
-import threading
-import time
-from typing import TYPE_CHECKING, Any, cast
+from typing import TYPE_CHECKING
 import uuid
 
 import click
 
 if TYPE_CHECKING:
-    from types import FrameType
+    from mitmproxy.http import HTTPFlow
 
-    from mitmproxy.http import Headers as mitmproxy_Headers, HTTPFlow
-    from mitmproxy.tls import ClientHelloData
-
-from cli.commands.capture.graphql_utils import inject_typename
+from cli.commands.capture._mitm_gql_injection import inject_typename_into_flow
+from cli.commands.capture._mitmproxy import (
+    flow_to_trace,
+    run_mitmproxy,
+    ws_flow_to_connection,
+)
 from cli.commands.capture.types import CaptureBundle, Trace, WsConnection, WsMessage
 from cli.formats.capture_bundle import (
     AppInfo,
     CaptureManifest,
     CaptureStats,
-    Header,
-    Initiator,
-    RequestMeta,
-    ResponseMeta,
     Timeline,
     TimelineEvent,
-    TimingInfo,
-    TraceMeta,
-    WsConnectionMeta,
     WsMessageMeta,
 )
 from cli.helpers.storage import store_capture
-
-
-def _ensure_mitmproxy() -> None:
-    """Lazy-import mitmproxy, raising a clear error if not installed."""
-    try:
-        import mitmproxy as _mitmproxy  # noqa: F401
-
-        del _mitmproxy
-    except ImportError:
-        raise ImportError(
-            "mitmproxy is required for proxy capture.\n"
-            "Install it with: uv add 'spectral[proxy]'\n"
-            "  or: pip install mitmproxy>=10.0"
-        )
-
-
-def _header_items(headers: mitmproxy_Headers) -> list[tuple[str, str]]:
-    """Extract header items from mitmproxy Headers, typed for pyright."""
-    items: list[tuple[str, str]] = list(headers.items(multi=True))  # pyright: ignore[reportUnknownMemberType, reportUnknownArgumentType]
-    return items
-
-
-def flow_to_trace(flow: HTTPFlow, trace_id: str) -> Trace:
-    """Convert a mitmproxy HTTPFlow to a Trace."""
-    req = flow.request
-    resp = flow.response
-
-    req_headers = [Header(name=k, value=v) for k, v in _header_items(req.headers)]
-    req_body = req.content or b""
-
-    resp_headers: list[Header] = []
-    resp_body = b""
-    status = 0
-    status_text = ""
-    if resp:
-        resp_headers = [Header(name=k, value=v) for k, v in _header_items(resp.headers)]
-        resp_body = resp.content or b""
-        status = resp.status_code
-        status_text = resp.reason or ""
-
-    total_ms = 0.0
-    if resp and hasattr(resp, "timestamp_end") and resp.timestamp_end:
-        total_ms = (resp.timestamp_end - req.timestamp_start) * 1000
-
-    timestamp_ms = int(req.timestamp_start * 1000)
-
-    meta = TraceMeta(
-        id=trace_id,
-        timestamp=timestamp_ms,
-        request=RequestMeta(
-            method=req.method,
-            url=req.pretty_url,
-            headers=req_headers,
-            body_file=f"{trace_id}_request.bin" if req_body else None,
-            body_size=len(req_body),
-        ),
-        response=ResponseMeta(
-            status=status,
-            status_text=status_text,
-            headers=resp_headers,
-            body_file=f"{trace_id}_response.bin" if resp_body else None,
-            body_size=len(resp_body),
-        ),
-        timing=TimingInfo(total_ms=total_ms),
-        initiator=Initiator(type="proxy"),
-    )
-    return Trace(meta=meta, request_body=req_body, response_body=resp_body)
-
-
-def ws_flow_to_connection(
-    flow: HTTPFlow,
-    ws_id: str,
-    messages: list[WsMessage],
-) -> WsConnection:
-    """Convert mitmproxy WebSocket data to a WsConnection."""
-    meta = WsConnectionMeta(
-        id=ws_id,
-        timestamp=int(flow.request.timestamp_start * 1000),
-        url=flow.request.pretty_url,
-        protocols=_extract_ws_protocols(flow),
-        message_count=len(messages),
-    )
-    return WsConnection(meta=meta, messages=messages)
-
-
-def _extract_ws_protocols(flow: HTTPFlow) -> list[str]:
-    """Extract WebSocket sub-protocols from the handshake."""
-    proto = str(flow.request.headers.get("Sec-WebSocket-Protocol", "") or "")  # pyright: ignore[reportUnknownMemberType, reportUnknownArgumentType]
-    if proto:
-        return [p.strip() for p in proto.split(",")]
-    return []
-
-
-class DiscoveryAddon:
-    """mitmproxy addon that logs domains without MITM (passthrough TLS)."""
-
-    def __init__(self) -> None:
-        self.domains: dict[str, int] = {}  # domain → request count
-
-    def tls_clienthello(self, data: ClientHelloData) -> None:
-        """Skip MITM — just log the SNI and pass through."""
-        sni = data.context.client.sni
-        if sni:
-            self.domains[sni] = self.domains.get(sni, 0) + 1
-        data.ignore_connection = True
-
-    def request(self, flow: HTTPFlow) -> None:
-        """Log plain HTTP requests (non-TLS)."""
-        host = flow.request.host
-        if host:
-            self.domains[host] = self.domains.get(host, 0) + 1
 
 
 class CaptureAddon:
@@ -172,7 +50,7 @@ class CaptureAddon:
 
     def request(self, flow: HTTPFlow) -> None:
         """Intercept requests to inject __typename into GraphQL queries."""
-        _inject_typename_into_flow(flow)
+        inject_typename_into_flow(flow)
 
     def response(self, flow: HTTPFlow) -> None:
         """Called when a full HTTP response has been received."""
@@ -305,128 +183,6 @@ class CaptureAddon:
         )
 
 
-def _inject_typename_into_flow(flow: HTTPFlow) -> None:
-    """Inject __typename into GraphQL query bodies.
-
-    Checks body shape (JSON with a ``query`` string field) and delegates
-    to the graphql-core parser via ``inject_typename()`` which returns
-    the query unchanged if it is not valid GraphQL.
-    """
-    req = flow.request
-    if req.method.upper() != "POST":
-        return
-
-    content_type = str(req.headers.get("content-type", "") or "")  # pyright: ignore[reportUnknownMemberType, reportUnknownArgumentType]
-    if "json" not in content_type.lower():
-        return
-
-    body_bytes = req.content
-    if not body_bytes:
-        return
-
-    try:
-        body: Any = json.loads(body_bytes)
-    except (json.JSONDecodeError, UnicodeDecodeError):
-        return
-
-    if isinstance(body, dict):
-        if _inject_typename_in_body(cast(dict[str, object], body)):
-            req.content = json.dumps(body).encode()
-    elif isinstance(body, list):
-        # Batch GraphQL
-        modified = False
-        for item in cast(list[Any], body):
-            if isinstance(item, dict) and _inject_typename_in_body(
-                cast(dict[str, object], item)
-            ):
-                modified = True
-        if modified:
-            req.content = json.dumps(body).encode()
-
-
-def _inject_typename_in_body(body: dict[str, object]) -> bool:
-    """Inject __typename into a single GraphQL body dict. Returns True if modified."""
-    query = body.get("query")
-    if not isinstance(query, str):
-        return False
-
-    modified_query = inject_typename(query)
-    if modified_query != query:
-        body["query"] = modified_query
-        return True
-    return False
-
-
-def domain_to_regex(pattern: str) -> str:
-    """Convert a user-friendly domain pattern to a regex for mitmproxy.
-
-    Handles common patterns:
-    - Plain domain: ``api.example.com`` → ``api\\.example\\.com``
-    - Wildcard prefix: ``*.example.com`` → ``.*\\.example\\.com``
-    - Already valid regex is passed through unchanged.
-    """
-    # If it already compiles as valid regex, use it as-is
-    try:
-        re.compile(pattern)
-        return pattern
-    except re.error:
-        pass
-
-    # Likely a glob-style pattern — convert it
-    # Replace leading "*." with ".*\." then escape the rest
-    if pattern.startswith("*."):
-        return ".*\\." + re.escape(pattern[2:])
-
-    # Fallback: escape everything
-    return re.escape(pattern)
-
-
-def _run_mitmproxy(
-    port: int,
-    addons: list[object],
-    allow_hosts: list[str] | None = None,
-) -> tuple[float, float]:
-    """Shared mitmproxy boilerplate: create loop, DumpMaster, run in daemon thread.
-
-    Returns (start_time, end_time) as epoch seconds.
-    """
-    from mitmproxy.options import Options
-    from mitmproxy.tools.dump import DumpMaster
-
-    loop = asyncio.new_event_loop()
-    opts = Options(listen_port=port, mode=["regular"])
-    if allow_hosts:
-        regex_hosts = [domain_to_regex(h) for h in allow_hosts]
-        opts.update(allow_hosts=regex_hosts)  # pyright: ignore[reportUnknownMemberType]
-    master = DumpMaster(opts, loop=loop)
-    for addon in addons:
-        master.addons.add(addon)  # pyright: ignore[reportUnknownMemberType]
-
-    proxy_thread = threading.Thread(
-        target=loop.run_until_complete,
-        args=(master.run(),),
-        daemon=True,
-    )
-    proxy_thread.start()
-
-    start_time = time.time()
-
-    def _shutdown() -> None:
-        loop.call_soon_threadsafe(master.shutdown)
-        proxy_thread.join(timeout=10)
-
-    def _sigint_handler(signum: int, frame: FrameType | None) -> None:
-        _shutdown()
-
-    signal.signal(signal.SIGINT, _sigint_handler)
-
-    while proxy_thread.is_alive():
-        proxy_thread.join(timeout=1)
-
-    end_time = time.time()
-    return start_time, end_time
-
-
 def run_proxy_to_storage(
     port: int,
     app_name: str,
@@ -442,35 +198,13 @@ def run_proxy_to_storage(
     Returns:
         (CaptureStats, capture_dir) on success.
     """
-    _ensure_mitmproxy()
-
     addon = CaptureAddon()
-    start_time, end_time = _run_mitmproxy(port, [addon], allow_hosts=allow_hosts)
+    start_time, end_time = run_mitmproxy(port, [addon], allow_hosts=allow_hosts)
 
     bundle = addon.build_bundle(app_name, start_time, end_time)
     cap_dir = store_capture(bundle, app_name)
 
     return bundle.manifest.stats, cap_dir
-
-
-def run_discover(port: int) -> dict[str, int]:
-    """Start a proxy in discovery mode: log domains without MITM.
-
-    All TLS connections pass through untouched. The addon records
-    SNI hostnames (and plain HTTP hosts) with request counts.
-
-    Args:
-        port: Proxy listen port.
-
-    Returns:
-        Dict of domain → request count.
-    """
-    _ensure_mitmproxy()
-
-    addon = DiscoveryAddon()
-    _run_mitmproxy(port, [addon])
-
-    return addon.domains
 
 
 @click.command()

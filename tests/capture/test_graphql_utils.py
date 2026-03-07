@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from cli.commands.capture.graphql_utils import inject_typename
+from cli.commands.capture._mitm_gql_injection import inject_typename
 
 
 class TestInjectTypename:
