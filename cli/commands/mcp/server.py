@@ -5,6 +5,8 @@ from __future__ import annotations
 import json
 from typing import Any
 
+import click
+import jsonschema
 from mcp import types
 from mcp.server import Server
 from mcp.server.stdio import stdio_server
@@ -88,6 +90,33 @@ async def _handle_call(
     return "\n\n".join(result_parts)
 
 
+def coerce_arguments(
+    arguments: dict[str, Any], schema: dict[str, Any]
+) -> dict[str, Any]:
+    """Coerce string arguments to the types declared in the JSON schema.
+
+    MCP clients (including LLMs) sometimes send numeric values as strings.
+    This converts them before validation so that jsonschema.validate passes.
+    """
+    properties = schema.get("properties", {})
+    result = dict(arguments)
+    for key, prop in properties.items():
+        value = result.get(key)
+        if not isinstance(value, str):
+            continue
+        declared_type = prop.get("type")
+        try:
+            if declared_type == "integer":
+                result[key] = int(value)
+            elif declared_type == "number":
+                result[key] = float(value)
+            elif declared_type == "boolean":
+                result[key] = value.lower() in ("true", "1")
+        except (ValueError, TypeError):
+            pass  # leave as-is; jsonschema will report the error
+    return result
+
+
 def create_server() -> Server:
     """Create and configure the MCP server."""
     server = Server("spectral")
@@ -97,7 +126,7 @@ def create_server() -> Server:
         _build_registry()
         return [_make_mcp_tool(name, tool) for name, (_, tool) in _registry.items()]
 
-    @server.call_tool()
+    @server.call_tool(validate_input=False)
     async def handle_call_tool(
         name: str, arguments: dict[str, Any] | None
     ) -> list[types.TextContent]:
@@ -105,7 +134,17 @@ def create_server() -> Server:
             return [types.TextContent(type="text", text=f"Unknown tool: {name}")]
 
         app_name, tool = _registry[name]
-        result = await _handle_call(app_name, tool, arguments or {})
+        args = arguments or {}
+
+        # Coerce string values to declared schema types, then validate
+        schema = tool.parameters
+        args = coerce_arguments(args, schema)
+        try:
+            jsonschema.validate(args, schema)
+        except jsonschema.ValidationError as exc:
+            return [types.TextContent(type="text", text=f"Invalid arguments: {exc.message}")]
+
+        result = await _handle_call(app_name, tool, args)
         return [types.TextContent(type="text", text=result)]
 
     _ = handle_list_tools, handle_call_tool  # registered via decorators
@@ -118,3 +157,14 @@ async def run_server() -> None:
     options = server.create_initialization_options()
     async with stdio_server() as (read_stream, write_stream):
         await server.run(read_stream, write_stream, options)
+
+
+@click.command()
+def stdio() -> None:
+    """Start the MCP server on stdio.
+
+    Exposes all app tools from managed storage as MCP tools.
+    """
+    import asyncio
+
+    asyncio.run(run_server())
