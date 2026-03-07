@@ -10,7 +10,7 @@ from pydantic import BaseModel, field_validator
 from cli.commands.capture.types import CaptureBundle
 from cli.helpers.http import compact_url
 import cli.helpers.llm as llm
-from cli.helpers.storage import load_app_meta
+from cli.helpers.storage import load_app_meta, update_app_meta
 
 
 class BaseUrlResponse(BaseModel):
@@ -79,6 +79,10 @@ Response format: {{"base_url": "https://..."}}"""
         tool_names=["decode_base64", "decode_url", "decode_jwt"],
     )
     result = await conv.ask_json(prompt, BaseUrlResponse)
+    try:
+        update_app_meta(app_name, base_url=result.base_url)
+    except Exception:
+        pass
     return result.base_url
 
 

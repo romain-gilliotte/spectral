@@ -131,7 +131,6 @@ def analyze_cmd(app_name: str, model: str, debug: bool, skip_enrich: bool) -> No
     from cli.helpers.storage import (
         list_captures,
         load_app_bundle,
-        update_app_meta,
         write_tools,
     )
 
@@ -163,9 +162,6 @@ def analyze_cmd(app_name: str, model: str, debug: bool, skip_enrich: bool) -> No
 
     write_tools(app_name, result.tools)
     console.print(f"[green]Wrote {len(result.tools)} tool(s) to storage[/green]")
-
-    update_app_meta(app_name, base_url=result.base_url)
-    console.print(f"  Base URL: {result.base_url}")
 
     for tool in result.tools:
         console.print(f"  Tool: {tool.name} — {tool.request.method} {tool.request.path}")

@@ -253,7 +253,6 @@ def analyze(app_name: str, model: str, debug: bool) -> None:
         auth_script_path,
         load_app_bundle,
         resolve_app,
-        update_app_meta,
     )
 
     resolve_app(app_name)
@@ -275,8 +274,6 @@ def analyze(app_name: str, model: str, debug: bool) -> None:
             api_name=app_name,
             system_context=system_context,
         )
-
-        update_app_meta(app_name, base_url=base_url)
 
         return script
 
