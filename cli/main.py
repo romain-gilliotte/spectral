@@ -4,13 +4,13 @@ from __future__ import annotations
 
 import click
 
-from cli.commands.android.cmd import android
-from cli.commands.auth.cmd import auth
-from cli.commands.capture.cmd import capture
-from cli.commands.extension.cmd import extension
-from cli.commands.graphql.cmd import graphql_cmd
-from cli.commands.mcp.cmd import mcp
-from cli.commands.openapi.cmd import openapi
+from cli.commands.android import android
+from cli.commands.auth import auth
+from cli.commands.capture import capture
+from cli.commands.extension import extension
+from cli.commands.graphql import graphql_cmd
+from cli.commands.mcp import mcp
+from cli.commands.openapi import openapi
 import cli.helpers.llm as llm
 
 
