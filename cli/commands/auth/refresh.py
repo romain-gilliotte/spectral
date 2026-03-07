@@ -14,7 +14,7 @@ def refresh(app_name: str) -> None:
 
     Loads token.json, calls refresh_token(), and updates token.json.
     """
-    from cli.commands.mcp.auth import AuthError, refresh_auth
+    from cli.helpers.auth_runtime import AuthError, refresh_auth
     from cli.helpers.storage import load_token, resolve_app, write_token
 
     resolve_app(app_name)

@@ -1,4 +1,4 @@
-"""Tests for MCP auth cascade."""
+"""Tests for auth runtime (token validation, acquire, refresh)."""
 
 from __future__ import annotations
 
@@ -7,7 +7,8 @@ import time
 
 import pytest
 
-from cli.commands.mcp.auth import (
+from cli.formats.mcp_tool import TokenState
+from cli.helpers.auth_runtime import (
     AuthError,
     acquire_auth,
     get_auth_headers,
@@ -15,7 +16,6 @@ from cli.commands.mcp.auth import (
     load_auth_module,
     refresh_auth,
 )
-from cli.formats.mcp_tool import TokenState
 from cli.helpers.storage import (
     auth_script_path,
     ensure_app,

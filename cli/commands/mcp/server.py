@@ -12,9 +12,9 @@ from mcp.server import Server
 from mcp.server.stdio import stdio_server
 import requests as http_requests
 
-from cli.commands.mcp.auth import AuthError, get_auth_headers
 from cli.commands.mcp.request import build_request
 from cli.formats.mcp_tool import ToolDefinition
+from cli.helpers.auth_runtime import AuthError, get_auth_headers
 from cli.helpers.storage import list_apps, list_tools, load_app_meta
 
 # Registry: MCP tool name -> (app_name, ToolDefinition)
