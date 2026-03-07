@@ -3,16 +3,18 @@
 from __future__ import annotations
 
 import asyncio
-from typing import Any, cast
+from typing import Any
 
 from cli.commands.capture.types import Trace
 from cli.commands.graphql.analyze.types import (
+    EnumEnrichmentResponse,
     GraphQLSchemaData,
+    TypeEnrichmentResponse,
     TypeRecord,
 )
 from cli.helpers.console import console
 from cli.helpers.correlator import Correlation
-from cli.helpers.json import extract_json, minified
+from cli.helpers.json import minified
 import cli.helpers.llm as llm
 
 
@@ -69,14 +71,12 @@ Provide a JSON response:
   }}
 }}
 
-Respond in compact JSON only (no indentation)."""
+"""
 
         try:
             conv = llm.Conversation(max_tokens=1024, label=f"enrich_gql_{type_rec.name}")
-            text = await conv.ask_text(prompt)
-            data = extract_json(text)
-            if isinstance(data, dict):
-                _apply_type_enrichment(type_rec, data)
+            result = await conv.ask_json(prompt, TypeEnrichmentResponse)
+            _apply_type_enrichment(type_rec, result)
         except Exception as exc:
             console.print(
                 f"  [red]GraphQL enrichment failed for {type_rec.name}: "
@@ -94,16 +94,12 @@ Provide a JSON response:
   "description": "What this enum represents in business terms"
 }}
 
-Respond in compact JSON only (no indentation)."""
+"""
 
         try:
             conv = llm.Conversation(max_tokens=256, label=f"enrich_gql_enum_{enum_name}")
-            text = await conv.ask_text(prompt)
-            data = extract_json(text)
-            if isinstance(data, dict):
-                desc = data.get("description")
-                if isinstance(desc, str):
-                    registry.enums[enum_name].description = desc
+            result = await conv.ask_json(prompt, EnumEnrichmentResponse)
+            registry.enums[enum_name].description = result.description
         except Exception:
             pass
 
@@ -147,15 +143,10 @@ def _build_type_summary(type_rec: TypeRecord) -> dict[str, Any]:
     return summary
 
 
-def _apply_type_enrichment(type_rec: TypeRecord, data: dict[str, Any]) -> None:
+def _apply_type_enrichment(type_rec: TypeRecord, data: TypeEnrichmentResponse) -> None:
     """Apply LLM enrichment to a type record."""
-    desc = data.get("description")
-    if isinstance(desc, str):
-        type_rec.description = desc
+    type_rec.description = data.description
 
-    raw_field_descs: Any = data.get("fields", {})
-    if isinstance(raw_field_descs, dict):
-        field_descs: dict[str, Any] = cast(dict[str, Any], raw_field_descs)
-        for field_name, field_desc in field_descs.items():
-            if isinstance(field_desc, str) and field_name in type_rec.fields:
-                type_rec.fields[field_name].description = field_desc
+    for field_name, field_desc in data.fields.items():
+        if field_name in type_rec.fields:
+            type_rec.fields[field_name].description = field_desc

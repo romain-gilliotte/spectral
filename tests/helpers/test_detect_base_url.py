@@ -3,6 +3,7 @@
 from typing import Any
 from unittest.mock import MagicMock
 
+from pydantic import ValidationError
 import pytest
 
 from cli.commands.capture.types import CaptureBundle
@@ -131,5 +132,5 @@ class TestDetectBaseUrl:
         bundle = _make_bundle([
             make_trace("t_0001", "GET", "https://example.com/api", 200, 1000),
         ])
-        with pytest.raises(ValueError, match="Expected"):
+        with pytest.raises((ValidationError, ValueError)):
             await detect_base_url(bundle, "testapp")

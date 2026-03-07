@@ -8,12 +8,13 @@ from typing import Any, TypeGuard
 from cli.commands.capture.types import Trace
 from cli.commands.openapi.analyze.extraction import match_traces_by_pattern
 from cli.commands.openapi.analyze.types import (
+    EndpointEnrichmentResponse,
     EndpointSpec,
     EnrichmentContext,
 )
 from cli.helpers.console import console
 from cli.helpers.correlator import Correlation
-from cli.helpers.json import extract_json, minified
+from cli.helpers.json import minified
 import cli.helpers.llm as llm
 
 _MAX_SUMMARY_CHARS = 40_000
@@ -54,15 +55,12 @@ Provide a JSON response with these keys:
 - "response_details": {{status_code_string: {{"business_meaning": "...", "example_scenario": "...", "user_impact": "..." or null, "resolution": "..." or null}}}} for each observed status. For error statuses (4xx/5xx), include user_impact and resolution.
 - "discovery_notes": observations, edge cases, or dependencies worth noting about this endpoint (or null)
 
-Respond in compact JSON (no indentation)."""
+"""
 
         try:
             conv = llm.Conversation(max_tokens=4096, label=f"enrich_{ep.id}")
-            text = await conv.ask_text(prompt)
-            data = extract_json(text)
-
-            if isinstance(data, dict):
-                _apply_enrichment(ep, data)
+            result = await conv.ask_json(prompt, EndpointEnrichmentResponse)
+            _apply_enrichment(ep, result)
         except Exception as exc:
             console.print(
                 f"  [red]Enrichment failed for {ep.method} {ep.path}: "
@@ -160,14 +158,14 @@ def _apply_schema_descriptions(
                 _apply_schema_descriptions(prop_schema, desc)
 
 
-def _apply_enrichment(endpoint: EndpointSpec, enrich: dict[str, Any]) -> None:
+def _apply_enrichment(endpoint: EndpointSpec, enrich: EndpointEnrichmentResponse) -> None:
     """Apply enrichment data from an LLM response to an endpoint."""
-    if enrich.get("description"):
-        endpoint.description = enrich["description"]
-    if enrich.get("discovery_notes"):
-        endpoint.discovery_notes = enrich["discovery_notes"]
+    if enrich.description:
+        endpoint.description = enrich.description
+    if enrich.discovery_notes:
+        endpoint.discovery_notes = enrich.discovery_notes
 
-    field_descs = enrich.get("field_descriptions", {})
+    field_descs = enrich.field_descriptions or {}
     if _is_json_dict(field_descs):
         path_descs = field_descs.get("path_parameters", {})
         if _is_json_dict(path_descs):
@@ -188,18 +186,15 @@ def _apply_enrichment(endpoint: EndpointSpec, enrich: dict[str, Any]) -> None:
                 if _is_json_dict(status_descs) and resp.schema_:
                     _apply_schema_descriptions(resp.schema_, status_descs)
 
-    response_details = enrich.get("response_details", {})
-    if _is_json_dict(response_details) and response_details:
+    if enrich.response_details:
         for resp in endpoint.responses:
-            detail = response_details.get(str(resp.status))
-            if _is_json_dict(detail):
-                if detail.get("business_meaning"):
-                    resp.business_meaning = detail["business_meaning"]
-                if detail.get("example_scenario"):
-                    resp.example_scenario = detail["example_scenario"]
-                if detail.get("user_impact"):
-                    resp.user_impact = detail["user_impact"]
-                if detail.get("resolution"):
-                    resp.resolution = detail["resolution"]
-            elif isinstance(detail, str):
-                resp.business_meaning = detail
+            detail = enrich.response_details.get(str(resp.status))
+            if detail is not None:
+                if detail.business_meaning:
+                    resp.business_meaning = detail.business_meaning
+                if detail.example_scenario:
+                    resp.example_scenario = detail.example_scenario
+                if detail.user_impact:
+                    resp.user_impact = detail.user_impact
+                if detail.resolution:
+                    resp.resolution = detail.resolution

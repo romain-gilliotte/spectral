@@ -12,9 +12,11 @@ from cli.commands.openapi.analyze.enrich import (
     enrich_endpoints,
 )
 from cli.commands.openapi.analyze.types import (
+    EndpointEnrichmentResponse,
     EndpointSpec,
     EnrichmentContext,
     RequestSpec,
+    ResponseDetail,
     ResponseSpec,
 )
 
@@ -50,14 +52,14 @@ class TestEnrichSizeGuard:
             base_url="https://api.example.com",
         )
 
-        mock_ask_text = AsyncMock(return_value='{"description": "should not be called"}')
+        mock_ask_json = AsyncMock(return_value=EndpointEnrichmentResponse(description="should not be called"))
         with patch("cli.commands.openapi.analyze.enrich.llm") as mock_llm:
             mock_conv = MagicMock()
-            mock_conv.ask_text = mock_ask_text
+            mock_conv.ask_json = mock_ask_json
             mock_llm.Conversation.return_value = mock_conv
             result = await enrich_endpoints(ctx)
 
-        mock_ask_text.assert_not_called()
+        mock_ask_json.assert_not_called()
         assert result[0].description is None
 
     @pytest.mark.asyncio
@@ -88,21 +90,21 @@ class TestEnrichSizeGuard:
             base_url="https://api.example.com",
         )
 
-        mock_ask_text = AsyncMock(return_value='{"description": "Returns a user"}')
+        mock_ask_json = AsyncMock(return_value=EndpointEnrichmentResponse(description="Returns a user"))
         with patch("cli.commands.openapi.analyze.enrich.llm") as mock_llm:
             mock_conv = MagicMock()
-            mock_conv.ask_text = mock_ask_text
+            mock_conv.ask_json = mock_ask_json
             mock_llm.Conversation.return_value = mock_conv
             result = await enrich_endpoints(ctx)
 
-        mock_ask_text.assert_called_once()
+        mock_ask_json.assert_called_once()
         assert result[0].description == "Returns a user"
 
 
 class TestApplyEnrichment:
     def test_discovery_notes(self):
         endpoint = EndpointSpec(id="test", path="/test", method="GET")
-        _apply_enrichment(endpoint, {"discovery_notes": "Always called after login"})
+        _apply_enrichment(endpoint, EndpointEnrichmentResponse(discovery_notes="Always called after login"))
         assert endpoint.discovery_notes == "Always called after login"
 
     def test_path_parameter_descriptions(self):
@@ -122,13 +124,13 @@ class TestApplyEnrichment:
         )
         _apply_enrichment(
             endpoint,
-            {
-                "field_descriptions": {
+            EndpointEnrichmentResponse(
+                field_descriptions={
                     "path_parameters": {
                         "user_id": "Unique identifier for the user"
                     },
                 },
-            },
+            ),
         )
         assert endpoint.request.path_schema is not None
         assert (
@@ -153,13 +155,13 @@ class TestApplyEnrichment:
         )
         _apply_enrichment(
             endpoint,
-            {
-                "field_descriptions": {
+            EndpointEnrichmentResponse(
+                field_descriptions={
                     "query_parameters": {
                         "q": "Search query text"
                     },
                 },
-            },
+            ),
         )
         assert endpoint.request.query_schema is not None
         assert (
@@ -184,13 +186,13 @@ class TestApplyEnrichment:
         )
         _apply_enrichment(
             endpoint,
-            {
-                "field_descriptions": {
+            EndpointEnrichmentResponse(
+                field_descriptions={
                     "request_body": {
                         "period": "Billing period in YYYY-MM format"
                     },
                 },
-            },
+            ),
         )
         assert endpoint.request.body_schema is not None
         assert (
@@ -219,13 +221,13 @@ class TestApplyEnrichment:
         )
         _apply_enrichment(
             endpoint,
-            {
-                "field_descriptions": {
+            EndpointEnrichmentResponse(
+                field_descriptions={
                     "request_body": {
                         "address": {"city": "City name for delivery"}
                     },
                 },
-            },
+            ),
         )
         assert endpoint.request.body_schema is not None
         assert (
@@ -247,19 +249,19 @@ class TestApplyEnrichment:
         )
         _apply_enrichment(
             endpoint,
-            {
-                "response_details": {
-                    "200": {
-                        "business_meaning": "Success",
-                        "example_scenario": "User views their dashboard",
-                    },
-                    "403": {
-                        "business_meaning": "Forbidden",
-                        "user_impact": "Cannot access the resource",
-                        "resolution": "Contact admin to request access",
-                    },
+            EndpointEnrichmentResponse(
+                response_details={
+                    "200": ResponseDetail(
+                        business_meaning="Success",
+                        example_scenario="User views their dashboard",
+                    ),
+                    "403": ResponseDetail(
+                        business_meaning="Forbidden",
+                        user_impact="Cannot access the resource",
+                        resolution="Contact admin to request access",
+                    ),
                 },
-            },
+            ),
         )
         assert endpoint.responses[0].business_meaning == "Success"
         assert endpoint.responses[0].example_scenario == "User views their dashboard"
@@ -287,13 +289,13 @@ class TestApplyEnrichment:
         )
         _apply_enrichment(
             endpoint,
-            {
-                "field_descriptions": {
+            EndpointEnrichmentResponse(
+                field_descriptions={
                     "responses": {
                         "200": {"name": "Full name of the user"},
                     },
                 },
-            },
+            ),
         )
         assert endpoint.responses[0].schema_ is not None
         assert (
@@ -330,8 +332,8 @@ class TestApplyEnrichment:
         )
         _apply_enrichment(
             endpoint,
-            {
-                "field_descriptions": {
+            EndpointEnrichmentResponse(
+                field_descriptions={
                     "responses": {
                         "200": {
                             "elements": {
@@ -341,7 +343,7 @@ class TestApplyEnrichment:
                         },
                     },
                 },
-            },
+            ),
         )
         resp_schema = endpoint.responses[0].schema_
         assert resp_schema is not None
@@ -381,15 +383,15 @@ class TestApplyDescriptionsAdditionalProperties:
         )
         _apply_enrichment(
             endpoint,
-            {
-                "field_descriptions": {
+            EndpointEnrichmentResponse(
+                field_descriptions={
                     "responses": {
                         "200": {
                             "balances": {"total": "Total balance in cents"},
                         },
                     },
                 },
-            },
+            ),
         )
         resp_schema = endpoint.responses[0].schema_
         assert resp_schema is not None

@@ -5,11 +5,24 @@ from __future__ import annotations
 from collections import Counter
 from dataclasses import dataclass
 
+from pydantic import BaseModel, field_validator
+
 from cli.commands.capture.types import CaptureBundle
 from cli.helpers.http import compact_url
-from cli.helpers.json import extract_json
 import cli.helpers.llm as llm
 from cli.helpers.storage import load_app_meta
+
+
+class BaseUrlResponse(BaseModel):
+    base_url: str
+
+    @field_validator("base_url")
+    @classmethod
+    def validate_base_url(cls, v: str) -> str:
+        v = v.rstrip("/")
+        if not v.startswith("http"):
+            raise ValueError(f"Invalid base URL: {v}")
+        return v
 
 
 @dataclass(frozen=True, order=True)
@@ -59,24 +72,14 @@ Rules:
 Observed requests (call count shown when > 1):
 {chr(10).join(lines)}
 
-Respond with a compact JSON object (no indentation):
-{{"base_url": "https://..."}}"""
+Response format: {{"base_url": "https://..."}}"""
 
     conv = llm.Conversation(
         label="detect_api_base_url",
         tool_names=["decode_base64", "decode_url", "decode_jwt"],
     )
-    text = await conv.ask_text(prompt)
-
-    result = extract_json(text)
-    if isinstance(result, dict) and "base_url" in result:
-        base_url = str(result["base_url"]).rstrip("/")
-        if not base_url.startswith("http"):
-            raise ValueError(f"Invalid base URL: {base_url}")
-        return base_url
-    raise ValueError(
-        f'Expected {{"base_url": "..."}} from detect_api_base_url, got: {text[:200]}'
-    )
+    result = await conv.ask_json(prompt, BaseUrlResponse)
+    return result.base_url
 
 
 def _load_cached_base_url(app_name: str) -> str | None:

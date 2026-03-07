@@ -544,8 +544,15 @@ class TestStructuralAnnotation:
                 for i in range(6)
             }
         ]
+        from cli.helpers.schema._schema_analysis import (
+            MapDecision,
+            MapDecisionListResponse,
+        )
+
         mock_conv = MagicMock()
-        mock_conv.ask_text = AsyncMock(return_value='[{"group": 1, "is_map": true}]')
+        mock_conv.ask_json = AsyncMock(
+            return_value=MapDecisionListResponse([MapDecision(group=1, is_map=True)])
+        )
         with patch("cli.helpers.schema._schema_analysis.llm") as mock_llm:
             mock_llm.Conversation.return_value = mock_conv
 

@@ -2,12 +2,9 @@
 
 from __future__ import annotations
 
-from typing import Any, cast
-
-from cli.commands.openapi.analyze.types import EndpointGroup
+from cli.commands.openapi.analyze.types import EndpointGroup, EndpointGroupListResponse
 from cli.helpers.detect_base_url import MethodUrlPair
 from cli.helpers.http import compact_url
-from cli.helpers.json import extract_json
 import cli.helpers.llm as llm
 
 
@@ -43,36 +40,28 @@ Decoding opaque segments will help you understand what they represent and group 
 Observed requests:
 {chr(10).join(lines)}
 
-Your response MUST be a raw JSON array and nothing else — no explanation, no markdown fences, no text before or after. Example format:
+Example format:
 [{{"method": "GET", "pattern": "/api/users/{{user_id}}/orders", "urls": ["https://example.com/api/users/123/orders", "https://example.com/api/users/456/orders"]}}]"""
 
     conv = llm.Conversation(
         label="analyze_endpoints",
         tool_names=["decode_base64", "decode_url", "decode_jwt"],
     )
-    text = await conv.ask_text(prompt)
-
-    result = extract_json(text)
-    if not isinstance(result, list):
-        raise ValueError("Expected a JSON array from analyze_endpoints")
+    response = await conv.ask_json(prompt, EndpointGroupListResponse)
 
     groups: list[EndpointGroup] = []
-    for item in result:
-        item_dict: dict[str, Any] = (
-            cast(dict[str, Any], item) if isinstance(item, dict) else {}
-        )
-        compacted_urls: list[Any] = item_dict.get("urls", [])
+    for item in response.root:
         original_urls: list[str] = []
-        for curl in compacted_urls:
-            key = MethodUrlPair(item_dict["method"], curl)
+        for curl in item.urls:
+            key = MethodUrlPair(item.method, curl)
             if key in compact_to_originals:
                 original_urls.extend(compact_to_originals[key])
             else:
-                original_urls.append(str(curl))
+                original_urls.append(curl)
         groups.append(
             EndpointGroup(
-                method=str(item_dict["method"]),
-                pattern=str(item_dict["pattern"]),
+                method=item.method,
+                pattern=item.pattern,
                 urls=original_urls,
             )
         )

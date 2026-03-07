@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Callable, Sequence
 import json
-from typing import Any, TypeVar, cast
+from typing import Any, TypeVar, cast, overload
 
 from pydantic import BaseModel, ValidationError
 
@@ -93,18 +93,27 @@ class Conversation:
         self._messages.append({"role": "assistant", "content": text})
         return text
 
-    async def ask_json(self, prompt: str, response_model: type[T]) -> T:
+    @overload
+    async def ask_json(self, prompt: str, response_model: type[T]) -> T: ...
+    @overload
+    async def ask_json(self, prompt: str, response_model: None = None) -> Any: ...
+
+    async def ask_json(self, prompt: str, response_model: type[T] | None = None) -> T | Any:
         """Send a user message, parse the response as JSON, and return a validated model.
 
-        Augments *prompt* with a JSON instruction, then retries once on
-        parse/validation failure.
+        If *response_model* is ``None``, returns the raw parsed JSON (dict/list)
+        without Pydantic validation.  Otherwise augments *prompt* with a JSON
+        instruction and retries once on parse/validation failure.
         """
         augmented = (
             prompt
-            + "\n\nIMPORTANT: Respond with a single minified JSON object. "
+            + "\n\nIMPORTANT: Respond with a single minified JSON value. "
             "No commentary, no markdown fences, no explanation — only raw JSON."
         )
         text = await self.ask_text(augmented)
+
+        if response_model is None:
+            return self._parse_raw_json(text)
 
         try:
             return self._try_parse_model(text, response_model)
@@ -113,7 +122,8 @@ class Conversation:
 
         retry_msg = (
             f"Your response could not be parsed: {parse_error}. "
-            "Please respond with valid JSON matching the expected schema."
+            f"Please respond with valid JSON matching the expected schema: "
+            f"{json.dumps(response_model.model_json_schema())}"
         )
         retry_text = await self.ask_text(retry_msg)
         return self._try_parse_model(retry_text, response_model)
@@ -147,6 +157,14 @@ class Conversation:
                 f"LLM response truncated{tag} (max_tokens={self._max_tokens}). "
                 f"The prompt or expected output is too large."
             )
+
+    @staticmethod
+    def _parse_raw_json(text: str) -> Any:
+        """Parse *text* as JSON without model validation."""
+        try:
+            return json.loads(text.strip())
+        except json.JSONDecodeError:
+            return extract_json(text)
 
     @staticmethod
     def _try_parse_model(text: str, response_model: type[T]) -> T:

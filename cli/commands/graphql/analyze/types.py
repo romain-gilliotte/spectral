@@ -11,6 +11,19 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any
 
+from pydantic import BaseModel
+
+# -- Pydantic response models for LLM calls ----------------------------------
+
+
+class TypeEnrichmentResponse(BaseModel):
+    description: str
+    fields: dict[str, str] = {}
+
+
+class EnumEnrichmentResponse(BaseModel):
+    description: str
+
 # -- Parsing output (one per trace) ------------------------------------------
 
 

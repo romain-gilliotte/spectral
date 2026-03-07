@@ -12,9 +12,19 @@ from collections import defaultdict
 import re
 from typing import Any, cast
 
-from cli.helpers.json import extract_json
+from pydantic import BaseModel, RootModel
+
 import cli.helpers.llm as llm
 from cli.helpers.schema._schema_inference import infer_schema
+
+
+class MapDecision(BaseModel):
+    group: int
+    is_map: bool
+
+
+class MapDecisionListResponse(RootModel[list[MapDecision]]):
+    pass
 
 # ---------------------------------------------------------------------------
 # Dynamic key pattern detection (regex-based, deterministic)
@@ -225,21 +235,16 @@ async def _resolve_map_candidates(schema: dict[str, Any]) -> None:
         "(a map/dictionary where each key is a unique identifier) or fixed "
         "property names.\n\n"
         + "\n\n".join(groups)
-        + "\n\nRespond as a JSON array: "
+        + "\n\nResponse format (JSON array): "
         '[{"group": 1, "is_map": true}, ...]'
     )
 
     conv = llm.Conversation(label="resolve-map-candidates")
-    raw = await conv.ask_text(prompt)
-    parsed = extract_json(raw)
-    decisions: list[dict[str, Any]] = parsed if isinstance(parsed, list) else [parsed]
+    response = await conv.ask_json(prompt, MapDecisionListResponse)
 
     decision_map: dict[int, bool] = {}
-    for d in decisions:
-        gnum = d.get("group")
-        is_map = d.get("is_map")
-        if isinstance(gnum, int) and isinstance(is_map, bool):
-            decision_map[gnum] = is_map
+    for d in response.root:
+        decision_map[d.group] = d.is_map
 
     for i, (_path, node, candidate) in enumerate(all_candidates, 1):
         is_map = decision_map.get(i)

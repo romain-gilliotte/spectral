@@ -231,7 +231,7 @@ class TestConversationAskJson:
         await conv.ask_json("my prompt", _SampleModel)
         call_kwargs = client.messages.create.call_args.kwargs
         prompt_text = call_kwargs["messages"][0]["content"]
-        assert "IMPORTANT: Respond with a single minified JSON" in prompt_text
+        assert "IMPORTANT: Respond with a single minified JSON value" in prompt_text
         assert "my prompt" in prompt_text
 
 
