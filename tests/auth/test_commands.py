@@ -46,6 +46,13 @@ def _make_text_block(text: str) -> MagicMock:
     return resp
 
 
+def _make_async_create(response_text: str):
+    """Create an async mock that always returns the given text."""
+    async def mock_create(**kwargs: Any) -> MagicMock:
+        return _make_text_block(response_text)
+    return mock_create
+
+
 def _setup_auth_llm(script_response: str | None = None) -> None:
     """Set up a mock LLM client for auth analysis tests.
 
@@ -194,6 +201,92 @@ class TestAuthSet:
 
         assert result.exit_code != 0
         assert "Invalid header format" in result.output
+
+
+_FAILING_SCRIPT = (
+    'def acquire_token():\n'
+    '    raise RuntimeError("connection refused")\n'
+)
+
+_FIXED_SCRIPT = (
+    'import json\nimport urllib.request\n\n'
+    'def acquire_token():\n'
+    '    return {"headers": {"Authorization": "Bearer fixed-token"}}\n'
+)
+
+_FIXED_SCRIPT_RESPONSE = f'```python\n{_FIXED_SCRIPT}```'
+
+
+class TestAuthLoginFix:
+    def test_login_fix_on_failure(
+        self, sample_bundle: CaptureBundle, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ) -> None:
+        """Script fails → user accepts fix → LLM returns fixed script → login succeeds."""
+        from cli.helpers.storage import auth_script_path, load_token, store_capture
+
+        monkeypatch.setenv("SPECTRAL_HOME", str(tmp_path / "store"))
+        store_capture(sample_bundle, "testapp")
+
+        # Write the failing script
+        script_path = auth_script_path("testapp")
+        script_path.parent.mkdir(parents=True, exist_ok=True)
+        script_path.write_text(_FAILING_SCRIPT)
+
+        # Write app.json with base_url so detect_base_url uses cached value
+        from cli.helpers.storage import update_app_meta
+        update_app_meta("testapp", base_url="https://api.example.com")
+
+        # Set up LLM mock — base URL is cached so only the fix call happens
+        mock_client = MagicMock()
+        mock_client.messages.create = _make_async_create(_FIXED_SCRIPT_RESPONSE)
+        setup_client(mock_client)
+
+        runner = CliRunner()
+        result = runner.invoke(
+            cli,
+            ["auth", "login", "testapp"],
+            input="y\n",  # accept fix
+        )
+
+        assert result.exit_code == 0, result.output
+        assert "Login failed" in result.output
+        assert "Script updated" in result.output
+        assert "Login successful" in result.output
+
+        # Verify fixed script was written
+        assert "Bearer fixed-token" in script_path.read_text()
+
+        # Verify token was saved
+        token = load_token("testapp")
+        assert token is not None
+        assert token.headers["Authorization"] == "Bearer fixed-token"
+
+    def test_login_fix_declined(
+        self, sample_bundle: CaptureBundle, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ) -> None:
+        """Script fails → user declines fix → exit code 1, script unchanged."""
+        from cli.helpers.storage import auth_script_path, store_capture
+
+        monkeypatch.setenv("SPECTRAL_HOME", str(tmp_path / "store"))
+        store_capture(sample_bundle, "testapp")
+
+        # Write the failing script
+        script_path = auth_script_path("testapp")
+        script_path.parent.mkdir(parents=True, exist_ok=True)
+        script_path.write_text(_FAILING_SCRIPT)
+
+        runner = CliRunner()
+        result = runner.invoke(
+            cli,
+            ["auth", "login", "testapp"],
+            input="n\n",  # decline fix
+        )
+
+        assert result.exit_code == 1
+        assert "Login failed" in result.output
+
+        # Script should be unchanged
+        assert script_path.read_text() == _FAILING_SCRIPT
 
 
 class TestAuthAnalyze:

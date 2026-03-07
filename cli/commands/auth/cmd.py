@@ -3,10 +3,15 @@
 from __future__ import annotations
 
 import asyncio
+from typing import TYPE_CHECKING
 
 import click
 
 from cli.helpers.console import console
+
+if TYPE_CHECKING:
+    from cli.commands.capture.types import CaptureBundle
+    from cli.helpers.llm import Conversation
 
 
 @click.group()
@@ -112,20 +117,86 @@ def set_token(app_name: str, header: tuple[str, ...], cookie: tuple[str, ...]) -
 
 @auth.command()
 @click.argument("app_name")
-def login(app_name: str) -> None:
+@click.option("--model", default="claude-sonnet-4-5-20250929", help="LLM model to use")
+@click.option(
+    "--debug", is_flag=True, default=False, help="Save LLM prompts/responses to debug/"
+)
+def login(app_name: str, model: str, debug: bool) -> None:
     """Run interactive authentication for an app.
 
     Loads auth_acquire.py, calls acquire_token(), and writes token.json.
+    If the script fails, offers to fix it with the LLM.
     """
-    from cli.commands.mcp.auth import acquire_auth
-    from cli.helpers.storage import resolve_app, write_token
+    import traceback
+
+    from cli.commands.mcp.auth import acquire_auth, captured_script_output
+    from cli.helpers.storage import auth_script_path, resolve_app, write_token
 
     resolve_app(app_name)
 
-    console.print(f"[bold]Logging in to {app_name}...[/bold]")
-    token = acquire_auth(app_name)
-    write_token(app_name, token)
-    console.print("[green]Login successful. Token saved.[/green]")
+    # Lazily initialized on first fix attempt
+    bundle: CaptureBundle | None = None
+    system_context: str | None = None
+    fix_conv: Conversation | None = None  # reused across fix attempts
+
+    while True:
+        console.print(f"[bold]Logging in to {app_name}...[/bold]")
+        try:
+            token = acquire_auth(app_name)
+        except Exception:
+            traceback_str = traceback.format_exc()
+            stdout_output = "".join(captured_script_output)
+            if stdout_output:
+                traceback_str = f"## Script stdout\n\n{stdout_output}\n## Traceback\n\n{traceback_str}"
+            console.print("[red]Login failed:[/red]")
+            console.print(traceback_str)
+
+            if not click.confirm(
+                "Would you like the LLM to fix the auth script?", default=True
+            ):
+                raise SystemExit(1)
+
+            # Lazy init LLM, bundle, and system context on first fix
+            if bundle is None:
+                from cli.helpers.context import build_shared_context
+                from cli.helpers.detect_base_url import detect_base_url
+                import cli.helpers.llm as llm_mod
+                from cli.helpers.storage import load_app_bundle
+
+                llm_mod.init_debug(debug=debug)
+                llm_mod.set_model(model)
+
+                bundle = load_app_bundle(app_name)
+
+                async def _detect_url() -> str:
+                    return await detect_base_url(bundle, app_name)  # type: ignore[arg-type]
+
+                base_url = asyncio.run(_detect_url())
+                system_context = build_shared_context(bundle, base_url)
+
+            from cli.commands.auth.analyze import fix_auth_script
+
+            script_path = auth_script_path(app_name)
+            current_script = script_path.read_text()
+
+            fixed_script, fix_conv = asyncio.run(
+                fix_auth_script(
+                    bundle=bundle,
+                    api_name=app_name,
+                    system_context=system_context,
+                    current_script=current_script,
+                    error_trace=traceback_str,
+                    conv=fix_conv,
+                )
+            )
+
+            script_path.write_text(fixed_script)
+            console.print("[green]Script updated. Retrying login...[/green]")
+            continue
+
+        write_token(app_name, token)
+        console.print("[green]Login successful. Token saved.[/green]")
+        break
 
 
 @auth.command()
@@ -140,6 +211,44 @@ def logout(app_name: str) -> None:
         console.print(f"[green]Logged out of {app_name}. Token removed.[/green]")
     else:
         console.print(f"[dim]No token found for '{app_name}'. Nothing to remove.[/dim]")
+
+
+@auth.command()
+@click.argument("app_name")
+@click.option("--model", default="claude-sonnet-4-5-20250929", help="LLM model to use")
+@click.option(
+    "--debug", is_flag=True, default=False, help="Save LLM prompts/responses to debug/"
+)
+def extract(app_name: str, model: str, debug: bool) -> None:
+    """Extract auth tokens from captured traces.
+
+    Scans the most recent traces for auth headers (Authorization, cookies, etc.)
+    and writes them to token.json without re-authentication.
+    """
+    from cli.commands.auth.extract import extract_auth_from_traces
+    import cli.helpers.llm as llm
+    from cli.helpers.storage import load_app_bundle, resolve_app, write_token
+
+    resolve_app(app_name)
+    console.print(f"[bold]Loading captures for app:[/bold] {app_name}")
+    bundle = load_app_bundle(app_name)
+    console.print(f"  Loaded {len(bundle.traces)} traces")
+
+    llm.init_debug(debug=debug)
+    llm.set_model(model)
+
+    token = asyncio.run(extract_auth_from_traces(bundle, app_name))
+
+    if token is None:
+        console.print(
+            "[yellow]No auth headers found in traces. "
+            "No token written.[/yellow]"
+        )
+        return
+
+    write_token(app_name, token)
+    header_names = ", ".join(token.headers.keys())
+    console.print(f"[green]Token saved with headers: {header_names}[/green]")
 
 
 @auth.command()
@@ -167,5 +276,3 @@ def refresh(app_name: str) -> None:
 
     write_token(app_name, new_token)
     console.print("[green]Token refreshed successfully.[/green]")
-
-

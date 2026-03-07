@@ -149,6 +149,75 @@ def _prepare_trace_list(traces: list[Trace]) -> str:
     return "\n".join(lines)
 
 
+async def fix_auth_script(
+    bundle: CaptureBundle,
+    api_name: str,
+    system_context: str | None,
+    current_script: str,
+    error_trace: str,
+    conv: llm.Conversation | None = None,
+) -> tuple[str, llm.Conversation]:
+    """Fix a failing auth script using the LLM.
+
+    Provides the LLM with the trace list, current script, and runtime error
+    so it can generate a corrected version.
+
+    If *conv* is provided, reuses the existing conversation (follow-up turn)
+    so the LLM remembers previous fix attempts. Otherwise creates a new one.
+
+    Returns ``(fixed_script, conversation)`` so the caller can pass the
+    conversation back for subsequent fix attempts.
+    """
+    if conv is None:
+        # First fix attempt: build the full prompt with trace list + script + error
+        trace_summaries = _prepare_trace_list(bundle.traces)
+
+        prompt = f"""## API: {api_name}
+
+## Available traces
+
+Use the `inspect_trace` tool to examine any trace in detail.
+
+{trace_summaries}
+
+## Current auth script (failing)
+
+```python
+{current_script}
+```
+
+## Runtime error
+
+{error_trace}
+
+Fix the script so it works. You may add `print()` statements to debug (their output will be shown to you if the script fails again). Return ONLY the corrected Python code in a ```python block."""
+
+        system: list[str] | None = None
+        if system_context is not None:
+            system = [system_context, AUTH_INSTRUCTIONS]
+
+        conv = llm.Conversation(
+            system=system,
+            max_tokens=8192,
+            label="fix_auth_script",
+            tool_names=["decode_base64", "decode_url", "decode_jwt", "inspect_trace"],
+            bundle=bundle,
+        )
+    else:
+        # Follow-up fix attempt: send just the new error
+        prompt = f"""The fixed script still fails. Here is the new error:
+
+{error_trace}
+
+Fix the script so it works. You may add `print()` statements to debug (their output will be shown to you if the script fails again). Return ONLY the corrected Python code in a ```python block."""
+
+    text = await conv.ask_text(prompt)
+
+    script = _extract_script(text)
+    _validate_script(script)
+    return script, conv
+
+
 def _extract_script(text: str) -> str:
     """Extract Python code from a markdown code block."""
     match = re.search(r"```python\s*\n(.*?)```", text, re.DOTALL)

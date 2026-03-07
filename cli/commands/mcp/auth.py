@@ -85,6 +85,9 @@ def acquire_auth(app_name: str) -> TokenState:
     return new_token
 
 
+captured_script_output: list[str] = []
+
+
 def load_auth_module(app_name: str) -> ModuleType:
     """Load auth_acquire.py as a module, injecting prompt utilities."""
     script = auth_script_path(app_name)
@@ -97,6 +100,19 @@ def load_auth_module(app_name: str) -> ModuleType:
     # Inject prompt utilities
     mod.prompt_text = _prompt_text  # type: ignore[attr-defined]
     mod.prompt_secret = _prompt_secret  # type: ignore[attr-defined]
+
+    # Inject a print() that captures output for LLM debugging
+    captured_script_output.clear()
+
+    def _capture_print(*args: Any, **kwargs: Any) -> None:
+        import io as _io
+
+        buf = _io.StringIO()
+        print(*args, file=buf, **kwargs)  # noqa: T201
+        text = buf.getvalue()
+        captured_script_output.append(text)
+
+    mod.print = _capture_print  # type: ignore[attr-defined]
 
     code = compile(source, str(script), "exec")
     exec(code, mod.__dict__)
