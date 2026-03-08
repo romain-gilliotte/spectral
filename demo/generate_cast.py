@@ -15,8 +15,8 @@ import json
 import sys
 from pathlib import Path
 
-COLS = 96
-ROWS = 34
+COLS = 92
+ROWS = 24
 
 # ANSI escape codes
 BOLD = "\033[1m"
