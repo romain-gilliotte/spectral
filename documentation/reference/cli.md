@@ -107,6 +107,28 @@ Requires an Anthropic API key (resolved from the `ANTHROPIC_API_KEY` env var, st
 
 ---
 
+## auth extract
+
+Extract auth tokens directly from captured traces without generating a script.
+
+```
+spectral auth extract <app_name> [--model MODEL] [--debug]
+```
+
+| Argument / Option | Required | Default | Description |
+|-------------------|----------|---------|-------------|
+| `app_name` | Yes | — | Name of the app in managed storage |
+| `--model` | No | `claude-sonnet-4-5-20250929` | Anthropic model to use |
+| `--debug` | No | Off | Save LLM prompts and responses to `debug/<timestamp>/` |
+
+Scans all traces for auth headers (Authorization, cookies, etc.) and writes them to `token.json`. Tries a fast path first (looks for `Authorization` headers directly), falling back to the LLM to identify other auth headers if needed.
+
+This is the quickest way to get a working token when you already have authenticated traffic in your captures. Unlike `auth analyze`, it does not generate a reusable script — it extracts the token values observed in the traces.
+
+Requires an Anthropic API key only when the fast path fails and LLM analysis is needed.
+
+---
+
 ## auth set
 
 Manually set auth headers or cookies for an app.
@@ -132,14 +154,18 @@ Cookies are joined into a single `Cookie` header (e.g., `-c "a=1" -c "b=2"` beco
 Run interactive authentication for an app.
 
 ```
-spectral auth login <app_name>
+spectral auth login <app_name> [--model MODEL] [--debug]
 ```
 
-| Argument | Required | Default | Description |
-|----------|----------|---------|-------------|
+| Argument / Option | Required | Default | Description |
+|-------------------|----------|---------|-------------|
 | `app_name` | Yes | — | Name of the app in managed storage |
+| `--model` | No | `claude-sonnet-4-5-20250929` | Anthropic model to use for interactive fix |
+| `--debug` | No | Off | Save LLM prompts and responses to `debug/<timestamp>/` |
 
 Loads the generated `auth_acquire.py` script, calls `acquire_token()` (which prompts for credentials), and writes the result to `token.json`.
+
+If the script fails, the command offers to fix it interactively using the LLM. When accepted, it enters a fix loop: the LLM receives the error (including any script debug output), rewrites the script, and retries login automatically until it succeeds or the user cancels.
 
 ---
 

@@ -4,7 +4,7 @@ The `spectral openapi analyze` and `spectral graphql analyze` commands load all 
 
 ## Architecture
 
-The pipeline is built on a typed step abstraction. Each step takes a typed input and produces a typed output, with optional validation. Steps can override a validation hook that raises a `StepValidationError` on invalid output.
+Each analyze command (`openapi analyze`, `graphql analyze`, `mcp analyze`) owns its analysis code directly, with protocol-specific stages tailored to its output format. There is no shared step abstraction — the stages described below are conventions, not a framework.
 
 ## Pipeline stages
 

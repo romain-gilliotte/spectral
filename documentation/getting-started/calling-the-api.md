@@ -4,7 +4,7 @@ After analyzing your captures, you can start making API calls. This guide covers
 
 ## Authentication setup
 
-Before calling the API, set up authentication. Spectral provides two paths depending on your situation.
+Before calling the API, set up authentication. Spectral provides three paths depending on your situation.
 
 ### Generated auth script
 
@@ -23,6 +23,16 @@ When the token expires, refresh it or log in again:
 uv run spectral auth refresh myapp    # if a refresh endpoint was detected
 uv run spectral auth login myapp      # re-authenticate from scratch
 ```
+
+### Direct extraction from traces
+
+If the captures already contain authenticated requests, extract the tokens directly without generating a script:
+
+```bash
+uv run spectral auth extract myapp
+```
+
+This scans all traces for auth headers and writes them to `token.json`. It is the fastest path but produces non-renewable tokens — when they expire, run the command again on fresh captures or use one of the other methods below.
 
 ### Manual token injection
 
