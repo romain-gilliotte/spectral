@@ -144,74 +144,55 @@ def record() -> Cast:
     # ── Scene 2: analyze ────────────────────────────────
 
     c.cmd("spectral mcp analyze tado")
-    c.wait(0.4)
+    c.wait(0.3)
 
     c.line(f"{BOLD}Loading captures for app:{RESET} tado")
-    c.wait(0.2)
+    c.wait(0.15)
     c.line("  Loaded 2 capture(s): 47 traces, 0 WS connections, 12 contexts")
-    c.wait(0.4)
+    c.wait(0.3)
     c.line()
 
     c.line(f"{BOLD}Generating MCP tools with LLM (claude-sonnet-4-5-20250929)...{RESET}")
-    c.wait(0.5)
-    c.line("  Detecting API base URL...")
-    c.wait(0.8)
+    c.wait(0.4)
     c.line("  API base URL: https://my.tado.com")
     c.line("  Kept 43/47 traces under https://my.tado.com")
-    c.wait(0.3)
+    c.wait(0.2)
     c.line("  Identifying capabilities and building tools...")
-    c.wait(0.5)
+    c.wait(0.3)
 
-    # Trace evaluations — fast, just enough to show the pattern
+    # Trace evaluations — quick glimpse of the pattern
     traces = [
         ("t_001_0001", None),
-        ("t_001_0002", None),
-        ("t_001_0003", "get_home_details"),
-        ("t_001_0004", "get_home_state"),
-        ("t_001_0005", None),
-        ("t_001_0006", "list_home_zones"),
-        ("t_001_0007", None),
-        ("t_001_0008", "get_zone_state"),
-        ("t_001_0009", "get_zone_capabilities"),
-        ("t_001_0010", None),
-        ("t_001_0011", "get_all_zone_states"),
+        ("t_001_0002", "get_home_details"),
+        ("t_001_0003", None),
+        ("t_001_0004", "list_home_zones"),
+        ("t_001_0005", "get_zone_state"),
+        ("t_001_0006", None),
     ]
     for tid, tool in traces:
         if tool:
             c.line(
                 f"  Evaluating {tid}... useful → building {BOLD}{tool}{RESET}",
-                pause=0.12,
+                pause=0.1,
             )
         else:
-            c.line(f"  Evaluating {tid}... {DIM}skip{RESET}", pause=0.08)
+            c.line(f"  Evaluating {tid}... {DIM}skip{RESET}", pause=0.06)
 
-    c.line(f"  {DIM}... (32 more traces){RESET}")
+    c.line(f"  {DIM}... (37 more traces){RESET}")
+    c.wait(0.2)
+    c.line(f"  Extracted 19 tool(s).")
     c.wait(0.3)
-    c.line("  Extracted 19 tool(s).")
-    c.wait(0.5)
     c.line()
 
     c.line(f"{GREEN}Wrote 19 tool(s) to storage{RESET}")
     tools = [
         ("get_home_details", "GET", "/api/v2/homes/{home_id}"),
-        ("get_home_state", "GET", "/api/v2/homes/{home_id}/state"),
         ("list_home_zones", "GET", "/api/v2/homes/{home_id}/zones"),
         ("get_zone_state", "GET", "/api/v2/homes/{home_id}/zones/{zone_id}/state"),
-        (
-            "set_zone_temperature",
-            "PUT",
-            "/api/v2/homes/{home_id}/zones/{zone_id}/overlay",
-        ),
-        (
-            "get_zone_day_report",
-            "GET",
-            "/api/v2/homes/{home_id}/zones/{zone_id}/dayReport",
-        ),
     ]
     for name, method, path in tools:
-        c.line(f"  Tool: {name} — {method} {path}", pause=0.025)
-    c.line(f"  {DIM}... (13 more tools){RESET}")
-    c.wait(0.2)
+        c.line(f"  Tool: {name} — {method} {path}", pause=0.02)
+    c.line(f"  {DIM}... (16 more tools){RESET}")
     c.line()
     c.line(f"  {DIM}LLM token usage: 142,831 input, 8,429 output (~$0.52){RESET}")
 
@@ -239,7 +220,7 @@ def record() -> Cast:
         "Humidity is at 45%. The heating is active.",
     )
 
-    c.wait(2.0)
+    c.wait(3.0)
 
     # Second interaction
     c.user_prompt("Set it to 23 degrees")
@@ -252,7 +233,7 @@ def record() -> Cast:
         "The heating will adjust to reach the new target.",
     )
 
-    c.wait(2.0)
+    c.wait(3.0)
 
     # Third interaction — switch to Uber, show cross-app usage
     c.user_prompt("How much would an Uber cost from SFO to downtown?")
@@ -271,7 +252,7 @@ def record() -> Cast:
         "Prices may vary with demand. Want me to request a ride?",
     )
 
-    c.wait(4.0)
+    c.wait(5.0)
 
     return c
 

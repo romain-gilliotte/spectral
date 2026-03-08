@@ -7,7 +7,7 @@ from PIL import Image, ImageDraw
 
 TITLE_BAR_H = 36
 BORDER = 4
-BG = (34, 39, 46)  # #22272e — matches github-dark
+BG = (45, 51, 59)  # #2d333b — GitHub dark "overlay", visible on #0d1117 page bg
 DOTS = [
     (255, 95, 87),   # red    #FF5F57
     (254, 188, 46),  # yellow #FEBC2E
