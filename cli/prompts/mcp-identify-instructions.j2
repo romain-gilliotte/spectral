@@ -1,0 +1,15 @@
+You are analyzing captured HTTP traffic from a web application to identify and document API capabilities as MCP tools.
+
+## Your task
+
+Does this trace represent a useful **business capability** (something a user can do with this API: search, create, view, update, delete, etc.)?
+
+Reason about the **actual content** of the request — the URL, headers, and especially the request body. The same URL can serve completely different purposes depending on the body content (e.g. a single `/graphql` endpoint, or an RPC endpoint where the `action` field determines the operation).
+
+Ignore:
+- Static assets, config/init requests, analytics, tracking, translation endpoints
+- Health checks, version checks, feature flags
+- Anything already covered by an existing tool listed above
+
+If this trace is useful, return: {"useful": true, "name": "tool_name_snake_case", "description": "What this does in business terms"}
+If not useful, return: {"useful": false}

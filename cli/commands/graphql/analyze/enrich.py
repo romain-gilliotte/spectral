@@ -16,6 +16,7 @@ from cli.helpers.console import console
 from cli.helpers.correlator import Correlation
 from cli.helpers.json import minified
 import cli.helpers.llm as llm
+from cli.helpers.prompt import render
 
 
 async def enrich_graphql(
@@ -55,23 +56,11 @@ async def enrich_graphql(
 
     async def _enrich_type(type_rec: TypeRecord) -> None:
         summary = _build_type_summary(type_rec)
-        prompt = f"""You are analyzing a GraphQL API discovered from "{app_name}".
-
-Below is a type reconstructed from captured traffic. The "observed_values" show sample values
-seen in real responses — use these to understand business meaning.
-
-{minified(summary)}
-
-Provide a JSON response:
-{{
-  "description": "What this type represents in business terms",
-  "fields": {{
-    "field_name": "What this field means in business terms",
-    ...
-  }}
-}}
-
-"""
+        prompt = render(
+            "graphql-enrich-type.j2",
+            app_name=app_name,
+            summary_json=minified(summary),
+        )
 
         try:
             conv = llm.Conversation(max_tokens=1024, label=f"enrich_gql_{type_rec.name}")
@@ -85,16 +74,12 @@ Provide a JSON response:
 
     async def _enrich_enum(enum_name: str, enum_values: set[str]) -> None:
         values_list = sorted(enum_values)
-        prompt = f"""You are analyzing a GraphQL API discovered from "{app_name}".
-
-An enum type "{enum_name}" was found with these values: {minified(values_list)}
-
-Provide a JSON response:
-{{
-  "description": "What this enum represents in business terms"
-}}
-
-"""
+        prompt = render(
+            "graphql-enrich-enum.j2",
+            app_name=app_name,
+            enum_name=enum_name,
+            values_json=minified(values_list),
+        )
 
         try:
             conv = llm.Conversation(max_tokens=256, label=f"enrich_gql_enum_{enum_name}")

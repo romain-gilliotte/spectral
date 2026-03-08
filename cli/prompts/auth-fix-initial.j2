@@ -1,0 +1,19 @@
+## API: {{ api_name }}
+
+## Available traces
+
+Use the `inspect_trace` tool to examine any trace in detail.
+
+{{ trace_summaries }}
+
+## Current auth script (failing)
+
+```python
+{{ current_script }}
+```
+
+## Runtime error
+
+{{ error_trace }}
+
+Fix the script so it works. You may add `debug()` calls to log intermediate values (their output will be shown to you if the script fails again). Return ONLY the corrected Python code in a ```python block.

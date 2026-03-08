@@ -16,6 +16,7 @@ from cli.helpers.console import console
 from cli.helpers.correlator import Correlation
 from cli.helpers.json import minified
 import cli.helpers.llm as llm
+from cli.helpers.prompt import render as render_prompt
 
 _MAX_SUMMARY_CHARS = 40_000
 _MAX_RESPONSE_SCHEMA_CHARS = 5_000
@@ -34,28 +35,12 @@ async def enrich_endpoints(ctx: EnrichmentContext) -> list[EndpointSpec]:
                 f"summary too large ({len(summary_json):,} chars, ~{est_tokens:,} tokens)[/yellow]"
             )
             return
-        prompt = f"""You are analyzing a single API endpoint discovered from "{ctx.app_name}" ({ctx.base_url}).
-
-Below is the endpoint's mechanical data as JSON Schema. Nested properties carry an "examples" array with sample values seen in real traffic — use these to understand business meaning.
-
-{summary_json}
-
-Provide a JSON response with these keys:
-- "description": concise description of what this endpoint does in business terms (this becomes the OpenAPI summary)
-- "field_descriptions": an object mirroring the schema structure with business descriptions for each field. Sub-keys:
-  - "path_parameters": {{param_name: "description", ...}} (omit if no path parameters)
-  - "query_parameters": {{param_name: "description", ...}} (omit if no query parameters)
-  - "request_body": object mirroring the request body schema structure (omit if no request body)
-  - "responses": {{status_code_string: object mirroring the response schema structure}} (omit if no response schemas; response schemas may be omitted for large endpoints — skip field_descriptions.responses for those statuses)
-  Rules for field_descriptions structure:
-  - Leaf values are always description strings.
-  - Nested objects mirror the nesting: {{"address": {{"city": "...", "zip": "..."}}}}
-  - For arrays of objects, use the array field name as key with a flat object describing the item properties: {{"items": {{"name": "...", "price": "..."}}}}
-  - NEVER use dot-paths or bracket notation like "items[].name". Always use nested objects.
-- "response_details": {{status_code_string: {{"business_meaning": "...", "example_scenario": "...", "user_impact": "..." or null, "resolution": "..." or null}}}} for each observed status. For error statuses (4xx/5xx), include user_impact and resolution.
-- "discovery_notes": observations, edge cases, or dependencies worth noting about this endpoint (or null)
-
-"""
+        prompt = render_prompt(
+            "openapi-enrich-endpoint.j2",
+            app_name=ctx.app_name,
+            base_url=ctx.base_url,
+            summary_json=summary_json,
+        )
 
         try:
             conv = llm.Conversation(max_tokens=4096, label=f"enrich_{ep.id}")

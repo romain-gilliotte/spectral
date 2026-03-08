@@ -14,23 +14,7 @@ from cli.commands.mcp.types import (
 from cli.helpers.http import sanitize_headers
 from cli.helpers.json import minified, truncate_json
 import cli.helpers.llm as llm
-
-IDENTIFY_INSTRUCTIONS = """\
-You are analyzing captured HTTP traffic from a web application to identify and document API capabilities as MCP tools.
-
-## Your task
-
-Does this trace represent a useful **business capability** (something a user can do with this API: search, create, view, update, delete, etc.)?
-
-Reason about the **actual content** of the request — the URL, headers, and especially the request body. The same URL can serve completely different purposes depending on the body content (e.g. a single `/graphql` endpoint, or an RPC endpoint where the `action` field determines the operation).
-
-Ignore:
-- Static assets, config/init requests, analytics, tracking, translation endpoints
-- Health checks, version checks, feature flags
-- Anything already covered by an existing tool listed above
-
-If this trace is useful, return: {"useful": true, "name": "tool_name_snake_case", "description": "What this does in business terms"}
-If not useful, return: {"useful": false}"""
+from cli.helpers.prompt import load, render
 
 
 async def identify_capabilities(input: IdentifyInput) -> ToolCandidate | None:
@@ -52,14 +36,15 @@ async def identify_capabilities(input: IdentifyInput) -> ToolCandidate | None:
             for t in input.existing_tools
         )
 
-    prompt = f"""{existing_tools_text}
-
-## Target trace: {target.meta.id}
-
-{request_details}"""
+    prompt = render(
+        "mcp-identify-user.j2",
+        existing_tools_text=existing_tools_text,
+        target_trace_id=target.meta.id,
+        request_details=request_details,
+    )
 
     conv = llm.Conversation(
-        system=[input.system_context, IDENTIFY_INSTRUCTIONS],
+        system=[input.system_context, load("mcp-identify-instructions.j2")],
         label=f"identify_{target.meta.id}",
         max_tokens=1024,
     )

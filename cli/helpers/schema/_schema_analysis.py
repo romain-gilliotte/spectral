@@ -15,6 +15,7 @@ from typing import Any, cast
 from pydantic import BaseModel, RootModel
 
 import cli.helpers.llm as llm
+from cli.helpers.prompt import render as render_prompt
 from cli.helpers.schema._schema_inference import infer_schema
 
 
@@ -230,14 +231,7 @@ async def _resolve_map_candidates(schema: dict[str, Any]) -> None:
             f"  extra properties: [{extra_str}]"
         )
 
-    prompt = (
-        "For each group below, determine whether the keys are dynamic IDs "
-        "(a map/dictionary where each key is a unique identifier) or fixed "
-        "property names.\n\n"
-        + "\n\n".join(groups)
-        + "\n\nResponse format (JSON array): "
-        '[{"group": 1, "is_map": true}, ...]'
-    )
+    prompt = render_prompt("schema-resolve-map-candidates.j2", groups=groups)
 
     conv = llm.Conversation(label="resolve-map-candidates")
     response = await conv.ask_json(prompt, MapDecisionListResponse)

@@ -1,0 +1,7 @@
+For each group below, determine whether the keys are dynamic IDs (a map/dictionary where each key is a unique identifier) or fixed property names.
+
+{% for group in groups %}
+{{ group }}
+
+{% endfor %}
+Response format (JSON array): [{"group": 1, "is_map": true}, ...]

@@ -16,6 +16,7 @@ from cli.formats.mcp_tool import TokenState
 from cli.helpers.console import console
 from cli.helpers.http import get_header
 import cli.helpers.llm as llm
+from cli.helpers.prompt import load
 
 
 class AuthHeaderNamesResponse(BaseModel):
@@ -56,19 +57,7 @@ async def _llm_identify_auth_headers(
         max_iterations=3,
     )
 
-    prompt = (
-        "You are analyzing HTTP traces from a web application. "
-        "Your task is to identify which request header names carry authentication "
-        "(tokens, session cookies, API keys, etc.).\n\n"
-        "Use the query_traces tool to inspect the request headers of one trace. "
-        "Look for headers like Cookie, X-Auth-Token, X-API-Key, X-Session, "
-        "or any custom header that appears to carry auth credentials.\n\n"
-        "Do NOT include standard non-auth headers like Content-Type, Accept, "
-        "User-Agent, Origin, Referer, etc.\n\n"
-        "One query should be enough. If no auth headers are present, "
-        "return an empty list — do not keep searching.\n\n"
-        "Return ONLY the header names that carry authentication."
-    )
+    prompt = load("auth-extract-headers.j2")
 
     result = await conv.ask_json(prompt, AuthHeaderNamesResponse)
     return result.header_names
