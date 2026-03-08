@@ -90,6 +90,18 @@ async def _handle_call(
     return "\n\n".join(result_parts)
 
 
+def apply_defaults(
+    arguments: dict[str, Any], schema: dict[str, Any]
+) -> dict[str, Any]:
+    """Insert default values for optional parameters absent from *arguments*."""
+    properties = schema.get("properties", {})
+    result = dict(arguments)
+    for key, prop in properties.items():
+        if key not in result and "default" in prop:
+            result[key] = prop["default"]
+    return result
+
+
 def coerce_arguments(
     arguments: dict[str, Any], schema: dict[str, Any]
 ) -> dict[str, Any]:
@@ -144,6 +156,7 @@ def create_server() -> Server:
         except jsonschema.ValidationError as exc:
             return [types.TextContent(type="text", text=f"Invalid arguments: {exc.message}")]
 
+        args = apply_defaults(args, schema)
         result = await _handle_call(app_name, tool, args)
         return [types.TextContent(type="text", text=result)]
 

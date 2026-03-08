@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import json
+from typing import Any
 from unittest.mock import MagicMock, patch
 
 from mcp import types as mcp_types
@@ -13,6 +14,7 @@ from cli.commands.mcp.server import (
     _build_registry,
     _handle_call,
     _registry,
+    apply_defaults,
     create_server,
 )
 from cli.formats.mcp_tool import ToolDefinition, ToolRequest
@@ -268,3 +270,112 @@ class TestServerCallTool:
         call_result: mcp_types.CallToolResult = result.root  # type: ignore[assignment]
         assert call_result.content is not None
         assert any("Unknown tool" in c.text for c in call_result.content if isinstance(c, mcp_types.TextContent))
+
+
+class TestApplyDefaults:
+    def test_injects_missing_defaults(self) -> None:
+        schema: dict[str, Any] = {
+            "type": "object",
+            "properties": {
+                "power": {"type": "string", "default": "ON"},
+                "mode": {"type": "string", "default": "HEAT"},
+            },
+            "required": [],
+        }
+        result = apply_defaults({}, schema)
+        assert result == {"power": "ON", "mode": "HEAT"}
+
+    def test_preserves_provided_values(self) -> None:
+        schema: dict[str, Any] = {
+            "type": "object",
+            "properties": {
+                "power": {"type": "string", "default": "ON"},
+            },
+            "required": [],
+        }
+        result = apply_defaults({"power": "OFF"}, schema)
+        assert result == {"power": "OFF"}
+
+    def test_ignores_properties_without_default(self) -> None:
+        schema: dict[str, Any] = {
+            "type": "object",
+            "properties": {
+                "name": {"type": "string"},
+                "color": {"type": "string", "default": "blue"},
+            },
+            "required": ["name"],
+        }
+        result = apply_defaults({"name": "test"}, schema)
+        assert result == {"name": "test", "color": "blue"}
+        assert "name" in result  # provided value kept
+
+
+class TestCallToolWithDefaults:
+    @patch("cli.commands.mcp.server.http_requests.request")
+    async def test_call_tool_applies_defaults(
+        self,
+        mock_request: MagicMock,
+        monkeypatch: pytest.MonkeyPatch,
+        tmp_path: pytest.TempPathFactory,
+    ) -> None:
+        from cli.helpers.storage import ensure_app, update_app_meta, write_tools
+
+        monkeypatch.setenv("SPECTRAL_HOME", str(tmp_path))
+        ensure_app("testapp")
+        update_app_meta("testapp", base_url="https://api.example.com")
+
+        tool = ToolDefinition(
+            name="set_overlay",
+            description="Set temperature overlay",
+            parameters={
+                "type": "object",
+                "properties": {
+                    "zone_id": {"type": "integer"},
+                    "temperature": {"type": "number"},
+                    "power": {"type": "string", "default": "ON"},
+                    "mode": {"type": "string", "default": "HEAT"},
+                },
+                "required": ["zone_id", "temperature"],
+            },
+            request=ToolRequest(
+                method="PUT",
+                path="/api/zones/{zone_id}/overlay",
+                body={
+                    "temperature": {"$param": "temperature"},
+                    "setting": {
+                        "power": {"$param": "power"},
+                        "mode": {"$param": "mode"},
+                    },
+                },
+            ),
+            requires_auth=False,
+        )
+        write_tools("testapp", [tool])
+
+        mock_resp = MagicMock()
+        mock_resp.status_code = 200
+        mock_resp.headers = {}
+        mock_resp.text = '{"ok": true}'
+        mock_request.return_value = mock_resp
+
+        # Register and call via server handler
+        server = create_server()
+        handler = server.request_handlers[mcp_types.CallToolRequest]
+        req = mcp_types.CallToolRequest(
+            method="tools/call",
+            params=mcp_types.CallToolRequestParams(
+                name="testapp_set_overlay",
+                arguments={"zone_id": 1, "temperature": 22.5},
+            ),
+        )
+        result = await handler(req)
+        call_result: mcp_types.CallToolResult = result.root  # type: ignore[assignment]
+
+        # Should succeed (no "Missing required parameter" error)
+        assert any("200" in c.text for c in call_result.content if isinstance(c, mcp_types.TextContent))
+
+        # Verify defaults were applied in the request body
+        call_kwargs = mock_request.call_args
+        body = call_kwargs.kwargs["json"]
+        assert body["setting"]["power"] == "ON"
+        assert body["setting"]["mode"] == "HEAT"

@@ -5,6 +5,7 @@ Pure functions — no I/O, no side effects.
 
 from __future__ import annotations
 
+from enum import Enum
 from typing import Any, cast
 from urllib.parse import urlencode, urljoin
 
@@ -30,7 +31,9 @@ def resolve_query(query_template: dict[str, Any], params: dict[str, Any]) -> dic
     """Replace ``{"$param": "name"}`` markers in *query_template* with values from *params*."""
     result: dict[str, str] = {}
     for key, value in query_template.items():
-        result[key] = str(_resolve_value(value, params))
+        resolved = _resolve_value(value, params)
+        if resolved is not _Omit.OMIT:
+            result[key] = str(resolved)
     return result
 
 
@@ -46,18 +49,32 @@ def resolve_body(
     return body_template  # pragma: no cover
 
 
+class _Omit(Enum):
+    """Sentinel indicating a value should be omitted from the output."""
+
+    OMIT = "OMIT"
+
+
 def _resolve_value(value: Any, params: dict[str, Any]) -> Any:
-    """Recursively resolve ``$param`` markers in a value."""
+    """Recursively resolve ``$param`` markers in a value.
+
+    When a ``$param`` marker references a parameter absent from *params*,
+    returns ``_Omit.OMIT`` so the caller can drop the key from the result.
+    """
     if isinstance(value, dict):
         d = cast(dict[str, Any], value)
         # Check if this is a $param marker
         if len(d) == 1 and "$param" in d:
             param_name: str = d["$param"]
             if param_name not in params:
-                raise ValueError(f"Missing required parameter: {param_name!r}")
+                return _Omit.OMIT
             return params[param_name]
-        # Recurse into dict
-        return {k: _resolve_value(v, params) for k, v in d.items()}
+        # Recurse into dict, omitting keys whose values resolve to _Omit
+        return {
+            k: v
+            for k, v in ((k, _resolve_value(v, params)) for k, v in d.items())
+            if v is not _Omit.OMIT
+        }
     if isinstance(value, list):
         items = cast(list[Any], value)
         return [_resolve_value(item, params) for item in items]

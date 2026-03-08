@@ -1,11 +1,13 @@
 """Tests for MCP request construction."""
-# pyright: reportUnusedVariable=false
+# pyright: reportUnusedVariable=false, reportPrivateUsage=false
 
 from __future__ import annotations
 
 from typing import Any
 
 from cli.commands.mcp.request import (
+    _Omit,
+    _resolve_value,
     build_request,
     resolve_body,
     resolve_query,
@@ -180,3 +182,34 @@ class TestBuildRequest:
         assert headers["Content-Type"] == "application/x-www-form-urlencoded"
         assert "username=alice" in body
         assert "grant_type=password" in body
+
+
+class TestResolveValueMissingOptional:
+    def test_missing_param_returns_omit(self) -> None:
+        result = _resolve_value({"$param": "absent"}, {})
+        assert result is _Omit.OMIT
+
+    def test_missing_param_omitted_from_dict(self) -> None:
+        result = _resolve_value(
+            {"keep": "literal", "drop": {"$param": "absent"}},
+            {},
+        )
+        assert result == {"keep": "literal"}
+
+    def test_present_param_still_resolved(self) -> None:
+        result = _resolve_value({"$param": "x"}, {"x": 42})
+        assert result == 42
+
+    def test_resolve_body_omits_missing_optional(self) -> None:
+        body = resolve_body(
+            {"required_field": {"$param": "a"}, "optional_field": {"$param": "b"}},
+            {"a": "hello"},
+        )
+        assert body == {"required_field": "hello"}
+
+    def test_resolve_query_omits_missing_optional(self) -> None:
+        result = resolve_query(
+            {"q": {"$param": "search"}, "page": {"$param": "page"}},
+            {"search": "hello"},
+        )
+        assert result == {"q": "hello"}
