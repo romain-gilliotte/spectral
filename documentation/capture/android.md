@@ -17,7 +17,7 @@ The full workflow is: find the package, pull the APK, patch it, install it, push
 Search for a package by name:
 
 ```bash
-uv run spectral android list spotify
+spectral android list spotify
 ```
 
 This lists matching package names installed on the connected device (e.g., `com.spotify.music`).
@@ -27,7 +27,7 @@ This lists matching package names installed on the connected device (e.g., `com.
 Download the APK from the device:
 
 ```bash
-uv run spectral android pull com.spotify.music
+spectral android pull com.spotify.music
 ```
 
 For single APKs this produces `com.spotify.music.apk`. Some apps use split APKs — these are downloaded into a directory named `com.spotify.music/`.
@@ -39,7 +39,7 @@ Use `-o` to specify a custom output path.
 On Android 7 and later, apps only trust system CA certificates by default and ignore user-installed ones. The patch command modifies the APK to add a network security configuration that trusts user CAs, then re-signs it:
 
 ```bash
-uv run spectral android patch com.spotify.music.apk
+spectral android patch com.spotify.music.apk
 ```
 
 This produces `com.spotify.music-patched.apk` (or a `-patched/` directory for split APKs).
@@ -50,13 +50,13 @@ This produces `com.spotify.music-patched.apk` (or a `-patched/` directory for sp
 ## Install the patched APK
 
 ```bash
-uv run spectral android install com.spotify.music-patched.apk
+spectral android install com.spotify.music-patched.apk
 ```
 
 For split APKs, pass the directory:
 
 ```bash
-uv run spectral android install com.spotify.music-patched/
+spectral android install com.spotify.music-patched/
 ```
 
 ## Push the certificate
@@ -64,7 +64,7 @@ uv run spectral android install com.spotify.music-patched/
 Push the mitmproxy CA certificate to the device:
 
 ```bash
-uv run spectral android cert
+spectral android cert
 ```
 
 This copies `~/.mitmproxy/mitmproxy-ca-cert.pem` to the device's SD card as a `.crt` file. You can pass a custom certificate path as an argument. If you haven't run mitmproxy before, run it once to generate the certificate, then retry.
@@ -78,7 +78,7 @@ Configure the device to use the proxy. Go to **Settings > Wi-Fi**, long-press yo
 Then start the proxy as usual:
 
 ```bash
-uv run spectral capture proxy -a spotify -d "*.spotify.com"
+spectral capture proxy -a spotify -d "*.spotify.com"
 ```
 
 Use the app on the device. The proxy captures all traffic from the patched app. Press `Ctrl+C` to stop. The capture is stored in managed storage.

@@ -11,8 +11,8 @@ Before calling the API, set up authentication. Spectral provides three paths dep
 If the app uses an interactive login flow (username/password, OAuth, OTP), generate an auth script and use it to log in:
 
 ```bash
-uv run spectral auth analyze myapp
-uv run spectral auth login myapp
+spectral auth analyze myapp
+spectral auth login myapp
 ```
 
 The `auth analyze` command examines all captures for auth-related patterns and generates an `auth_acquire.py` script in managed storage. The `auth login` command runs that script, prompts for credentials, and stores the resulting token in `token.json`.
@@ -20,8 +20,8 @@ The `auth analyze` command examines all captures for auth-related patterns and g
 When the token expires, refresh it or log in again:
 
 ```bash
-uv run spectral auth refresh myapp    # if a refresh endpoint was detected
-uv run spectral auth login myapp      # re-authenticate from scratch
+spectral auth refresh myapp    # if a refresh endpoint was detected
+spectral auth login myapp      # re-authenticate from scratch
 ```
 
 ### Direct extraction from traces
@@ -29,7 +29,7 @@ uv run spectral auth login myapp      # re-authenticate from scratch
 If the captures already contain authenticated requests, extract the tokens directly without generating a script:
 
 ```bash
-uv run spectral auth extract myapp
+spectral auth extract myapp
 ```
 
 This scans all traces for auth headers and writes them to `token.json`. It is the fastest path but produces non-renewable tokens — when they expire, run the command again on fresh captures or use one of the other methods below.
@@ -39,8 +39,8 @@ This scans all traces for auth headers and writes them to `token.json`. It is th
 If the generated auth script does not work, or you already have a token, inject it directly:
 
 ```bash
-uv run spectral auth set myapp -H "Authorization: Bearer eyJ..."
-uv run spectral auth set myapp -c "session=abc123"
+spectral auth set myapp -H "Authorization: Bearer eyJ..."
+spectral auth set myapp -c "session=abc123"
 ```
 
 If neither `--header` nor `--cookie` is given, the command prompts for a token interactively.
@@ -48,7 +48,7 @@ If neither `--header` nor `--cookie` is given, the command prompts for a token i
 To clear stored credentials:
 
 ```bash
-uv run spectral auth logout myapp
+spectral auth logout myapp
 ```
 
 ## MCP tools (AI agents)
@@ -58,13 +58,13 @@ The primary way to use a discovered API is through MCP tools, which let AI agent
 Generate tool definitions from captures:
 
 ```bash
-uv run spectral mcp analyze myapp
+spectral mcp analyze myapp
 ```
 
 This writes tool definitions to managed storage. Start the MCP server to expose them:
 
 ```bash
-uv run spectral mcp stdio
+spectral mcp stdio
 ```
 
 Configure this command in your MCP client (Claude Desktop, Claude Code, etc.) as the stdio transport. The server exposes all app tools from managed storage and handles authentication automatically using the stored token. MCP tools work with any HTTP/JSON API regardless of the underlying protocol (REST, GraphQL, REST.li, custom RPC, etc.).
@@ -87,7 +87,7 @@ The token value can be found in the app's `token.json` in managed storage, or us
 If a call returns an authentication error (401 or 403), the token may have expired. Force re-authentication:
 
 ```bash
-uv run spectral auth refresh myapp    # try refresh first
-uv run spectral auth login myapp      # or re-authenticate
-uv run spectral auth logout myapp     # clear and start over
+spectral auth refresh myapp    # try refresh first
+spectral auth login myapp      # or re-authenticate
+spectral auth logout myapp     # clear and start over
 ```

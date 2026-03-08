@@ -42,12 +42,30 @@ Most apps — web, mobile, desktop — sit on top of undocumented HTTP APIs. Spe
 
 ## Quick start
 
-Prerequisites: Python 3.11+, [uv](https://docs.astral.sh/uv/), [Anthropic API key](https://console.anthropic.com/).
+Install Spectral (installs [uv](https://docs.astral.sh/uv/) automatically if needed):
+
+```bash
+curl -LsSf https://raw.githubusercontent.com/romain-gilliotte/spectral/main/install.sh | bash
+```
+
+Or, if you already have uv:
+
+```bash
+uv tool install git+https://github.com/romain-gilliotte/spectral.git
+```
+
+<details>
+<summary>Development setup (for contributors)</summary>
 
 ```bash
 git clone https://github.com/romain-gilliotte/spectral.git && cd spectral
 uv sync
 ```
+
+Use `uv run spectral` instead of `spectral` when running from a local checkout.
+</details>
+
+You also need an [Anthropic API key](https://console.anthropic.com/) — Spectral will prompt for it on first analysis.
 
 Capture traffic (pick one):
 

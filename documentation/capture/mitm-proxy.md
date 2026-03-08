@@ -7,7 +7,7 @@ The MITM proxy captures traffic from any application that respects `HTTP_PROXY` 
 Start the proxy and point your application at it:
 
 ```bash
-uv run spectral capture proxy -a myapp &
+spectral capture proxy -a myapp &
 HTTPS_PROXY=http://127.0.0.1:8080 curl https://api.example.com/users
 ```
 
@@ -18,13 +18,13 @@ Press `Ctrl+C` to stop the proxy. It stores the capture in managed storage and p
 By default the proxy intercepts all HTTPS traffic. To target specific domains, use the `-d` flag (repeatable):
 
 ```bash
-uv run spectral capture proxy -a myapp -d "api.example.com" -d "auth.example.com"
+spectral capture proxy -a myapp -d "api.example.com" -d "auth.example.com"
 ```
 
 Glob-style patterns are supported:
 
 ```bash
-uv run spectral capture proxy -a myapp -d "*.example.com"
+spectral capture proxy -a myapp -d "*.example.com"
 ```
 
 Traffic to non-matching domains passes through without interception.
@@ -34,7 +34,7 @@ Traffic to non-matching domains passes through without interception.
 If you don't know which domains an application talks to, use the discovery mode first:
 
 ```bash
-uv run spectral capture discover
+spectral capture discover
 ```
 
 This runs a passthrough proxy that does not perform MITM — all connections pass through untouched. It logs TLS SNI hostnames and plain HTTP host headers. Press `Ctrl+C` to see a summary table of discovered domains with request counts.

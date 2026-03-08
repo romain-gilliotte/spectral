@@ -7,14 +7,14 @@ This guide turns a capture bundle into MCP tools or an API specification.
 The primary command is `mcp analyze`, which generates MCP tool definitions from all captures for an app:
 
 ```bash
-uv run spectral mcp analyze myapp
+spectral mcp analyze myapp
 ```
 
 To generate formal API specs instead, use `openapi analyze` (REST) or `graphql analyze` (GraphQL) with an output base name:
 
 ```bash
-uv run spectral openapi analyze myapp -o myapp-api
-uv run spectral graphql analyze myapp -o myapp-api
+spectral openapi analyze myapp -o myapp-api
+spectral graphql analyze myapp -o myapp-api
 ```
 
 All commands load all captures for the app, merge them into a single bundle, and produce the appropriate output.
@@ -49,19 +49,19 @@ Each analyze command produces output specific to its protocol:
 Skip the LLM enrichment step to get a faster but less detailed spec:
 
 ```bash
-uv run spectral openapi analyze myapp -o myapp-api --skip-enrich
+spectral openapi analyze myapp -o myapp-api --skip-enrich
 ```
 
 Use a different model:
 
 ```bash
-uv run spectral openapi analyze myapp -o myapp-api --model claude-sonnet-4-5-20250929
+spectral openapi analyze myapp -o myapp-api --model claude-sonnet-4-5-20250929
 ```
 
 Save all LLM prompts and responses for inspection:
 
 ```bash
-uv run spectral openapi analyze myapp -o myapp-api --debug
+spectral openapi analyze myapp -o myapp-api --debug
 ```
 
 See [Debug mode](../analyze/debug-mode.md) for details on reading the debug output.

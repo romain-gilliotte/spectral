@@ -55,7 +55,7 @@ Firefox uses its own certificate store and ignores the system trust store. To ad
 For Android apps, use the Spectral CLI to push the certificate:
 
 ```bash
-uv run spectral android cert
+spectral android cert
 ```
 
 Then install it on the device: **Settings > Security > Install from storage > CA certificate**, and select the uploaded file.
@@ -68,7 +68,7 @@ Then install it on the device: **Settings > Security > Install from storage > CA
 After installing the certificate, verify that the proxy can intercept HTTPS:
 
 ```bash
-uv run spectral capture proxy &
+spectral capture proxy &
 HTTPS_PROXY=http://127.0.0.1:8080 curl -I https://example.com
 ```
 

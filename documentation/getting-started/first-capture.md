@@ -45,7 +45,7 @@ The bundle file is named `capture_<domain>_<timestamp>.zip` and contains all rec
 Import the exported bundle into Spectral's managed storage so the analysis commands can find it:
 
 ```bash
-uv run spectral capture add capture_20260213.zip -a myapp
+spectral capture add capture_20260213.zip -a myapp
 ```
 
 If you omit `-a`, Spectral prompts for an app name (suggesting one from the bundle metadata). You can import multiple captures into the same app — they are merged automatically during analysis.
