@@ -8,101 +8,81 @@ Complete reference for all `spectral` commands.
 spectral [--version] [--help] <command>
 ```
 
-## openapi analyze
+---
 
-Analyze all captures for an app and produce an OpenAPI specification.
+## android cert
+
+Push the mitmproxy CA certificate to a connected device.
 
 ```
-spectral openapi analyze <app_name> -o <name> [--model MODEL] [--debug] [--skip-enrich]
+spectral android cert [cert_path]
+```
+
+| Argument | Required | Default | Description |
+|----------|----------|---------|-------------|
+| `cert_path` | No | `~/.mitmproxy/mitmproxy-ca-cert.pem` | Path to the CA certificate file (.pem) |
+
+After pushing, install the certificate on the device via **Settings > Security > Install from storage > CA certificate**.
+
+---
+
+## android install
+
+Install an APK on a connected device.
+
+```
+spectral android install <apk_path>
+```
+
+| Argument | Required | Default | Description |
+|----------|----------|---------|-------------|
+| `apk_path` | Yes | — | Path to APK file or directory of split APKs |
+
+---
+
+## android list
+
+List packages installed on a connected Android device.
+
+```
+spectral android list [filter]
+```
+
+| Argument | Required | Default | Description |
+|----------|----------|---------|-------------|
+| `filter` | No | (all) | Substring to filter package names |
+
+---
+
+## android patch
+
+Patch an APK to trust user-installed CA certificates.
+
+```
+spectral android patch <apk_path> [-o PATH]
 ```
 
 | Argument / Option | Required | Default | Description |
 |-------------------|----------|---------|-------------|
-| `app_name` | Yes | — | Name of the app in managed storage |
-| `-o, --output` | Yes | — | Output base name (produces `<name>.yaml`) |
-| `--model` | No | `claude-sonnet-4-5-20250929` | Anthropic model to use for LLM steps |
-| `--debug` | No | Off | Save LLM prompts and responses to `debug/<timestamp>/` |
-| `--skip-enrich` | No | Off | Skip LLM enrichment (faster, but no business descriptions) |
+| `apk_path` | Yes | — | Path to APK file or directory of split APKs |
+| `-o, --output` | No | `<stem>-patched.apk` or `<dir>-patched/` | Output path |
 
-The command loads all captures for the app and merges them into a single bundle before analysis. Only REST traces are processed; GraphQL traces are ignored.
-
-Requires an Anthropic API key (resolved from the `ANTHROPIC_API_KEY` env var, stored key file, or interactive prompt).
+Requires `apktool` and `java` on the system PATH. The patched APK is re-signed with a debug key.
 
 ---
 
-## graphql analyze
+## android pull
 
-Analyze all captures for an app and produce a GraphQL SDL schema.
+Pull an APK from a connected device.
 
 ```
-spectral graphql analyze <app_name> -o <name> [--model MODEL] [--debug] [--skip-enrich]
+spectral android pull <package> [-o PATH]
 ```
 
 | Argument / Option | Required | Default | Description |
 |-------------------|----------|---------|-------------|
-| `app_name` | Yes | — | Name of the app in managed storage |
-| `-o, --output` | Yes | — | Output base name (produces `<name>.graphql`) |
-| `--model` | No | `claude-sonnet-4-5-20250929` | Anthropic model to use for LLM steps |
-| `--debug` | No | Off | Save LLM prompts and responses to `debug/<timestamp>/` |
-| `--skip-enrich` | No | Off | Skip LLM enrichment (faster, but no business descriptions) |
-
-The command loads all captures for the app and merges them into a single bundle before analysis. Only GraphQL traces are processed; REST traces are ignored.
-
-Requires an Anthropic API key (resolved from the `ANTHROPIC_API_KEY` env var, stored key file, or interactive prompt).
-
----
-
-## mcp analyze
-
-Generate MCP tool definitions from captures.
-
-```
-spectral mcp analyze <app_name> [--model MODEL] [--debug] [--skip-enrich]
-```
-
-| Argument / Option | Required | Default | Description |
-|-------------------|----------|---------|-------------|
-| `app_name` | Yes | — | Name of the app in managed storage |
-| `--model` | No | `claude-sonnet-4-5-20250929` | Anthropic model to use for LLM steps |
-| `--debug` | No | Off | Save LLM prompts and responses to `debug/<timestamp>/` |
-| `--skip-enrich` | No | Off | Skip LLM enrichment (faster, but no business descriptions) |
-
-Writes tool definitions to `tools/*.json` in the app's managed storage directory and updates `app.json` with the detected `base_url`.
-
-Requires an Anthropic API key (resolved from the `ANTHROPIC_API_KEY` env var, stored key file, or interactive prompt).
-
----
-
-## mcp stdio
-
-Start the MCP server on stdio.
-
-```
-spectral mcp stdio
-```
-
-Exposes all app tools from managed storage as MCP tools. This is the command users configure in their MCP client (Claude Desktop, Claude Code, etc.).
-
----
-
-## completion
-
-Generate a shell completion script for bash or zsh. The script enables tab-completion for all commands, subcommands, options, and app names.
-
-```
-spectral completion bash|zsh
-```
-
-| Argument | Required | Description |
-|----------|----------|-------------|
-| `shell` | Yes | Target shell: `bash` or `zsh` |
-
-Add the output to your shell profile to enable persistent completion:
-
-- **bash** — add `eval "$(spectral completion bash)"` to `~/.bashrc`
-- **zsh** — add `eval "$(spectral completion zsh)"` to `~/.zshrc`
-
-App names are completed dynamically from managed storage.
+| `package` | Yes | — | Package name (e.g., `com.spotify.music`) |
+| `-o, --output` | No | `<package>.apk` or `<package>/` | Output path (file for single APK, directory for split APKs) |
 
 ---
 
@@ -147,26 +127,6 @@ Scans all traces for auth headers (Authorization, cookies, etc.) and writes them
 This is the quickest way to get a working token when you already have authenticated traffic in your captures. Unlike `auth analyze`, it does not generate a reusable script — it extracts the token values observed in the traces.
 
 Requires an Anthropic API key only when the fast path fails and LLM analysis is needed.
-
----
-
-## auth set
-
-Manually set auth headers or cookies for an app.
-
-```
-spectral auth set <app_name> [-H HEADER ...] [-c COOKIE ...]
-```
-
-| Argument / Option | Required | Default | Description |
-|-------------------|----------|---------|-------------|
-| `app_name` | Yes | — | Name of the app in managed storage |
-| `-H, --header` | No | — | Header as `"Name: Value"` (repeatable) |
-| `-c, --cookie` | No | — | Cookie as `"name=value"` (repeatable) |
-
-Fallback when the generated auth script does not work. Pass headers and/or cookies directly to store in `token.json`. If neither `--header` nor `--cookie` is given, prompts for a token interactively and stores it as `Authorization: Bearer <token>`.
-
-Cookies are joined into a single `Cookie` header (e.g., `-c "a=1" -c "b=2"` becomes `Cookie: a=1; b=2`).
 
 ---
 
@@ -220,6 +180,130 @@ Loads `token.json`, calls `refresh_token()` from the auth script, and updates `t
 
 ---
 
+## auth set
+
+Manually set auth headers or cookies for an app.
+
+```
+spectral auth set <app_name> [-H HEADER ...] [-c COOKIE ...]
+```
+
+| Argument / Option | Required | Default | Description |
+|-------------------|----------|---------|-------------|
+| `app_name` | Yes | — | Name of the app in managed storage |
+| `-H, --header` | No | — | Header as `"Name: Value"` (repeatable) |
+| `-c, --cookie` | No | — | Cookie as `"name=value"` (repeatable) |
+
+Fallback when the generated auth script does not work. Pass headers and/or cookies directly to store in `token.json`. If neither `--header` nor `--cookie` is given, prompts for a token interactively and stores it as `Authorization: Bearer <token>`.
+
+Cookies are joined into a single `Cookie` header (e.g., `-c "a=1" -c "b=2"` becomes `Cookie: a=1; b=2`).
+
+---
+
+## capture discover
+
+Run a passthrough proxy that logs domains without intercepting traffic.
+
+```
+spectral capture discover [-p PORT]
+```
+
+| Option | Required | Default | Description |
+|--------|----------|---------|-------------|
+| `-p, --port` | No | 8080 | Proxy listen port |
+
+Press `Ctrl+C` to see a summary table of discovered domains with request counts. Use the output to build `-d` filter lists for `capture proxy`.
+
+---
+
+## capture inspect
+
+Inspect the latest capture for an app.
+
+```
+spectral capture inspect <app_name> [--trace ID]
+```
+
+| Argument / Option | Required | Default | Description |
+|-------------------|----------|---------|-------------|
+| `app_name` | Yes | — | Name of the app in managed storage |
+| `--trace` | No | — | Show detailed info for a specific trace (e.g., `t_0001`) |
+
+Without `--trace`, shows a summary: capture metadata, statistics (trace/WS/context counts), and a table of all traces with method, URL, status, and timing.
+
+With `--trace`, shows the full detail for one trace: request headers and decoded body, response headers and decoded body, timing breakdown, and associated context references.
+
+---
+
+## capture list
+
+List all known apps with capture counts.
+
+```
+spectral capture list
+```
+
+Shows a table of all apps in managed storage with their display name, number of captures, and last update time.
+
+---
+
+## capture proxy
+
+Run a MITM proxy that captures traffic into managed storage.
+
+```
+spectral capture proxy [-a APP] [-p PORT] [-d DOMAIN ...]
+```
+
+| Option | Required | Default | Description |
+|--------|----------|---------|-------------|
+| `-a, --app` | No | (prompted) | App name for storage |
+| `-p, --port` | No | 8080 | Proxy listen port |
+| `-d, --domain` | No | (all domains) | Only intercept matching domains; repeatable. Supports glob patterns (e.g., `*.example.com`). |
+
+Press `Ctrl+C` to stop the proxy. The capture is stored in managed storage on exit with summary statistics.
+
+The proxy requires the mitmproxy CA certificate to be trusted by the client. See [Desktop and CLI apps — Certificate setup](../capture/desktop.md#certificate-setup).
+
+---
+
+## capture show
+
+Show captures for an app.
+
+```
+spectral capture show <app_name>
+```
+
+| Argument | Required | Default | Description |
+|----------|----------|---------|-------------|
+| `app_name` | Yes | — | Name of the app in managed storage |
+
+Lists each capture under the app with its creation time, capture method (extension or proxy), and statistics.
+
+---
+
+## completion
+
+Generate a shell completion script for bash or zsh. The script enables tab-completion for all commands, subcommands, options, and app names.
+
+```
+spectral completion bash|zsh
+```
+
+| Argument | Required | Description |
+|----------|----------|-------------|
+| `shell` | Yes | Target shell: `bash` or `zsh` |
+
+Add the output to your shell profile to enable persistent completion:
+
+- **bash** — add `eval "$(spectral completion bash)"` to `~/.bashrc`
+- **zsh** — add `eval "$(spectral completion zsh)"` to `~/.zshrc`
+
+App names are completed dynamically from managed storage.
+
+---
+
 ## extension install
 
 Install the Chrome Native Messaging host manifest so the extension can send captures directly to the CLI.
@@ -249,159 +333,95 @@ Reads one length-prefixed JSON message from stdin, stores the capture in managed
 
 ---
 
-## capture list
+## graphql analyze
 
-List all known apps with capture counts.
-
-```
-spectral capture list
-```
-
-Shows a table of all apps in managed storage with their display name, number of captures, and last update time.
-
----
-
-## capture show
-
-Show captures for an app.
+Analyze all captures for an app and produce a GraphQL SDL schema.
 
 ```
-spectral capture show <app_name>
-```
-
-| Argument | Required | Default | Description |
-|----------|----------|---------|-------------|
-| `app_name` | Yes | — | Name of the app in managed storage |
-
-Lists each capture under the app with its creation time, capture method (extension or proxy), and statistics.
-
----
-
-## capture inspect
-
-Inspect the latest capture for an app.
-
-```
-spectral capture inspect <app_name> [--trace ID]
+spectral graphql analyze <app_name> -o <name> [--model MODEL] [--debug] [--skip-enrich]
 ```
 
 | Argument / Option | Required | Default | Description |
 |-------------------|----------|---------|-------------|
 | `app_name` | Yes | — | Name of the app in managed storage |
-| `--trace` | No | — | Show detailed info for a specific trace (e.g., `t_0001`) |
+| `-o, --output` | Yes | — | Output base name (produces `<name>.graphql`) |
+| `--model` | No | `claude-sonnet-4-5-20250929` | Anthropic model to use for LLM steps |
+| `--debug` | No | Off | Save LLM prompts and responses to `debug/<timestamp>/` |
+| `--skip-enrich` | No | Off | Skip LLM enrichment (faster, but no business descriptions) |
 
-Without `--trace`, shows a summary: capture metadata, statistics (trace/WS/context counts), and a table of all traces with method, URL, status, and timing.
+The command loads all captures for the app and merges them into a single bundle before analysis. Only GraphQL traces are processed; REST traces are ignored.
 
-With `--trace`, shows the full detail for one trace: request headers and decoded body, response headers and decoded body, timing breakdown, and associated context references.
-
----
-
-## capture proxy
-
-Run a MITM proxy that captures traffic into managed storage.
-
-```
-spectral capture proxy [-a APP] [-p PORT] [-d DOMAIN ...]
-```
-
-| Option | Required | Default | Description |
-|--------|----------|---------|-------------|
-| `-a, --app` | No | (prompted) | App name for storage |
-| `-p, --port` | No | 8080 | Proxy listen port |
-| `-d, --domain` | No | (all domains) | Only intercept matching domains; repeatable. Supports glob patterns (e.g., `*.example.com`). |
-
-Press `Ctrl+C` to stop the proxy. The capture is stored in managed storage on exit with summary statistics.
-
-The proxy requires the mitmproxy CA certificate to be trusted by the client. See [Certificate setup](../capture/certificate-setup.md).
+Requires an Anthropic API key (resolved from the `ANTHROPIC_API_KEY` env var, stored key file, or interactive prompt).
 
 ---
 
-## capture discover
+## mcp analyze
 
-Run a passthrough proxy that logs domains without intercepting traffic.
-
-```
-spectral capture discover [-p PORT]
-```
-
-| Option | Required | Default | Description |
-|--------|----------|---------|-------------|
-| `-p, --port` | No | 8080 | Proxy listen port |
-
-Press `Ctrl+C` to see a summary table of discovered domains with request counts. Use the output to build `-d` filter lists for `capture proxy`.
-
----
-
-## android list
-
-List packages installed on a connected Android device.
+Generate MCP tool definitions from captures.
 
 ```
-spectral android list [filter]
-```
-
-| Argument | Required | Default | Description |
-|----------|----------|---------|-------------|
-| `filter` | No | (all) | Substring to filter package names |
-
----
-
-## android pull
-
-Pull an APK from a connected device.
-
-```
-spectral android pull <package> [-o PATH]
+spectral mcp analyze <app_name> [--model MODEL] [--debug] [--skip-enrich]
 ```
 
 | Argument / Option | Required | Default | Description |
 |-------------------|----------|---------|-------------|
-| `package` | Yes | — | Package name (e.g., `com.spotify.music`) |
-| `-o, --output` | No | `<package>.apk` or `<package>/` | Output path (file for single APK, directory for split APKs) |
+| `app_name` | Yes | — | Name of the app in managed storage |
+| `--model` | No | `claude-sonnet-4-5-20250929` | Anthropic model to use for LLM steps |
+| `--debug` | No | Off | Save LLM prompts and responses to `debug/<timestamp>/` |
+| `--skip-enrich` | No | Off | Skip LLM enrichment (faster, but no business descriptions) |
+
+Writes tool definitions to `tools/*.json` in the app's managed storage directory and updates `app.json` with the detected `base_url`.
+
+Requires an Anthropic API key (resolved from the `ANTHROPIC_API_KEY` env var, stored key file, or interactive prompt).
 
 ---
 
-## android patch
+## mcp install
 
-Patch an APK to trust user-installed CA certificates.
+Register the MCP server in Claude Desktop and/or Claude Code.
 
 ```
-spectral android patch <apk_path> [-o PATH]
+spectral mcp install [--target TARGET]
+```
+
+| Option | Required | Default | Description |
+|--------|----------|---------|-------------|
+| `--target` | No | (all detected) | Target client: `claude-desktop` or `claude-code` |
+
+Without `--target`, auto-detects installed clients and registers the server with each. The command resolves the absolute path to the `spectral` executable so the server works regardless of shell PATH.
+
+For Claude Desktop, writes to `claude_desktop_config.json`. For Claude Code, runs `claude mcp add -s user spectral`.
+
+---
+
+## mcp stdio
+
+Start the MCP server on stdio.
+
+```
+spectral mcp stdio
+```
+
+Exposes all app tools from managed storage as MCP tools. This is the command users configure in their MCP client (Claude Desktop, Claude Code, etc.).
+
+---
+
+## openapi analyze
+
+Analyze all captures for an app and produce an OpenAPI specification.
+
+```
+spectral openapi analyze <app_name> -o <name> [--model MODEL] [--debug] [--skip-enrich]
 ```
 
 | Argument / Option | Required | Default | Description |
 |-------------------|----------|---------|-------------|
-| `apk_path` | Yes | — | Path to APK file or directory of split APKs |
-| `-o, --output` | No | `<stem>-patched.apk` or `<dir>-patched/` | Output path |
+| `app_name` | Yes | — | Name of the app in managed storage |
+| `-o, --output` | Yes | — | Output base name (produces `<name>.yaml`) |
+| `--model` | No | `claude-sonnet-4-5-20250929` | Anthropic model to use for LLM steps |
+| `--debug` | No | Off | Save LLM prompts and responses to `debug/<timestamp>/` |
+| `--skip-enrich` | No | Off | Skip LLM enrichment (faster, but no business descriptions) |
 
-Requires `apktool` and `java` on the system PATH. The patched APK is re-signed with a debug key.
+The command loads all captures for the app and merges them into a single bundle before analysis. Only REST traces are processed; GraphQL traces are ignored.
 
----
-
-## android install
-
-Install an APK on a connected device.
-
-```
-spectral android install <apk_path>
-```
-
-| Argument | Required | Default | Description |
-|----------|----------|---------|-------------|
-| `apk_path` | Yes | — | Path to APK file or directory of split APKs |
-
----
-
-## android cert
-
-Push the mitmproxy CA certificate to a connected device.
-
-```
-spectral android cert [cert_path]
-```
-
-| Argument | Required | Default | Description |
-|----------|----------|---------|-------------|
-| `cert_path` | No | `~/.mitmproxy/mitmproxy-ca-cert.pem` | Path to the CA certificate file (.pem) |
-
-After pushing, install the certificate on the device via **Settings > Security > Install from storage > CA certificate**.
+Requires an Anthropic API key (resolved from the `ANTHROPIC_API_KEY` env var, stored key file, or interactive prompt).

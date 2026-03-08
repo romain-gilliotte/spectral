@@ -1,5 +1,5 @@
 site_name: Spectral
-site_description: Automatically discover and document web application APIs
+site_description: Turn any app into an API that AI agents can call
 site_url: https://romain-gilliotte.github.io/spectral/
 repo_url: https://github.com/romain-gilliotte/spectral
 repo_name: romain-gilliotte/spectral
@@ -8,6 +8,7 @@ docs_dir: documentation
 
 theme:
   name: material
+  logo: assets/logo.png
   palette:
     - media: "(prefers-color-scheme: light)"
       scheme: default
@@ -30,27 +31,28 @@ theme:
     - content.code.copy
     - search.highlight
 
+extra_css:
+  - stylesheets/extra.css
+
 nav:
   - Home: index.md
-  - Getting started:
-      - Installation: getting-started/installation.md
-      - First capture: getting-started/first-capture.md
-      - First analysis: getting-started/first-analysis.md
-      - Calling the API: getting-started/calling-the-api.md
+  - Getting started: getting-started.md
   - Capture:
-      - Chrome extension: capture/chrome-extension.md
-      - MITM proxy: capture/mitm-proxy.md
-      - Android apps: capture/android.md
-      - Certificate setup: capture/certificate-setup.md
-  - Analyze:
-      - Pipeline overview: analyze/pipeline-overview.md
-      - REST output: analyze/rest-output.md
-      - GraphQL output: analyze/graphql-output.md
-      - Auth detection: analyze/auth-detection.md
-      - Debug mode: analyze/debug-mode.md
+      - Web applications: capture/web.md
+      - Desktop and CLI apps: capture/desktop.md
+      - Mobile apps: capture/mobile.md
+  - Authentication:
+      - Overview: authentication/index.md
+      - Generated scripts: authentication/generated-scripts.md
+      - Manual tokens: authentication/manual-tokens.md
+  - Generation:
+      - MCP Server: generation/mcp-tools.md
+      - OpenAPI 3.0: generation/rest-output.md
+      - GraphQL SDL: generation/graphql-output.md
   - Reference:
       - CLI reference: reference/cli.md
-  - Bundle format: bundle-format.md
+      - Debug mode: reference/debug-mode.md
+      - Bundle format: bundle-format.md
 
 markdown_extensions:
   - admonition
@@ -59,5 +61,6 @@ markdown_extensions:
   - pymdownx.tabbed:
       alternate_style: true
   - tables
+  - attr_list
   - toc:
       permalink: true

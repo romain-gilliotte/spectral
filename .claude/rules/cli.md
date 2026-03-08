@@ -155,7 +155,6 @@ apps/<name>/
 
 ### How commands use storage
 
-- **`capture add`** calls `import_capture` to unpack a ZIP into flat-directory format. Duplicate `capture_id` values are rejected.
 - **`capture proxy`** calls `store_capture` to write live-captured flows directly.
 - **`openapi analyze` / `graphql analyze`** call `load_app_bundle` to get a merged bundle, then write output files (not in storage — written to `-o` path).
 - **`mcp analyze`** calls `load_app_bundle`, runs the MCP pipeline, then `write_tools` to persist tool definitions.

@@ -7,9 +7,7 @@
 </p>
 
 <p align="center">
-  <a href="https://romain-gilliotte.github.io/spectral/getting-started/installation/"><strong>Getting started</strong></a> &nbsp;&bull;&nbsp;
-  <a href="https://romain-gilliotte.github.io/spectral/reference/cli/"><strong>CLI reference</strong></a> &nbsp;&bull;&nbsp;
-  <a href="https://romain-gilliotte.github.io/spectral/"><strong>Full documentation</strong></a>
+  <a href="https://romain-gilliotte.github.io/spectral/"><strong>Documentation</strong></a>
 </p>
 
 Browse any website or mobile app normally. Spectral observes what you do, figures out the meaning behind each API call, and builds MCP tools that let AI agents use the same app.
@@ -37,78 +35,19 @@ Most apps — web, mobile, desktop — sit on top of undocumented HTTP APIs. Spe
 ## How it works
 
 1. **Capture** — Chrome extension (web) or MITM proxy records traffic while you use the app
-2. **Analyze** — An LLM correlates your actions with API calls, infers endpoint patterns, auth flow, and business meaning
-3. **Use** — Start the MCP server. AI agents call the API directly, with auth handled automatically
+2. **Analyze** — An LLM correlates your actions with API calls, infers endpoint patterns, and business meaning
+3. **Authenticate** — The CLI detects the auth flow and generates a login script. Run it once; the MCP server refreshes automatically
+4. **Use** — Start the MCP server. AI agents call the API directly
 
-## Quick start
-
-Install Spectral (installs [uv](https://docs.astral.sh/uv/) automatically if needed):
+## Install
 
 ```bash
 curl -LsSf https://raw.githubusercontent.com/romain-gilliotte/spectral/main/install.sh | bash
 ```
 
-Or, if you already have uv:
-
-```bash
-uv tool install git+https://github.com/romain-gilliotte/spectral.git
-```
-
-<details>
-<summary>Development setup (for contributors)</summary>
-
-```bash
-git clone https://github.com/romain-gilliotte/spectral.git && cd spectral
-uv sync
-```
-
-Use `uv run spectral` instead of `spectral` when running from a local checkout.
-</details>
-
 You also need an [Anthropic API key](https://console.anthropic.com/) — Spectral will prompt for it on first analysis.
 
-Capture traffic (pick one):
-
-```bash
-# Web apps — Chrome extension
-spectral extension install --extension-id <id-from-chrome-extensions>
-# Start Capture → browse → Stop Capture → Send to Spectral
-
-# Mobile / desktop / CLI — MITM proxy
-spectral capture proxy -a myapp
-```
-
-Analyze and authenticate:
-
-```bash
-spectral mcp analyze myapp          # generate MCP tools
-spectral auth analyze myapp         # detect auth, generate login script
-spectral auth login myapp           # interactive login
-```
-
-Add the MCP server to Claude (in `claude_desktop_config.json` or `.mcp.json`):
-
-```json
-{
-  "mcpServers": {
-    "spectral": {
-      "command": "spectral",
-      "args": ["mcp", "stdio"]
-    }
-  }
-}
-```
-
-## Documentation
-
-| Guide                                                                                           | Description                                    |
-| ----------------------------------------------------------------------------------------------- | ---------------------------------------------- |
-| [Installation](https://romain-gilliotte.github.io/spectral/getting-started/installation/)       | Setup: CLI, Chrome extension, native messaging |
-| [First capture](https://romain-gilliotte.github.io/spectral/getting-started/first-capture/)     | Record traffic from a web app or mobile app    |
-| [First analysis](https://romain-gilliotte.github.io/spectral/getting-started/first-analysis/)   | Generate MCP tools from captured traffic       |
-| [Calling the API](https://romain-gilliotte.github.io/spectral/getting-started/calling-the-api/) | Use the MCP server with Claude                 |
-| [CLI reference](https://romain-gilliotte.github.io/spectral/reference/cli/)                     | All commands and options                       |
-| [Auth detection](https://romain-gilliotte.github.io/spectral/analyze/auth-detection/)           | How Spectral handles authentication            |
+See the [documentation](https://romain-gilliotte.github.io/spectral/) for setup guides, capture instructions, and CLI reference.
 
 ## License
 

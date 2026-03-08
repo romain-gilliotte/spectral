@@ -1,0 +1,22 @@
+/* Homepage: hide the h1 title (the banner replaces it) */
+.md-typeset .hidden-title {
+    display: none;
+}
+
+/* Homepage: center and constrain banner and demo images */
+.md-typeset .banner-img,
+.md-content img[alt="Spectral demo"] {
+    display: block;
+    margin: 0 auto;
+    max-width: 700px;
+    width: 100%;
+}
+
+/* Dark/light banner switching */
+[data-md-color-scheme="default"] .only-dark {
+    display: none;
+}
+
+[data-md-color-scheme="slate"] .only-light {
+    display: none;
+}
