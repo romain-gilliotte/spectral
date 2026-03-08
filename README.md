@@ -12,17 +12,33 @@
   <a href="https://romain-gilliotte.github.io/spectral/"><strong>Full documentation</strong></a>
 </p>
 
-Turn any app into an API that Claude can use. Browse normally, Spectral figures out the API, then AI agents call it directly.
+Browse any website or mobile app normally. Spectral observes what you do, figures out the meaning behind each API call, and builds MCP tools that let AI agents use the same app.
 
-Want Claude to pay for your parking, pull numbers from your accounting software, or search listings on your city's classifieds site — without brittle browser automation? Most apps sit on undocumented APIs that work perfectly well. Spectral captures the traffic, has an LLM figure out what each call means, and turns it into tools that Claude can call.
+<p align="center">
+  <img src="assets/demo.gif" width="750" alt="Spectral demo — analyze traffic, then Claude uses the API">
+</p>
 
-MCP tools work with any HTTP/JSON API regardless of protocol. Spectral can also generate formal API specs — OpenAPI 3.1 for REST APIs, SDL schemas for GraphQL — for human consumption and code generation.
+## Why Spectral
+
+Most apps — web, mobile, desktop — sit on top of undocumented HTTP APIs. Spectral records the traffic while you browse, uses an LLM to understand what each call does, and generates MCP tools that any AI agent can call.
+
+**Works everywhere.** Websites, mobile apps (Android), desktop apps, CLI tools — if it speaks HTTPS, Spectral can capture it.
+
+**Understands what you do, not just what the network sends.** Spectral correlates your clicks and navigation with API calls to figure out the business meaning of each endpoint — not just its shape.
+
+**Tools that fix themselves.** When a generated tool fails at runtime, the MCP server feeds the error back to an LLM and patches the tool automatically.
+
+**LLM at build time, not at runtime.** The LLM is only used during analysis and self-repair. Once your tools work, every call is a direct HTTP request — fast, cheap, and deterministic.
+
+**Faster than browser automation.** No headless browser, no fragile selectors, no waiting for pages to render. Spectral tools call the API directly, which is orders of magnitude faster and more reliable than controlling a browser with an agent.
+
+**Also generates API specs.** Beyond MCP tools, Spectral can produce OpenAPI 3.1 specs from REST traffic and GraphQL SDL schemas from GraphQL traces — useful for documentation, code generation, or feeding other tools.
 
 ## How it works
 
-1. **Capture** — Chrome extension (web) or MITM proxy records traffic + UI actions while you browse
-2. **Analyze** — LLM correlates UI actions with API calls, infers endpoint patterns, auth flow, and business meaning
-3. **Use** — Start the MCP server. Claude calls the API directly, with auth handled automatically
+1. **Capture** — Chrome extension (web) or MITM proxy records traffic while you use the app
+2. **Analyze** — An LLM correlates your actions with API calls, infers endpoint patterns, auth flow, and business meaning
+3. **Use** — Start the MCP server. AI agents call the API directly, with auth handled automatically
 
 ## Quick start
 
@@ -33,40 +49,37 @@ git clone https://github.com/romain-gilliotte/spectral.git && cd spectral
 uv sync
 ```
 
-Set up the Chrome extension and capture traffic:
+Capture traffic (pick one):
 
 ```bash
-# Load extension/ as unpacked in chrome://extensions, then connect it:
-uv run spectral extension install --extension-id <id-from-chrome-extensions>
+# Web apps — Chrome extension
+spectral extension install --extension-id <id-from-chrome-extensions>
+# Start Capture → browse → Stop Capture → Send to Spectral
 
-# Chrome extension: Start Capture → browse → Stop Capture → Send to Spectral
-# Or use the MITM proxy (stores directly):
-uv run spectral capture proxy -a myapp
+# Mobile / desktop / CLI — MITM proxy
+spectral capture proxy -a myapp
 ```
 
-Analyze captures, set up auth, and start the MCP server:
+Analyze and authenticate:
 
 ```bash
-uv run spectral mcp analyze myapp                      # → MCP tool definitions
-uv run spectral auth analyze myapp                     # → auth script (acquire/refresh tokens)
-uv run spectral auth login myapp                       # interactive login
-uv run spectral mcp stdio                              # start MCP server for AI agents
+spectral mcp analyze myapp          # generate MCP tools
+spectral auth analyze myapp         # detect auth, generate login script
+spectral auth login myapp           # interactive login
 ```
 
-Or generate API specs (REST/GraphQL only):
+Add the MCP server to Claude (in `claude_desktop_config.json` or `.mcp.json`):
 
-```bash
-uv run spectral openapi analyze myapp -o myapp-api    # → myapp-api.yaml (OpenAPI 3.1)
-uv run spectral graphql analyze myapp -o myapp-api     # → myapp-api.graphql (SDL schema)
+```json
+{
+  "mcpServers": {
+    "spectral": {
+      "command": "spectral",
+      "args": ["mcp", "stdio"]
+    }
+  }
+}
 ```
-
-## Capture methods
-
-| Method                                                                                            | Best for                | UI context                             | Needs certification installation                                                            |
-| ------------------------------------------------------------------------------------------------- | ----------------------- | -------------------------------------- | ------------------------------------------------------------------------------------------- |
-| [Chrome extension](https://romain-gilliotte.github.io/spectral/capture/chrome-extension/)         | Web apps                | Yes — clicks, navigation, page content | No                                                                                          |
-| [MITM proxy](https://romain-gilliotte.github.io/spectral/capture/mitm-proxy/)                     | CLI tools, desktop apps | No                                     | Yes — [setup guide](https://romain-gilliotte.github.io/spectral/capture/certificate-setup/) |
-| [Android APK patching + MITM proxy](https://romain-gilliotte.github.io/spectral/capture/android/) | Mobile apps             | No                                     | Yes — [setup guide](https://romain-gilliotte.github.io/spectral/capture/certificate-setup/) |
 
 ## Documentation
 
