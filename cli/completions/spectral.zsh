@@ -90,6 +90,7 @@ _spectral() {
             if (( CURRENT == 3 )); then
                 local -a subcmds=(
                     'analyze:Analyze captures into MCP tools'
+                    'install:Install MCP server into Claude Desktop or Claude Code'
                     'stdio:Start MCP server on stdio'
                 )
                 _describe 'mcp command' subcmds && ret=0
@@ -102,6 +103,10 @@ _spectral() {
                             '--skip-enrich[Skip enrichment step]' \
                             '--help[Show help]' \
                             '*:app name:_spectral_apps' && ret=0 ;;
+                    install)
+                        _arguments \
+                            '--target[Target client (claude-desktop or claude-code)]' \
+                            '--help[Show help]' && ret=0 ;;
                 esac
             fi ;;
         openapi)

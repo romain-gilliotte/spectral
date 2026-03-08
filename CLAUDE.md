@@ -17,14 +17,16 @@
   - `uv run pytest tests/ -x -q` — all tests must pass
   - `uv run ruff check` — zero lint errors (use `--fix` for auto-fixable import sorting)
   - `uv run pyright` — zero new type errors (pre-existing errors in `proxy.py`, `test_proxy.py` are known)
+- **Shell completion scripts** (`cli/completions/spectral.bash` and `spectral.zsh`) are static — they must be updated manually whenever a CLI command, subcommand, or option is added, removed, or renamed.
 
 ## What this project is
 
-A three-stage pipeline that automatically discovers, documents, and exposes web application APIs:
+A four-stage pipeline that automatically discovers, documents, and exposes web application APIs:
 
 1. **Capture** — A Chrome Extension or MITM proxy records network traffic + UI actions while the user browses normally
 2. **Analyze** — A CLI tool correlates UI actions with API calls using an LLM. REST traces produce an OpenAPI 3.1 spec; GraphQL traces produce a typed SDL schema. Both are enriched with business semantics
-3. **Use** — Generated MCP tools let AI agents call the discovered API directly. Auth scripts handle token acquisition and refresh automatically
+3. **Authenticate** — The CLI detects the app's auth flow and generates a login script. Run it once to obtain a session; the MCP server refreshes it automatically
+4. **Use** — Generated MCP tools let AI agents call the discovered API directly
 
 The key innovation is the **correlation of UI actions with network traffic** to understand the *business meaning* of each API call, not just its technical shape.
 
@@ -83,6 +85,7 @@ spectral auth set <app> -c "session=abc"            # set cookies
 spectral auth login/logout/refresh <app>            # interactive auth operations
 
 # MCP server
+spectral mcp install [--target claude-desktop|claude-code]  # register MCP server
 spectral mcp stdio                                  # start MCP server on stdio
 
 # Capture management

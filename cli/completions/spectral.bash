@@ -45,11 +45,12 @@ _spectral() {
             esac ;;
         mcp)
             if [[ $cword -eq 2 ]]; then
-                COMPREPLY=($(compgen -W "analyze stdio --help" -- "$cur"))
+                COMPREPLY=($(compgen -W "analyze install stdio --help" -- "$cur"))
                 return
             fi
             case "$cmd2" in
                 analyze) [[ "$cur" == -* ]] && COMPREPLY=($(compgen -W "--model --debug --skip-enrich --help" -- "$cur")) || _spectral_apps ;;
+                install) COMPREPLY=($(compgen -W "--target --help" -- "$cur")) ;;
             esac ;;
         openapi)
             if [[ $cword -eq 2 ]]; then
