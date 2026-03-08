@@ -15,24 +15,16 @@ from cli.commands.mcp import mcp
 from cli.commands.openapi import openapi
 import cli.helpers.llm as llm
 
-# Pre-rendered logo (chafa, braille, 256 colors)
+# Hand-crafted spectrum analyzer waveform + "spectral" text
 # fmt: off
 _LOGO = (
-    "        \x1b[7m\x1b[38;5;3m⢻\x1b[0m   \x1b[38;5;101m⡀\x1b[0m\n"
-    "       \x1b[38;5;179m⣀\x1b[7m\x1b[38;5;3m⠁\x1b[0m  \x1b[38;5;179m⣰\x1b[38;5;143m⡃\x1b[0m"
-    "                      \x1b[38;5;3m⢀\x1b[38;5;179m⠄\x1b[0m"
-    "    \x1b[38;5;136m⢀\x1b[0m \x1b[38;5;143m⠂\x1b[0m\n"
-    "      \x1b[38;5;100m⠑\x1b[38;5;143m⠘\x1b[38;5;3;48;5;101m⠘\x1b[0m"
-    "\x1b[38;5;185m⡔\x1b[38;5;143m⠙\x1b[7m\x1b[38;5;101m⣤\x1b[38;5;100m⠈\x1b[0m"
-    "\x1b[38;5;143m⠉\x1b[38;5;185m⠂\x1b[38;5;3m⠂\x1b[38;5;143m⠒\x1b[0m"
-    " \x1b[38;5;100m⠒⠒\x1b[0m  "
-    "\x1b[38;5;3m⠒\x1b[38;5;100m⠒⠒⠒\x1b[38;5;3m⠒\x1b[0m"
-    " \x1b[38;5;3m⠅\x1b[38;5;143m⡐⠁⠓\x1b[38;5;137m⠈⠚\x1b[0m"
-    " \x1b[38;5;137m⠚\x1b[0m "
-    "\x1b[38;5;143m⠚\x1b[38;5;137m⠁⠃⠃\x1b[38;5;179m⠚\x1b[0m\n"
-    "        \x1b[38;5;179m⢻\x1b[38;5;143m⠁\x1b[0m  \x1b[38;5;101m⠋\x1b[0m"
-    "                \x1b[38;5;185m⠁\x1b[0m\n"
-    "        \x1b[38;5;185m⠘\x1b[0m"
+    '                 \x1b[1;33m▄\x1b[0m   \x1b[1;33m▄\x1b[0m \x1b[1;33m▄\x1b[0m \x1b[1;33m▄\x1b[0m   \x1b[1;33m▄\x1b[0m\n'
+    '           \x1b[33m▄\x1b[0m   \x1b[33m▄\x1b[0m \x1b[1;33m█\x1b[0m \x1b[33m▄\x1b[0m \x1b[1;33m█\x1b[0m \x1b[1;33m█\x1b[0m \x1b[1;33m█\x1b[0m \x1b[33m▄\x1b[0m \x1b[1;33m█\x1b[0m \x1b[33m▄\x1b[0m   \x1b[33m▄\x1b[0m\n'
+    '       \x1b[2;33m▄\x1b[0m \x1b[2;33m▄\x1b[0m \x1b[33m█\x1b[0m \x1b[2;33m▄\x1b[0m \x1b[33m█\x1b[0m \x1b[1;33m█\x1b[0m \x1b[33m█\x1b[0m \x1b[1;33m█\x1b[0m \x1b[1;33m█\x1b[0m \x1b[1;33m█\x1b[0m \x1b[33m█\x1b[0m \x1b[1;33m█\x1b[0m \x1b[33m█\x1b[0m \x1b[2;33m▄\x1b[0m \x1b[33m█\x1b[0m \x1b[2;33m▄\x1b[0m \x1b[2;33m▄\x1b[0m\n'
+    '    \x1b[2;33m──\x1b[2;33m█\x1b[2;33m─\x1b[2;33m█\x1b[2;33m─\x1b[33m█\x1b[2;33m─\x1b[2;33m█\x1b[2;33m─\x1b[33m█\x1b[2;33m─\x1b[1;33m█\x1b[2;33m─\x1b[33m█\x1b[2;33m─\x1b[1;33m█\x1b[2;33m─\x1b[1;33m█\x1b[2;33m─\x1b[1;33m█\x1b[2;33m─\x1b[33m█\x1b[2;33m─\x1b[1;33m█\x1b[2;33m─\x1b[33m█\x1b[2;33m─\x1b[2;33m█\x1b[2;33m─\x1b[33m█\x1b[2;33m─\x1b[2;33m█\x1b[2;33m─\x1b[2;33m█\x1b[2;33m──────\x1b[0m \x1b[1;33mSpectral \x1b[2;33m─────────\x1b[0m\n'
+    '       \x1b[2;33m▀\x1b[0m \x1b[2;33m▀\x1b[0m \x1b[33m█\x1b[0m \x1b[2;33m▀\x1b[0m \x1b[33m█\x1b[0m \x1b[1;33m█\x1b[0m \x1b[33m█\x1b[0m \x1b[1;33m█\x1b[0m \x1b[1;33m█\x1b[0m \x1b[1;33m█\x1b[0m \x1b[33m█\x1b[0m \x1b[1;33m█\x1b[0m \x1b[33m█\x1b[0m \x1b[2;33m▀\x1b[0m \x1b[33m█\x1b[0m \x1b[2;33m▀\x1b[0m \x1b[2;33m▀\x1b[0m\n'
+    '           \x1b[33m▀\x1b[0m   \x1b[33m▀\x1b[0m \x1b[1;33m█\x1b[0m \x1b[33m▀\x1b[0m \x1b[1;33m█\x1b[0m \x1b[1;33m█\x1b[0m \x1b[1;33m█\x1b[0m \x1b[33m▀\x1b[0m \x1b[1;33m█\x1b[0m \x1b[33m▀\x1b[0m   \x1b[33m▀\x1b[0m\n'
+    '                 \x1b[1;33m▀\x1b[0m   \x1b[1;33m▀\x1b[0m \x1b[1;33m▀\x1b[0m \x1b[1;33m▀\x1b[0m   \x1b[1;33m▀\x1b[0m'
 )
 # fmt: on
 

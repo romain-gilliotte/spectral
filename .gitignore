@@ -21,4 +21,5 @@ site/
 tools/*.jar
 
 # Generated test artifacts
-workdirdemo/demo.cast
+workdir
+demo/demo.cast
