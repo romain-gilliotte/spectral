@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
 """Add macOS-style window chrome to an animated GIF."""
 
-import sys
 from pathlib import Path
+import sys
+
 from PIL import Image, ImageDraw
 
 TITLE_BAR_H = 36

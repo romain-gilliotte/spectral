@@ -12,8 +12,8 @@ Usage:
 """
 
 import json
-import sys
 from pathlib import Path
+import sys
 
 COLS = 96
 ROWS = 24
