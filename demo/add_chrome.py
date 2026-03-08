@@ -8,10 +8,12 @@ from PIL import Image, ImageDraw
 
 TITLE_BAR_H = 36
 BORDER = 1
+PADDING = 4    # inner padding between border and content (shell bg color)
 CROP = 4       # trim agg rounded corners from raw GIF
 RADIUS = 12    # top corner radius
 TITLE_BG = (88, 96, 105, 255)
 BORDER_BG = (88, 96, 105, 255)
+SHELL_BG = (40, 42, 54, 255)   # #282a36
 TRANSPARENT = (0, 0, 0, 0)
 DOTS = [
     (255, 95, 87),   # red
@@ -32,8 +34,8 @@ def add_chrome(src: Path, dst: Path):
     w, h = img.size
     cw = w - 2 * CROP
     ch = h - 2 * CROP
-    new_w = cw + 2 * BORDER
-    new_h = ch + TITLE_BAR_H + BORDER
+    new_w = cw + 2 * (BORDER + PADDING)
+    new_h = ch + TITLE_BAR_H + BORDER + 2 * PADDING
 
     # Build chrome template in RGBA — corners are transparent
     chrome = Image.new("RGBA", (new_w, new_h), TRANSPARENT)
@@ -44,6 +46,13 @@ def add_chrome(src: Path, dst: Path):
     # Title bar (rounded top, square bottom)
     draw.rounded_rectangle([0, 0, new_w - 1, TITLE_BAR_H - 1], radius=RADIUS, fill=TITLE_BG)
     draw.rectangle([0, RADIUS, new_w - 1, TITLE_BAR_H - 1], fill=TITLE_BG)
+    # Shell background padding area
+    content_x = BORDER + PADDING
+    content_y = TITLE_BAR_H + PADDING
+    draw.rectangle(
+        [BORDER, TITLE_BAR_H, new_w - 1 - BORDER, new_h - 1 - BORDER],
+        fill=SHELL_BG,
+    )
     # Traffic lights
     for i, color in enumerate(DOTS):
         cx = BORDER + DOT_START_X + i * DOT_SPACING
@@ -62,7 +71,7 @@ def add_chrome(src: Path, dst: Path):
             frame = img.convert("RGB")
             frame = frame.crop((CROP, CROP, w - CROP, h - CROP))
             canvas = chrome.copy()
-            canvas.paste(frame, (BORDER, TITLE_BAR_H))
+            canvas.paste(frame, (content_x, content_y))
             # Re-apply alpha mask (paste overwrites alpha in content area, which is fine,
             # but we need corners to stay transparent)
             canvas.putalpha(alpha_mask)
@@ -72,25 +81,73 @@ def add_chrome(src: Path, dst: Path):
     except EOFError:
         pass
 
-    # Convert RGBA → P with transparency
-    # Use a rare RGB color as transparency key, then quantize as RGB
+    # Convert RGBA → P with fixed palette optimized for terminal text AA
     TKEY = (1, 2, 3)
+
+    # Fixed palette: known colors + grey ramps for anti-aliasing
+    bg = (40, 42, 54)       # #282a36 shell background
+    chrome_rgb = (88, 96, 105)
+    # Dracula theme ANSI colors
+    fg_colors = {
+        "white":   (248, 248, 242),  # default text
+        "green":   (80, 250, 123),   # \033[32m
+        "yellow":  (241, 250, 140),  # \033[33m
+        "cyan":    (139, 233, 253),  # \033[36m
+        "magenta": (255, 121, 198),  # \033[35m
+    }
+    fixed = [
+        TKEY,           # idx 0 = transparent
+        bg,
+        chrome_rgb,
+        (255, 95, 87),  # dot red
+        (254, 188, 46), # dot yellow
+        (40, 200, 64),  # dot green
+    ] + list(fg_colors.values())
+
+    # Fill remaining slots with AA ramps from bg to each fg color
+    remaining = 256 - len(fixed)
+    # 50% for white (most text), rest split among 4 accent colors
+    white_steps = remaining // 2
+    accent_steps = (remaining - white_steps) // 4
+
+    def lerp_ramp(c0: tuple, c1: tuple, n: int) -> list[tuple]:
+        return [
+            (
+                int(c0[0] + (c1[0] - c0[0]) * (i + 1) / (n + 1)),
+                int(c0[1] + (c1[1] - c0[1]) * (i + 1) / (n + 1)),
+                int(c0[2] + (c1[2] - c0[2]) * (i + 1) / (n + 1)),
+            )
+            for i in range(n)
+        ]
+
+    palette_colors = list(fixed)
+    palette_colors += lerp_ramp(bg, fg_colors["white"], white_steps)
+    for name in ["green", "yellow", "cyan", "magenta"]:
+        palette_colors += lerp_ramp(bg, fg_colors[name], accent_steps)
+
+    # Pad to 256
+    while len(palette_colors) < 256:
+        palette_colors.append((0, 0, 0))
+
+    # Build PIL palette image
+    flat_palette = []
+    for r, g, b in palette_colors[:256]:
+        flat_palette.extend((r, g, b))
+    palette_img = Image.new("P", (1, 1))
+    palette_img.putpalette(flat_palette)
+
     rgb_frames = []
     for f in frames:
         rgb = Image.new("RGB", f.size, TKEY)
-        rgb.paste(f, mask=f.split()[3])  # paste only opaque pixels
+        rgb.paste(f, mask=f.split()[3])
         rgb_frames.append(rgb)
-
-    # Build shared palette from first frame
-    palette_img = rgb_frames[0].quantize(colors=255, method=Image.Quantize.MEDIANCUT)
 
     p_frames = []
     for rgb in rgb_frames:
         p = rgb.quantize(palette=palette_img, dither=0)
         p_frames.append(p)
 
-    # Find transparent palette index (the one mapping to TKEY)
-    trans_idx = p_frames[0].getpixel((0, 0))
+    trans_idx = 0  # TKEY is first in palette
 
     p_frames[0].save(
         dst,
