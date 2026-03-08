@@ -7,13 +7,15 @@ from PIL import Image, ImageDraw
 
 TITLE_BAR_H = 36
 BORDER = 1
-CROP = 4  # pixels to trim from raw GIF edges (removes agg rounded corners)
-TITLE_BG = (88, 96, 105)   # #586069 — GitHub fg.muted, clearly visible on #0d1117
-BORDER_BG = (88, 96, 105)  # same as title bar for clean look
+CROP = 4       # trim agg rounded corners from raw GIF
+RADIUS = 12    # top corner radius
+TITLE_BG = (88, 96, 105)    # #586069
+BORDER_BG = (88, 96, 105)
+CORNER_BG = (13, 17, 23)    # #0d1117 — GitHub dark page background
 DOTS = [
-    (255, 95, 87),   # red    #FF5F57
-    (254, 188, 46),  # yellow #FEBC2E
-    (40, 200, 64),   # green  #28C840
+    (255, 95, 87),   # red
+    (254, 188, 46),  # yellow
+    (40, 200, 64),   # green
 ]
 DOT_RADIUS = 6
 DOT_Y = TITLE_BAR_H // 2
@@ -27,19 +29,21 @@ def add_chrome(src: Path, dst: Path):
     durations: list[int] = []
 
     w, h = img.size
-    # Cropped content dimensions
     cw = w - 2 * CROP
     ch = h - 2 * CROP
-    # Final dimensions
     new_w = cw + 2 * BORDER
     new_h = ch + TITLE_BAR_H + BORDER
 
-    # Build the chrome template once
-    chrome = Image.new("RGB", (new_w, new_h), BORDER_BG)
-    # Draw title bar
+    # Build chrome template: rounded top corners, square bottom
+    chrome = Image.new("RGB", (new_w, new_h), CORNER_BG)
     draw = ImageDraw.Draw(chrome)
-    draw.rectangle([0, 0, new_w, TITLE_BAR_H - 1], fill=TITLE_BG)
-    # Traffic light dots
+    # Full window body (rounded all corners, then squared off at bottom)
+    draw.rounded_rectangle([0, 0, new_w - 1, new_h - 1], radius=RADIUS, fill=BORDER_BG)
+    draw.rectangle([0, new_h // 2, new_w - 1, new_h - 1], fill=BORDER_BG)
+    # Title bar (rounded top, square bottom)
+    draw.rounded_rectangle([0, 0, new_w - 1, TITLE_BAR_H - 1], radius=RADIUS, fill=TITLE_BG)
+    draw.rectangle([0, RADIUS, new_w - 1, TITLE_BAR_H - 1], fill=TITLE_BG)
+    # Traffic lights
     for i, color in enumerate(DOTS):
         cx = BORDER + DOT_START_X + i * DOT_SPACING
         cy = DOT_Y
@@ -52,7 +56,6 @@ def add_chrome(src: Path, dst: Path):
     try:
         while True:
             frame = img.convert("RGB")
-            # Crop rounded corners
             frame = frame.crop((CROP, CROP, w - CROP, h - CROP))
             canvas = chrome.copy()
             canvas.paste(frame, (BORDER, TITLE_BAR_H))
