@@ -10,7 +10,15 @@ from pydantic import BaseModel, field_validator
 from cli.commands.capture.types import CaptureBundle
 from cli.helpers.http import compact_url
 import cli.helpers.llm as llm
+from cli.helpers.prompt import render
 from cli.helpers.storage import load_app_meta, update_app_meta
+
+
+@dataclass(frozen=True, order=True)
+class MethodUrlPair:
+    """An observed (HTTP method, URL) pair from a single trace."""
+    method: str
+    url: str
 
 
 class BaseUrlResponse(BaseModel):
@@ -25,13 +33,6 @@ class BaseUrlResponse(BaseModel):
         return v
 
 
-@dataclass(frozen=True, order=True)
-class MethodUrlPair:
-    """An observed (HTTP method, URL) pair from a single trace."""
-    method: str
-    url: str
-
-
 async def detect_base_url(bundle: CaptureBundle, app_name: str) -> str:
     """Detect the business API base URL from a capture bundle.
 
@@ -42,37 +43,16 @@ async def detect_base_url(bundle: CaptureBundle, app_name: str) -> str:
     if cached is not None:
         return cached
 
-    pairs = [
-        MethodUrlPair(t.meta.request.method.upper(), t.meta.request.url)
-        for t in bundle.traces
-    ]
-
     counts = Counter(
-        MethodUrlPair(p.method, compact_url(p.url)) for p in pairs
+        (t.meta.request.method.upper(), compact_url(t.meta.request.url))
+        for t in bundle.traces
     )
     lines = [
-        f"  {p.method} {p.url} ({n}x)" if n > 1 else f"  {p.method} {p.url}"
-        for p, n in sorted(counts.items())
+        f"  {method} {url} ({n}x)" if n > 1 else f"  {method} {url}"
+        for (method, url), n in sorted(counts.items())
     ]
 
-    prompt = f"""You are analyzing HTTP traffic captured from a web application.
-Identify the base URL of the **business API** (the main application API, not CDN, analytics, tracking, fonts, or third-party services).
-
-The base URL can be:
-- Just the origin: https://api.example.com
-- Origin + path prefix: https://www.example.com/api
-
-Rules:
-- Pick the single most important API base URL — the one serving the app's core business endpoints.
-- Ignore CDN domains, analytics (google-analytics, hotjar, segment, etc.), ad trackers, font services, static asset hosts.
-- If the API endpoints share a common path prefix (e.g. /api/v1), include it.
-- A single URL called many times (e.g. POST /graphql) often indicates a GraphQL API — that's still a valid business API.
-- Return ONLY the base URL string, no trailing slash.
-
-Observed requests (call count shown when > 1):
-{chr(10).join(lines)}
-
-Response format: {{"base_url": "https://..."}}"""
+    prompt = render("detect-base-url.j2", lines=lines)
 
     conv = llm.Conversation(
         label="detect_api_base_url",
