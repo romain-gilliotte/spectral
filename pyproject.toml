@@ -86,4 +86,3 @@ Issues = "https://github.com/romain-gilliotte/spectral/issues"
 version_toml = ["pyproject.toml:project.version"]
 branch = "main"
 commit_message = "chore(release): v{version}"
-build_command = "uv build"
