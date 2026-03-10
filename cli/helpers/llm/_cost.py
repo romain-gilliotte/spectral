@@ -4,8 +4,6 @@ from __future__ import annotations
 
 from typing import Any
 
-import litellm
-
 from cli.helpers.console import console
 
 _total_input_tokens: int = 0
@@ -18,6 +16,8 @@ _total_cost: float = 0.0
 def estimate_cost(response: Any) -> float | None:
     """Return estimated USD cost using LiteLLM's pricing database, or ``None``."""
     try:
+        import litellm
+
         return float(litellm.completion_cost(completion_response=response))
     except Exception:
         return None

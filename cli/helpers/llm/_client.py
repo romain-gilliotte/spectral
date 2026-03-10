@@ -8,7 +8,6 @@ import os
 from typing import Any
 
 import click
-import litellm
 
 from cli.helpers.console import console
 import cli.helpers.storage as storage
@@ -22,9 +21,6 @@ _setup_done: bool = False
 MAX_CONCURRENT = 5
 MAX_RETRIES = 3
 FALLBACK_BACKOFF = 2.0  # seconds, doubled each retry
-
-# Suppress litellm's noisy logging
-litellm.suppress_debug_info = True
 
 
 def setup(send_fn: SendFn | None = None) -> None:
@@ -130,6 +126,8 @@ def _parse_retry_after(exc: Exception) -> float | None:
 
 async def send(*, label: str = "", **kwargs: Any) -> Any:
     """Call the LLM with semaphore gating and rate-limit retry."""
+    import litellm  # lazy import to keep `spectral --help` fast
+
     from cli.helpers.llm._cost import record_usage
 
     if not _setup_done:
