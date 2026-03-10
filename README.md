@@ -1,8 +1,8 @@
 <p align="center">
   <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="assets/banner-wide-dark.png">
-    <source media="(prefers-color-scheme: light)" srcset="assets/banner-wide-light.png">
-    <img src="assets/banner-wide-dark.png" alt="Spectral" width="600">
+    <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/romain-gilliotte/spectral/main/assets/banner-wide-dark.png">
+    <source media="(prefers-color-scheme: light)" srcset="https://raw.githubusercontent.com/romain-gilliotte/spectral/main/assets/banner-wide-light.png">
+    <img src="https://raw.githubusercontent.com/romain-gilliotte/spectral/main/assets/banner-wide-dark.png" alt="Spectral" width="600">
   </picture>
 </p>
 
@@ -16,7 +16,7 @@
 Browse any website or mobile app normally. Spectral observes what you do, figures out the meaning behind each API call, and builds MCP tools that let AI agents use the same app.
 
 <p align="center">
-  <img src="assets/demo.gif" width="750" alt="Spectral demo — analyze traffic, then Claude uses the API">
+  <img src="https://raw.githubusercontent.com/romain-gilliotte/spectral/main/assets/demo.gif" width="750" alt="Spectral demo — analyze traffic, then Claude uses the API">
 </p>
 
 ## Why Spectral
