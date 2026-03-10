@@ -1,6 +1,20 @@
 # CHANGELOG
 
 
+## v0.1.1 (2026-03-10)
+
+### Bug Fixes
+
+- Merge publish job into release workflow
+  ([`cbe9b59`](https://github.com/romain-gilliotte/spectral/commit/cbe9b596b1a3b32abc1cbb257c6d6331521ae2a7))
+
+The separate publish-pypi.yml workflow never triggered because GitHub Actions anti-loop protection
+  ignores events emitted by GITHUB_TOKEN. Merge publishing as a conditional second job in
+  release.yml.
+
+Co-Authored-By: Claude Opus 4.6 <noreply@anthropic.com>
+
+
 ## v0.1.0 (2026-03-09)
 
 ### Bug Fixes
