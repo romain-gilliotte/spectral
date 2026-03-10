@@ -43,16 +43,8 @@ def setup(send_fn: SendFn | None = None) -> None:
     if _setup_done:
         return
 
-    # Migrate legacy api_key file → llm.json
-    llm_config = storage.load_llm_config()
-    if llm_config is None:
-        legacy_path = storage.store_root() / "api_key"
-        legacy_key = legacy_path.read_text().strip() if legacy_path.is_file() else None
-        if legacy_key:
-            storage.write_llm_config(api_key=legacy_key)
-            llm_config = storage.load_llm_config()
-
     # If no env var key for any known provider, try stored config, then prompt
+    llm_config = storage.load_llm_config()
     if not _has_provider_key_in_env():
         if llm_config and llm_config.get("api_key"):
             pass  # will be passed via api_key= at call time
