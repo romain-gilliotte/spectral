@@ -1,6 +1,26 @@
 # CHANGELOG
 
 
+## v0.1.4 (2026-03-10)
+
+### Chores
+
+- Add source hint in install script and document conventional commits
+  ([`74dc719`](https://github.com/romain-gilliotte/spectral/commit/74dc7190acc963fa28bb4364ead23f1238f02c0f))
+
+Co-Authored-By: Claude Opus 4.6 <noreply@anthropic.com>
+
+### Performance Improvements
+
+- Lazy-import heavy libs to speed up CLI startup
+  ([`28bd884`](https://github.com/romain-gilliotte/spectral/commit/28bd884ed0d5c338a2c1aec6f1ab77a33dbf6f16))
+
+Move anthropic, mcp, graphql, requests, and jsonschema imports from top-level to inside the
+  functions that use them. Reduces `spectral --help` startup from ~1.7s to ~0.6s.
+
+Co-Authored-By: Claude Opus 4.6 <noreply@anthropic.com>
+
+
 ## v0.1.3 (2026-03-10)
 
 ### Bug Fixes
