@@ -28,6 +28,7 @@ from cli.commands.capture.loader import load_bundle, load_bundle_dir, write_bund
 from cli.commands.capture.types import CaptureBundle, merge_bundles
 from cli.formats.app_meta import AppMeta
 from cli.formats.capture_bundle import CaptureManifest
+from cli.formats.config import Config
 from cli.formats.mcp_tool import TokenState, ToolDefinition
 
 
@@ -263,19 +264,24 @@ def auth_script_path(app_name: str) -> Path:
     return app_dir(app_name) / "auth_acquire.py"
 
 
-def load_api_key() -> str | None:
-    """Read the stored Anthropic API key, or ``None`` if not set."""
-    path = store_root() / "api_key"
+def config_path() -> Path:
+    """Return the path to config.json."""
+    return store_root() / "config.json"
+
+
+def load_config() -> Config | None:
+    """Read config.json, or ``None`` if not set."""
+    path = config_path()
     if not path.is_file():
         return None
-    return path.read_text().strip() or None
+    return Config.model_validate_json(path.read_text())
 
 
-def write_api_key(key: str) -> None:
-    """Write the Anthropic API key to managed storage."""
-    path = store_root() / "api_key"
+def write_config(config: Config) -> None:
+    """Write config.json to managed storage."""
+    path = config_path()
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(key.strip() + "\n")
+    path.write_text(config.model_dump_json(indent=2) + "\n")
 
 
 def load_app_meta(app_name: str) -> AppMeta:

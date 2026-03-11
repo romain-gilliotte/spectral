@@ -114,11 +114,10 @@ async def extract_auth_from_traces(
 
 @click.command()
 @click.argument("app_name")
-@click.option("--model", default="claude-sonnet-4-5-20250929", help="LLM model to use")
 @click.option(
     "--debug", is_flag=True, default=False, help="Save LLM prompts/responses to debug/"
 )
-def extract(app_name: str, model: str, debug: bool) -> None:
+def extract(app_name: str, debug: bool) -> None:
     """Extract auth tokens from captured traces.
 
     Scans the most recent traces for auth headers (Authorization, cookies, etc.)
@@ -132,7 +131,6 @@ def extract(app_name: str, model: str, debug: bool) -> None:
     console.print(f"  Loaded {len(bundle.traces)} traces")
 
     llm.init_debug(debug=debug)
-    llm.set_model(model)
 
     token = asyncio.run(extract_auth_from_traces(bundle, app_name))
 

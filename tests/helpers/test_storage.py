@@ -26,8 +26,8 @@ from cli.helpers.storage import (
     list_apps,
     list_captures,
     list_tools,
-    load_api_key,
     load_app_meta,
+    load_config,
     load_token,
     resolve_app,
     slugify,
@@ -35,7 +35,7 @@ from cli.helpers.storage import (
     store_root,
     tools_dir,
     update_app_meta,
-    write_api_key,
+    write_config,
     write_token,
     write_tools,
 )
@@ -402,22 +402,34 @@ class TestAppMetaFunctions:
         assert meta.base_url == "https://api.example.com"
 
 
-class TestApiKeyStorage:
-    def test_load_api_key_missing(self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+class TestConfigStorage:
+    def test_load_config_missing(self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
         monkeypatch.setenv("SPECTRAL_HOME", str(tmp_path))
-        assert load_api_key() is None
+        assert load_config() is None
 
-    def test_write_and_load_api_key(self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
-        monkeypatch.setenv("SPECTRAL_HOME", str(tmp_path))
-        write_api_key("sk-ant-test-key")
-        assert load_api_key() == "sk-ant-test-key"
+    def test_write_and_load_config(self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+        from cli.formats.config import Config
 
-    def test_write_api_key_strips_whitespace(self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
         monkeypatch.setenv("SPECTRAL_HOME", str(tmp_path))
-        write_api_key("  sk-ant-test-key  \n")
-        assert load_api_key() == "sk-ant-test-key"
+        write_config(Config(api_key="sk-ant-test-key"))
+        config = load_config()
+        assert config is not None
+        assert config.api_key == "sk-ant-test-key"
 
-    def test_load_api_key_empty_file(self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    def test_config_default_model(self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+        from cli.formats.config import DEFAULT_MODEL, Config
+
         monkeypatch.setenv("SPECTRAL_HOME", str(tmp_path))
-        (tmp_path / "api_key").write_text("")
-        assert load_api_key() is None
+        write_config(Config(api_key="sk-ant-test-key"))
+        config = load_config()
+        assert config is not None
+        assert config.model == DEFAULT_MODEL
+
+    def test_config_custom_model(self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+        from cli.formats.config import Config
+
+        monkeypatch.setenv("SPECTRAL_HOME", str(tmp_path))
+        write_config(Config(api_key="sk-ant-test-key", model="claude-opus-4-20250115"))
+        config = load_config()
+        assert config is not None
+        assert config.model == "claude-opus-4-20250115"

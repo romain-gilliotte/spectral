@@ -118,7 +118,6 @@ async def build_mcp_tools(
 
 @click.command()
 @click.argument("app_name")
-@click.option("--model", default="claude-sonnet-4-5-20250929", help="LLM model to use")
 @click.option(
     "--debug", is_flag=True, default=False, help="Save LLM prompts/responses to debug/"
 )
@@ -128,8 +127,9 @@ async def build_mcp_tools(
     default=False,
     help="Skip LLM enrichment step (business context, glossary, etc.)",
 )
-def analyze_cmd(app_name: str, model: str, debug: bool, skip_enrich: bool) -> None:
+def analyze_cmd(app_name: str, debug: bool, skip_enrich: bool) -> None:
     """Generate MCP tool definitions from captures."""
+    from cli.helpers.llm._client import load_model
 
     cap_count = len(list_captures(app_name))
     console.print(f"[bold]Loading captures for app:[/bold] {app_name}")
@@ -142,9 +142,8 @@ def analyze_cmd(app_name: str, model: str, debug: bool, skip_enrich: bool) -> No
     )
 
     llm.init_debug(debug=debug)
-    llm.set_model(model)
 
-    console.print(f"[bold]Generating MCP tools with LLM ({model})...[/bold]")
+    console.print(f"[bold]Generating MCP tools with LLM ({load_model()})...[/bold]")
     result = asyncio.run(
         build_mcp_tools(
             bundle,

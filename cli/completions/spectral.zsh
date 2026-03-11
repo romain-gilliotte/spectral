@@ -14,6 +14,7 @@ _spectral() {
             'auth:Authentication management'
             'capture:Capture management'
             'completion:Generate shell completion script'
+            'config:Configure API key and model'
             'extension:Chrome Extension integration'
             'graphql:GraphQL analysis'
             'mcp:MCP tool generation and server'
@@ -39,7 +40,6 @@ _spectral() {
                 case "${words[3]}" in
                     analyze|extract|login)
                         _arguments \
-                            '--model[LLM model to use]' \
                             '--debug[Save LLM prompts/responses]' \
                             '--help[Show help]' \
                             '*:app name:_spectral_apps' && ret=0 ;;
@@ -86,6 +86,8 @@ _spectral() {
                             '--help[Show help]' && ret=0 ;;
                 esac
             fi ;;
+        config)
+            _arguments '--help[Show help]' && ret=0 ;;
         mcp)
             if (( CURRENT == 3 )); then
                 local -a subcmds=(
@@ -98,7 +100,6 @@ _spectral() {
                 case "${words[3]}" in
                     analyze)
                         _arguments \
-                            '--model[LLM model to use]' \
                             '--debug[Save LLM prompts/responses]' \
                             '--skip-enrich[Skip enrichment step]' \
                             '--help[Show help]' \
@@ -120,7 +121,6 @@ _spectral() {
                     analyze)
                         _arguments \
                             '(-o --output)'{-o,--output}'[Output base name]' \
-                            '--model[LLM model to use]' \
                             '--debug[Save LLM prompts/responses]' \
                             '--skip-enrich[Skip enrichment step]' \
                             '--help[Show help]' \
@@ -138,7 +138,6 @@ _spectral() {
                     analyze)
                         _arguments \
                             '(-o --output)'{-o,--output}'[Output base name]' \
-                            '--model[LLM model to use]' \
                             '--debug[Save LLM prompts/responses]' \
                             '--skip-enrich[Skip enrichment step]' \
                             '--help[Show help]' \

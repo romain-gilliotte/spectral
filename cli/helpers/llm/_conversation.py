@@ -8,22 +8,12 @@ from typing import Any, TypeVar
 from pydantic import BaseModel
 
 from cli.commands.capture.types import CaptureBundle
-from cli.helpers.llm._client import ensure_api_key, get_test_model
+from cli.helpers.llm._client import ensure_config, get_test_model, load_model
 from cli.helpers.llm._cost import record_usage
 from cli.helpers.llm._debug import DebugSession
 from cli.helpers.llm.tools import ToolDeps, make_tools
 
-DEFAULT_MODEL = "claude-sonnet-4-5-20250929"
-
-_model_override: str | None = None
-
 T = TypeVar("T", bound=BaseModel)
-
-
-def set_model(model: str) -> None:
-    """Override the default model for all new conversations."""
-    global _model_override
-    _model_override = model
 
 
 class Conversation:
@@ -39,13 +29,12 @@ class Conversation:
         system: str | list[str] | None = None,
         tool_names: Sequence[str] | None = None,
         bundle: CaptureBundle | None = None,
-        model: str = DEFAULT_MODEL,
         max_tokens: int = 4096,
         max_iterations: int = 10,
         label: str = "",
     ) -> None:
         self._system = self._join_system(system)
-        self._model = _model_override or model
+        self._model = load_model()
         self._max_tokens = max_tokens
         self._max_iterations = max_iterations
         self._label = label
@@ -66,7 +55,7 @@ class Conversation:
 
         # Ensure API key is available (skipped when a test model is injected)
         if get_test_model() is None:
-            ensure_api_key()
+            ensure_config()
 
     async def ask_text(self, prompt: str) -> str:
         """Send a user message and return the assistant's text response."""

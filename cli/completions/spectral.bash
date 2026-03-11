@@ -14,7 +14,7 @@ _spectral() {
 
     # Top-level
     if [[ $cword -eq 1 ]]; then
-        COMPREPLY=($(compgen -W "android auth capture completion extension graphql mcp openapi --help --version" -- "$cur"))
+        COMPREPLY=($(compgen -W "android auth capture completion config extension graphql mcp openapi --help --version" -- "$cur"))
         return
     fi
 
@@ -26,7 +26,7 @@ _spectral() {
             fi
             case "$cmd2" in
                 analyze|extract|login)
-                    [[ "$cur" == -* ]] && COMPREPLY=($(compgen -W "--model --debug --help" -- "$cur")) || _spectral_apps ;;
+                    [[ "$cur" == -* ]] && COMPREPLY=($(compgen -W "--debug --help" -- "$cur")) || _spectral_apps ;;
                 logout|refresh)
                     [[ "$cur" == -* ]] && COMPREPLY=($(compgen -W "--help" -- "$cur")) || _spectral_apps ;;
                 set)
@@ -43,13 +43,15 @@ _spectral() {
                 proxy) [[ "$cur" == -* ]] && COMPREPLY=($(compgen -W "-a --app -p --port -d --domain --help" -- "$cur")) ;;
                 discover) COMPREPLY=($(compgen -W "-p --port --help" -- "$cur")) ;;
             esac ;;
+        config)
+            COMPREPLY=($(compgen -W "--help" -- "$cur")) ;;
         mcp)
             if [[ $cword -eq 2 ]]; then
                 COMPREPLY=($(compgen -W "analyze install stdio --help" -- "$cur"))
                 return
             fi
             case "$cmd2" in
-                analyze) [[ "$cur" == -* ]] && COMPREPLY=($(compgen -W "--model --debug --skip-enrich --help" -- "$cur")) || _spectral_apps ;;
+                analyze) [[ "$cur" == -* ]] && COMPREPLY=($(compgen -W "--debug --skip-enrich --help" -- "$cur")) || _spectral_apps ;;
                 install) COMPREPLY=($(compgen -W "--target --help" -- "$cur")) ;;
             esac ;;
         openapi)
@@ -58,7 +60,7 @@ _spectral() {
                 return
             fi
             case "$cmd2" in
-                analyze) [[ "$cur" == -* ]] && COMPREPLY=($(compgen -W "-o --output --model --debug --skip-enrich --help" -- "$cur")) || _spectral_apps ;;
+                analyze) [[ "$cur" == -* ]] && COMPREPLY=($(compgen -W "-o --output --debug --skip-enrich --help" -- "$cur")) || _spectral_apps ;;
             esac ;;
         graphql)
             if [[ $cword -eq 2 ]]; then
@@ -66,7 +68,7 @@ _spectral() {
                 return
             fi
             case "$cmd2" in
-                analyze) [[ "$cur" == -* ]] && COMPREPLY=($(compgen -W "-o --output --model --debug --skip-enrich --help" -- "$cur")) || _spectral_apps ;;
+                analyze) [[ "$cur" == -* ]] && COMPREPLY=($(compgen -W "-o --output --debug --skip-enrich --help" -- "$cur")) || _spectral_apps ;;
             esac ;;
         extension)
             if [[ $cword -eq 2 ]]; then

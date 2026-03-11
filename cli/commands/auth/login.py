@@ -17,11 +17,10 @@ if TYPE_CHECKING:
 
 @click.command()
 @click.argument("app_name")
-@click.option("--model", default="claude-sonnet-4-5-20250929", help="LLM model to use")
 @click.option(
     "--debug", is_flag=True, default=False, help="Save LLM prompts/responses to debug/"
 )
-def login(app_name: str, model: str, debug: bool) -> None:
+def login(app_name: str, debug: bool) -> None:
     """Run interactive authentication for an app.
 
     Loads auth_acquire.py, calls acquire_token(), and writes token.json.
@@ -45,7 +44,7 @@ def login(app_name: str, model: str, debug: bool) -> None:
         ):
             raise SystemExit(1)
 
-        token = _fix_loop(app_name, model, debug, error_str)
+        token = _fix_loop(app_name, debug, error_str)
 
     write_token(app_name, token)
     console.print("[green]Login successful. Token saved.[/green]")
@@ -65,7 +64,7 @@ def _format_error() -> str:
 
 
 def _fix_loop(
-    app_name: str, model: str, debug: bool, initial_error: str
+    app_name: str, debug: bool, initial_error: str
 ) -> TokenState:
     """Initialize LLM context once, then loop: fix script → retry login."""
     from cli.helpers.auth_runtime import acquire_auth
@@ -75,7 +74,6 @@ def _fix_loop(
     from cli.helpers.storage import auth_script_path, load_app_bundle
 
     llm_mod.init_debug(debug=debug)
-    llm_mod.set_model(model)
 
     bundle = load_app_bundle(app_name)
     base_url = asyncio.run(detect_base_url(bundle, app_name))

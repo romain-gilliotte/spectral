@@ -11,6 +11,7 @@ from cli.commands.android import android
 from cli.commands.auth import auth
 from cli.commands.capture import capture
 from cli.commands.completion import completion
+from cli.commands.config import config
 from cli.commands.extension import extension
 from cli.commands.graphql import graphql_cmd
 from cli.commands.mcp import mcp
@@ -52,6 +53,7 @@ cli.add_command(android)
 cli.add_command(auth)
 cli.add_command(capture)
 cli.add_command(completion)
+cli.add_command(config)
 cli.add_command(extension)
 cli.add_command(graphql_cmd, "graphql")
 cli.add_command(mcp)

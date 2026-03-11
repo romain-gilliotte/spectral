@@ -5,7 +5,7 @@ The `openapi analyze` command produces an OpenAPI 3.1 YAML specification from ca
 ## Prerequisites
 
 - At least one capture for the app (see [Capture](../capture/web.md))
-- An Anthropic API key (set via `ANTHROPIC_API_KEY` or stored on first prompt)
+- An Anthropic API key (set via `ANTHROPIC_API_KEY` or `config.json` — run `spectral config`)
 
 ## Generating a spec
 
@@ -15,7 +15,7 @@ spectral openapi analyze myapp -o myapp
 
 This writes `myapp.yaml` containing the full OpenAPI 3.1 specification.
 
-The `--skip-enrich` flag produces a spec with only mechanical data (schemas, parameters, status codes) without business descriptions — useful for faster iteration or when you only need the structural information. The `--model` flag overrides the default LLM model. The `--debug` flag saves all LLM prompts and responses to disk.
+The `--skip-enrich` flag produces a spec with only mechanical data (schemas, parameters, status codes) without business descriptions — useful for faster iteration or when you only need the structural information. The `--debug` flag saves all LLM prompts and responses to disk.
 
 ## What you get
 

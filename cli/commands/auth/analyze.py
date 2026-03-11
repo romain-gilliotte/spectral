@@ -98,11 +98,10 @@ def extract_script(text: str) -> str:
 
 @click.command()
 @click.argument("app_name")
-@click.option("--model", default="claude-sonnet-4-5-20250929", help="LLM model to use")
 @click.option(
     "--debug", is_flag=True, default=False, help="Save LLM prompts/responses to debug/"
 )
-def analyze(app_name: str, model: str, debug: bool) -> None:
+def analyze(app_name: str, debug: bool) -> None:
     """Analyze auth mechanism for an app and generate an auth script."""
     from cli.helpers.storage import (
         auth_script_path,
@@ -116,7 +115,6 @@ def analyze(app_name: str, model: str, debug: bool) -> None:
     console.print(f"  Loaded {len(bundle.traces)} traces")
 
     llm.init_debug(debug=debug)
-    llm.set_model(model)
 
     try:
         script = asyncio.run(_run_auth(bundle, app_name))

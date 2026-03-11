@@ -5,7 +5,7 @@ MCP tools are the primary output of Spectral. They let AI agents call any discov
 ## Prerequisites
 
 - At least one capture for the app (see [Capture](../capture/web.md))
-- An Anthropic API key (set via `ANTHROPIC_API_KEY` or stored on first prompt)
+- An Anthropic API key (set via `ANTHROPIC_API_KEY` or `config.json` — run `spectral config`)
 
 ## Generating tools
 
@@ -24,7 +24,7 @@ spectral auth analyze myapp
 spectral auth login myapp
 ```
 
-The `--skip-enrich` flag skips business description generation for faster iteration. The `--model` flag overrides the default LLM model. The `--debug` flag saves all LLM prompts and responses to disk.
+The `--skip-enrich` flag skips business description generation for faster iteration. The `--debug` flag saves all LLM prompts and responses to disk.
 
 ## Connecting the MCP server
 

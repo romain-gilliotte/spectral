@@ -5,7 +5,7 @@ The `graphql analyze` command produces an SDL (Schema Definition Language) schem
 ## Prerequisites
 
 - At least one capture for the app (see [Capture](../capture/web.md))
-- An Anthropic API key (set via `ANTHROPIC_API_KEY` or stored on first prompt)
+- An Anthropic API key (set via `ANTHROPIC_API_KEY` or `config.json` — run `spectral config`)
 - For best results, enable `__typename` injection in the Chrome extension during capture
 
 ## Generating a schema
@@ -16,7 +16,7 @@ spectral graphql analyze myapp -o myapp
 
 This writes `myapp.graphql` containing the reconstructed SDL schema.
 
-The `--skip-enrich` flag produces a schema without business descriptions — useful for faster iteration. The `--model` flag overrides the default LLM model. The `--debug` flag saves all LLM prompts and responses to disk.
+The `--skip-enrich` flag produces a schema without business descriptions — useful for faster iteration. The `--debug` flag saves all LLM prompts and responses to disk.
 
 ## What you get
 

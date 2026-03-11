@@ -91,20 +91,19 @@ spectral android pull <package> [-o PATH]
 Analyze captures to detect authentication mechanisms and generate an auth script.
 
 ```
-spectral auth analyze <app_name> [--model MODEL] [--debug]
+spectral auth analyze <app_name> [--debug]
 ```
 
 | Argument / Option | Required | Default | Description |
 |-------------------|----------|---------|-------------|
 | `app_name` | Yes | — | Name of the app in managed storage |
-| `--model` | No | `claude-sonnet-4-5-20250929` | Anthropic model to use |
 | `--debug` | No | Off | Save LLM prompts and responses to `debug/<timestamp>/` |
 
 Examines all traces for auth-related patterns (login endpoints, token exchanges, OAuth flows) and generates `auth_acquire.py` in the app's managed storage directory. The script contains `acquire_token()` and optionally `refresh_token()` functions.
 
 If no authentication mechanism is detected, prints an informational message and exits without generating a script.
 
-Requires an Anthropic API key (resolved from the `ANTHROPIC_API_KEY` env var, stored key file, or interactive prompt).
+Requires an Anthropic API key (resolved from the `ANTHROPIC_API_KEY` env var or `config.json` in managed storage — run `spectral config` to set up).
 
 ---
 
@@ -113,13 +112,12 @@ Requires an Anthropic API key (resolved from the `ANTHROPIC_API_KEY` env var, st
 Extract auth tokens directly from captured traces without generating a script.
 
 ```
-spectral auth extract <app_name> [--model MODEL] [--debug]
+spectral auth extract <app_name> [--debug]
 ```
 
 | Argument / Option | Required | Default | Description |
 |-------------------|----------|---------|-------------|
 | `app_name` | Yes | — | Name of the app in managed storage |
-| `--model` | No | `claude-sonnet-4-5-20250929` | Anthropic model to use |
 | `--debug` | No | Off | Save LLM prompts and responses to `debug/<timestamp>/` |
 
 Scans all traces for auth headers (Authorization, cookies, etc.) and writes them to `token.json`. Tries a fast path first (looks for `Authorization` headers directly), falling back to the LLM to identify other auth headers if needed.
@@ -135,13 +133,12 @@ Requires an Anthropic API key only when the fast path fails and LLM analysis is 
 Run interactive authentication for an app.
 
 ```
-spectral auth login <app_name> [--model MODEL] [--debug]
+spectral auth login <app_name> [--debug]
 ```
 
 | Argument / Option | Required | Default | Description |
 |-------------------|----------|---------|-------------|
 | `app_name` | Yes | — | Name of the app in managed storage |
-| `--model` | No | `claude-sonnet-4-5-20250929` | Anthropic model to use for interactive fix |
 | `--debug` | No | Off | Save LLM prompts and responses to `debug/<timestamp>/` |
 
 Loads the generated `auth_acquire.py` script, calls `acquire_token()` (which prompts for credentials), and writes the result to `token.json`.
@@ -304,6 +301,18 @@ App names are completed dynamically from managed storage.
 
 ---
 
+## config
+
+Configure the Anthropic API key and LLM model used by analyze commands.
+
+```
+spectral config
+```
+
+Prompts for the API key and model, then writes them to `config.json` in managed storage. If a config already exists, the current values are shown and used as defaults.
+
+---
+
 ## extension install
 
 Install the Chrome Native Messaging host manifest so the extension can send captures directly to the CLI.
@@ -338,20 +347,19 @@ Reads one length-prefixed JSON message from stdin, stores the capture in managed
 Analyze all captures for an app and produce a GraphQL SDL schema.
 
 ```
-spectral graphql analyze <app_name> -o <name> [--model MODEL] [--debug] [--skip-enrich]
+spectral graphql analyze <app_name> -o <name> [--debug] [--skip-enrich]
 ```
 
 | Argument / Option | Required | Default | Description |
 |-------------------|----------|---------|-------------|
 | `app_name` | Yes | — | Name of the app in managed storage |
 | `-o, --output` | Yes | — | Output base name (produces `<name>.graphql`) |
-| `--model` | No | `claude-sonnet-4-5-20250929` | Anthropic model to use for LLM steps |
 | `--debug` | No | Off | Save LLM prompts and responses to `debug/<timestamp>/` |
 | `--skip-enrich` | No | Off | Skip LLM enrichment (faster, but no business descriptions) |
 
 The command loads all captures for the app and merges them into a single bundle before analysis. Only GraphQL traces are processed; REST traces are ignored.
 
-Requires an Anthropic API key (resolved from the `ANTHROPIC_API_KEY` env var, stored key file, or interactive prompt).
+Requires an Anthropic API key (resolved from the `ANTHROPIC_API_KEY` env var or `config.json` in managed storage — run `spectral config` to set up).
 
 ---
 
@@ -360,19 +368,18 @@ Requires an Anthropic API key (resolved from the `ANTHROPIC_API_KEY` env var, st
 Generate MCP tool definitions from captures.
 
 ```
-spectral mcp analyze <app_name> [--model MODEL] [--debug] [--skip-enrich]
+spectral mcp analyze <app_name> [--debug] [--skip-enrich]
 ```
 
 | Argument / Option | Required | Default | Description |
 |-------------------|----------|---------|-------------|
 | `app_name` | Yes | — | Name of the app in managed storage |
-| `--model` | No | `claude-sonnet-4-5-20250929` | Anthropic model to use for LLM steps |
 | `--debug` | No | Off | Save LLM prompts and responses to `debug/<timestamp>/` |
 | `--skip-enrich` | No | Off | Skip LLM enrichment (faster, but no business descriptions) |
 
 Writes tool definitions to `tools/*.json` in the app's managed storage directory and updates `app.json` with the detected `base_url`.
 
-Requires an Anthropic API key (resolved from the `ANTHROPIC_API_KEY` env var, stored key file, or interactive prompt).
+Requires an Anthropic API key (resolved from the `ANTHROPIC_API_KEY` env var or `config.json` in managed storage — run `spectral config` to set up).
 
 ---
 
@@ -411,17 +418,16 @@ Exposes all app tools from managed storage as MCP tools. This is the command use
 Analyze all captures for an app and produce an OpenAPI specification.
 
 ```
-spectral openapi analyze <app_name> -o <name> [--model MODEL] [--debug] [--skip-enrich]
+spectral openapi analyze <app_name> -o <name> [--debug] [--skip-enrich]
 ```
 
 | Argument / Option | Required | Default | Description |
 |-------------------|----------|---------|-------------|
 | `app_name` | Yes | — | Name of the app in managed storage |
 | `-o, --output` | Yes | — | Output base name (produces `<name>.yaml`) |
-| `--model` | No | `claude-sonnet-4-5-20250929` | Anthropic model to use for LLM steps |
 | `--debug` | No | Off | Save LLM prompts and responses to `debug/<timestamp>/` |
 | `--skip-enrich` | No | Off | Skip LLM enrichment (faster, but no business descriptions) |
 
 The command loads all captures for the app and merges them into a single bundle before analysis. Only REST traces are processed; GraphQL traces are ignored.
 
-Requires an Anthropic API key (resolved from the `ANTHROPIC_API_KEY` env var, stored key file, or interactive prompt).
+Requires an Anthropic API key (resolved from the `ANTHROPIC_API_KEY` env var or `config.json` in managed storage — run `spectral config` to set up).

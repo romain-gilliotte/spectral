@@ -12,7 +12,7 @@
   - `uv run spectral mcp analyze ...` — run the CLI
   - `uv add <package>` — add a dependency (updates `pyproject.toml` + `uv.lock`)
   - `uv add --dev <package>` — add a dev dependency
-- The Anthropic API key is resolved in order: `ANTHROPIC_API_KEY` env var → stored key at `~/.local/share/spectral/api_key` → interactive prompt. No `.env` file needed.
+- The Anthropic API key is resolved in order: `ANTHROPIC_API_KEY` env var → stored config at `~/.local/share/spectral/config.json` → interactive prompt. No `.env` file needed.
 - **Before finishing any code change**, run the full verification suite and fix any new errors:
   - `uv run pytest tests/ -x -q` — all tests must pass
   - `uv run ruff check` — zero lint errors (use `--fix` for auto-fixable import sorting)
@@ -85,6 +85,9 @@ spectral auth set <app> -H "Authorization: ..."     # manually set auth headers
 spectral auth set <app> -c "session=abc"            # set cookies
 spectral auth login/logout/refresh <app>            # interactive auth operations
 
+# Configuration
+spectral config                                     # configure API key and model
+
 # MCP server
 spectral mcp install [--target claude-desktop|claude-code]  # register MCP server
 spectral mcp stdio                                  # start MCP server on stdio
@@ -103,7 +106,7 @@ spectral extension listen                           # native host (called by Chr
 spectral android list/pull/patch/install/cert       # APK manipulation + cert push
 ```
 
-Default model is `claude-sonnet-4-5-20250929`. Options: `--model`, `--skip-enrich`, `--debug`.
+Default model is `claude-sonnet-4-5-20250929`, configurable via `spectral config`. Options: `--skip-enrich`, `--debug`.
 
 ## Dependencies
 
@@ -118,7 +121,7 @@ Default model is `claude-sonnet-4-5-20250929`. Options: `--model`, `--skip-enric
 Layout under `~/.local/share/spectral/` (overridable with `SPECTRAL_HOME`):
 
 ```
-api_key                   # Anthropic API key (plain text, created on first prompt)
+config.json               # Config (api_key, model)
 apps/<name>/
 ├── app.json              # AppMeta (name, display_name, base_url, timestamps)
 ├── auth_acquire.py       # Generated auth script (acquire_token, refresh_token)
@@ -136,7 +139,7 @@ Bundle merging (`merge_bundles` in `cli/commands/capture/types.py`) prefixes IDs
 
 | Variable | Purpose |
 |----------|---------|
-| `ANTHROPIC_API_KEY` | Override for analyze commands (otherwise read from `api_key` file or prompted) |
+| `ANTHROPIC_API_KEY` | Override for analyze commands (otherwise read from `config.json` or prompted) |
 | `SPECTRAL_HOME` | Override managed storage root (default: `~/.local/share/spectral`) |
 
 ## Remaining work
