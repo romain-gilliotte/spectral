@@ -2,40 +2,22 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable
 import json
 from typing import Any
+
+from pydantic_ai import RunContext
 
 from cli.commands.capture.types import Trace
 from cli.helpers.http import sanitize_headers
 from cli.helpers.json import minified, truncate_json
-
-NAME = "inspect_trace"
-
-DEFINITION: dict[str, Any] = {
-    "name": NAME,
-    "description": (
-        "Get the full request and response details for a specific trace, "
-        "including headers and decoded body content (JSON or text). "
-        "Use this to examine login endpoints, token responses, OTP flows, etc."
-    ),
-    "input_schema": {
-        "type": "object",
-        "properties": {
-            "trace_id": {
-                "type": "string",
-                "description": "The trace ID (e.g., 't_0001').",
-            },
-        },
-        "required": ["trace_id"],
-    },
-}
+from cli.helpers.llm.tools._deps import ToolDeps
 
 
-def execute(inp: dict[str, Any], index: dict[str, Trace]) -> str:
-    trace = index.get(inp["trace_id"])
+def execute(trace_id: str, index: dict[str, Trace]) -> str:
+    """Core logic, importable for direct testing."""
+    trace = index.get(trace_id)
     if trace is None:
-        return f"Trace {inp['trace_id']} not found"
+        return f"Trace {trace_id} not found"
 
     result: dict[str, Any] = {
         "method": trace.meta.request.method,
@@ -79,10 +61,13 @@ def execute(inp: dict[str, Any], index: dict[str, Trace]) -> str:
     return serialized
 
 
-def make_executor(
-    *, traces: list[Trace] | None = None, contexts: Any = None,
-) -> Callable[[dict[str, Any]], str]:
-    if traces is None:
-        raise ValueError("inspect_trace requires traces")
-    index = {t.meta.id: t for t in traces}
-    return lambda inp: execute(inp, index)
+def inspect_trace(ctx: RunContext[ToolDeps], trace_id: str) -> str:
+    """Get full request and response details for a trace.
+
+    Includes headers and decoded body content (JSON or text).
+    Use this to examine login endpoints, token responses, OTP flows, etc.
+
+    Args:
+        trace_id: The trace ID (e.g., 't_0001').
+    """
+    return execute(trace_id, ctx.deps.trace_index)

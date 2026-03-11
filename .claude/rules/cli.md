@@ -106,8 +106,6 @@ Both branches run in parallel via `asyncio.gather`.
 | Build tool (MCP) | `steps/mcp/build_tool.py` | inspect_trace, inspect_context, query_traces | Valid ToolDefinition |
 | Generate auth script | `steps/generate_auth_script.py` | inspect_trace | Compiles, defines `acquire_token` |
 
-All LLM steps use `_extract_json()` to robustly parse LLM JSON responses (handles markdown blocks, nested objects).
-
 ### Internal data flow
 
 | Type | Location | Purpose |

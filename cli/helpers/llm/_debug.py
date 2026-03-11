@@ -13,6 +13,15 @@ from cli.helpers.json import reformat_json_lines
 _debug_dir: Path | None = None
 
 
+def _format_args(args: str | dict[str, Any] | None) -> str:
+    """Normalize tool call args to a JSON string."""
+    if args is None:
+        return "{}"
+    if isinstance(args, dict):
+        return json.dumps(args, ensure_ascii=False)
+    return args
+
+
 def init_debug(*, debug: bool = False, debug_dir: Path | None = None) -> None:
     """Configure debug logging. Auto-creates a timestamped dir when debug=True."""
     global _debug_dir
@@ -39,41 +48,68 @@ class DebugSession:
         else:
             ts = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.%f")[:-3] + "Z"
             self._path = _debug_dir / f"{ts}_{call_name}"
-        self._pending: list[str] = []
 
-    def add_user(self, content: str) -> None:
+    def record_messages(self, messages: list[Any], prev_len: int) -> None:
+        """Record new messages from a PydanticAI run."""
         if self._path is None:
             return
-        text = reformat_json_lines(str(content))
-        self._append(f"=== PROMPT ===\n{text}\n")
 
-    def add_assistant(self, text: str) -> None:
-        if self._path is None:
-            return
-        text = reformat_json_lines(text)
-        self._append(f"=== RESPONSE ===\n{text}\n")
+        from pydantic_ai.messages import (
+            ModelRequest,
+            ModelResponse,
+            TextPart,
+            ToolCallPart,
+            ToolReturnPart,
+            UserPromptPart,
+        )
 
-    def add_tool_text(self, text: str) -> None:
-        if self._path is None:
-            return
-        self._pending.append(f"=== ASSISTANT TEXT ===\n{text}")
+        new = messages[prev_len:]
 
-    def add_tool_use(
-        self, *, name: str, input: dict[str, Any], result: str, error: bool = False,
-    ) -> None:
-        if self._path is None:
-            return
-        inp = json.dumps(input, ensure_ascii=False)
-        header = f"=== TOOL: {name}({inp}) ==="
-        if error:
-            header += " [ERROR]"
-        self._pending.append(f"{header}\n{reformat_json_lines(result)}")
+        # Collect tool returns for matching with their calls
+        returns: dict[str, str] = {}
+        for msg in new:
+            if isinstance(msg, ModelRequest):
+                for part in msg.parts:
+                    if isinstance(part, ToolReturnPart):
+                        returns[part.tool_call_id] = str(part.content)
 
-    def flush_tool_round(self) -> None:
-        if self._path is None or not self._pending:
-            return
-        self._append("\n\n".join(self._pending) + "\n")
-        self._pending.clear()
+        for msg in new:
+            if isinstance(msg, ModelRequest):
+                for part in msg.parts:
+                    if isinstance(part, UserPromptPart):
+                        text = reformat_json_lines(str(part.content))
+                        self._append(f"=== PROMPT ===\n{text}\n")
+
+            elif isinstance(msg, ModelResponse):
+                tool_calls = [p for p in msg.parts if isinstance(p, ToolCallPart)]
+                if tool_calls:
+                    pending: list[str] = []
+                    for part in msg.parts:
+                        if isinstance(part, TextPart) and part.content.strip():
+                            pending.append(f"=== ASSISTANT TEXT ===\n{part.content}")
+                        elif isinstance(part, ToolCallPart):
+                            args_str = _format_args(part.args)
+                            result = returns.get(part.tool_call_id, "")
+                            if part.tool_name == "final_result":
+                                pending.append(
+                                    f"=== RESPONSE ===\n{reformat_json_lines(args_str)}"
+                                )
+                            else:
+                                pending.append(
+                                    f"=== TOOL: {part.tool_name} ===\n"
+                                    f"{reformat_json_lines(args_str)}\n"
+                                    f"--- result ---\n"
+                                    f"{reformat_json_lines(result)}"
+                                )
+                    if pending:
+                        self._append("\n\n".join(pending) + "\n")
+                else:
+                    texts = [
+                        p.content for p in msg.parts if isinstance(p, TextPart)
+                    ]
+                    if texts:
+                        text = reformat_json_lines("\n".join(texts))
+                        self._append(f"=== RESPONSE ===\n{text}\n")
 
     def _append(self, text: str) -> None:
         assert self._path is not None

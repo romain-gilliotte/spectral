@@ -551,7 +551,7 @@ class TestStructuralAnnotation:
 
         mock_conv = MagicMock()
         mock_conv.ask_json = AsyncMock(
-            return_value=MapDecisionListResponse([MapDecision(group=1, is_map=True)])
+            return_value=MapDecisionListResponse(items=[MapDecision(group=1, is_map=True)])
         )
         with patch("cli.helpers.schema._schema_analysis.llm") as mock_llm:
             mock_llm.Conversation.return_value = mock_conv

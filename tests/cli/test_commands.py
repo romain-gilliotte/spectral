@@ -4,24 +4,52 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-from typing import Any, cast
+from typing import Any
 from unittest.mock import MagicMock, patch
 
 from click.testing import CliRunner
+from pydantic_ai.messages import (
+    ModelRequest,
+    ModelResponse,
+    SystemPromptPart,
+    TextPart,
+    ToolCallPart,
+    UserPromptPart,
+)
+from pydantic_ai.models.function import AgentInfo, FunctionModel
 import pytest
 import yaml
 
 from cli.commands.capture.types import CaptureBundle
 from cli.formats.capture_bundle import CaptureStats
-from cli.helpers.llm._client import setup_client
+from cli.helpers.llm._client import set_test_model
 from cli.main import cli
 
 
+def _extract_user_prompt(messages: list[Any]) -> str:
+    for msg in reversed(messages):
+        if isinstance(msg, ModelRequest):
+            for part in msg.parts:
+                if isinstance(part, UserPromptPart):
+                    return str(part.content)
+    return ""
+
+
+def _extract_system_text(messages: list[Any]) -> str:
+    parts: list[str] = []
+    for msg in messages:
+        if isinstance(msg, ModelRequest):
+            for part in msg.parts:
+                if isinstance(part, SystemPromptPart):
+                    parts.append(part.content)
+    return " ".join(parts)
+
+
 def _setup_openapi_llm() -> None:
-    """Set up a mock LLM client for OpenAPI analysis tests."""
+    """Set up a FunctionModel for OpenAPI analysis tests."""
 
     groups_response = json.dumps(
-        [
+        {"items": [
             {
                 "method": "GET",
                 "pattern": "/api/users",
@@ -40,7 +68,7 @@ def _setup_openapi_llm() -> None:
                 "pattern": "/api/orders",
                 "urls": ["https://api.example.com/api/orders"],
             },
-        ]
+        ]}
     )
 
     enrich_response = json.dumps(
@@ -54,34 +82,29 @@ def _setup_openapi_llm() -> None:
 
     base_url_response = json.dumps({"base_url": "https://api.example.com"})
 
-    async def mock_create(**kwargs: object) -> MagicMock:
-        mock_response = MagicMock()
-        mock_content = MagicMock()
-        mock_content.type = "text"
-        mock_response.stop_reason = "end_turn"
-        messages_raw = kwargs.get("messages")
-        messages = cast(list[dict[str, Any]], messages_raw if isinstance(messages_raw, list) else [])
-        first_msg = messages[0] if len(messages) > 0 else {}
-        raw = first_msg.get("content", "")
-        if isinstance(raw, list):
-            blocks = cast(list[dict[str, Any]], raw)
-            msg = "".join(b["text"] for b in blocks if b.get("type") == "text")
-        else:
-            msg = str(raw)
-        if "base URL" in msg and "business API" in msg:
-            mock_content.text = base_url_response
-        elif "Group these observed URLs" in msg:
-            mock_content.text = groups_response
-        elif "single API endpoint" in msg:
-            mock_content.text = enrich_response
-        else:
-            mock_content.text = enrich_response
-        mock_response.content = [mock_content]
-        return mock_response
+    def model_fn(messages: list[Any], info: AgentInfo) -> ModelResponse:
+        prompt = _extract_user_prompt(messages)
 
-    mock_client = MagicMock()
-    mock_client.messages.create = mock_create
-    setup_client(mock_client)
+        if "base URL" in prompt and "business API" in prompt:
+            text = base_url_response
+        elif "Group these observed URLs" in prompt:
+            text = groups_response
+        elif "single API endpoint" in prompt:
+            text = enrich_response
+        else:
+            text = enrich_response
+
+        if info.output_tools:
+            return ModelResponse(parts=[
+                ToolCallPart(
+                    tool_name=info.output_tools[0].name,
+                    args=text,
+                    tool_call_id="tc_result",
+                ),
+            ])
+        return ModelResponse(parts=[TextPart(content=text)])
+
+    set_test_model(FunctionModel(model_fn))
 
 
 class TestAnalyzeCommand:
@@ -314,57 +337,29 @@ class TestDiscoverCommand:
 
 
 def _setup_mcp_llm() -> None:
-    """Set up a mock LLM client for MCP pipeline tests.
-
-    Handles the greedy per-trace pattern: identify per trace (no tools),
-    then build for useful ones (with tools).
-    """
+    """Set up a FunctionModel for MCP pipeline tests."""
     identify_call_count = {"n": 0}
 
-    async def mock_create(**kwargs: Any) -> MagicMock:
-        resp = MagicMock()
-        content_block = MagicMock()
-        content_block.type = "text"
-        resp.stop_reason = "end_turn"
-
-        messages = cast(list[dict[str, Any]], kwargs.get("messages", []))
-        prompt = ""
-        for m in messages:
-            if m.get("role") == "user":
-                c = m.get("content", "")
-                if isinstance(c, str):
-                    prompt = c
-                    break
-                if isinstance(c, list):
-                    blocks = cast(list[dict[str, Any]], c)
-                    prompt = "".join(b["text"] for b in blocks if b.get("type") == "text")
-                    break
-
-        # Also extract system text for routing
-        system_text = ""
-        system_raw = kwargs.get("system")
-        if isinstance(system_raw, list):
-            system_blocks = cast(list[dict[str, Any]], system_raw)
-            system_text = " ".join(b.get("text", "") for b in system_blocks)
-
+    def model_fn(messages: list[Any], info: AgentInfo) -> ModelResponse:
+        prompt = _extract_user_prompt(messages)
+        system_text = _extract_system_text(messages)
         prompt_lower = prompt.lower()
         full_text_lower = (prompt + " " + system_text).lower()
 
         if "base url" in prompt_lower and "business api" in prompt_lower:
-            content_block.text = json.dumps({"base_url": "https://api.example.com"})
+            text = json.dumps({"base_url": "https://api.example.com"})
         elif "target trace:" in prompt_lower and "business capability" in full_text_lower:
-            # Per-trace identify: first call -> useful, rest -> not useful
             identify_call_count["n"] += 1
             if identify_call_count["n"] == 1:
-                content_block.text = json.dumps({
+                text = json.dumps({
                     "useful": True,
                     "name": "list_users",
                     "description": "List users",
                 })
             else:
-                content_block.text = json.dumps({"useful": False})
+                text = json.dumps({"useful": False})
         elif "candidate:" in prompt_lower and "tool definition" in full_text_lower:
-            content_block.text = json.dumps({
+            text = json.dumps({
                 "tool": {
                     "name": "list_users",
                     "description": "List users",
@@ -374,14 +369,19 @@ def _setup_mcp_llm() -> None:
                 "consumed_trace_ids": ["t_0001"],
             })
         else:
-            content_block.text = json.dumps({"useful": False})
+            text = json.dumps({"useful": False})
 
-        resp.content = [content_block]
-        return resp
+        if info.output_tools:
+            return ModelResponse(parts=[
+                ToolCallPart(
+                    tool_name=info.output_tools[0].name,
+                    args=text,
+                    tool_call_id="tc_result",
+                ),
+            ])
+        return ModelResponse(parts=[TextPart(content=text)])
 
-    mock_client = MagicMock()
-    mock_client.messages.create = mock_create
-    setup_client(mock_client)
+    set_test_model(FunctionModel(model_fn))
 
 
 class TestAnalyzeMcpCommand:

@@ -2,39 +2,20 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable
 from typing import Any
+
+from pydantic_ai import RunContext
 
 from cli.commands.capture.types import Context
 from cli.helpers.json import minified, truncate_json
-
-NAME = "inspect_context"
-
-DEFINITION: dict[str, Any] = {
-    "name": NAME,
-    "description": (
-        "Get full details for a UI context event: action, element "
-        "(tag, text, selector, attributes), page (url, title), "
-        "and rich page content (headings, navigation, main text, "
-        "forms, tables, alerts)."
-    ),
-    "input_schema": {
-        "type": "object",
-        "properties": {
-            "context_id": {
-                "type": "string",
-                "description": "The context ID (e.g., 'c_0001').",
-            },
-        },
-        "required": ["context_id"],
-    },
-}
+from cli.helpers.llm.tools._deps import ToolDeps
 
 
-def execute(inp: dict[str, Any], index: dict[str, Context]) -> str:
-    ctx = index.get(inp["context_id"])
+def execute(context_id: str, index: dict[str, Context]) -> str:
+    """Core logic, importable for direct testing."""
+    ctx = index.get(context_id)
     if ctx is None:
-        return f"Context {inp['context_id']} not found"
+        return f"Context {context_id} not found"
 
     result: dict[str, Any] = {
         "action": ctx.meta.action,
@@ -65,10 +46,13 @@ def execute(inp: dict[str, Any], index: dict[str, Context]) -> str:
     return minified(result)
 
 
-def make_executor(
-    *, traces: Any = None, contexts: list[Context] | None = None,
-) -> Callable[[dict[str, Any]], str]:
-    if contexts is None:
-        raise ValueError("inspect_context requires contexts")
-    index = {c.meta.id: c for c in contexts}
-    return lambda inp: execute(inp, index)
+def inspect_context(ctx: RunContext[ToolDeps], context_id: str) -> str:
+    """Get full details for a UI context event.
+
+    Returns action, element (tag, text, selector, attributes), page (url, title),
+    and rich page content (headings, navigation, main text, forms, tables, alerts).
+
+    Args:
+        context_id: The context ID (e.g., 'c_0001').
+    """
+    return execute(context_id, ctx.deps.context_index)

@@ -2,7 +2,6 @@
 
 from cli.helpers.json import (
     compact,
-    extract_json,
     minified,
     reformat_json_lines,
     truncate_json,
@@ -41,28 +40,6 @@ class TestMinified:
         assert "caf\u00e9" in result
         assert "\u6771\u4eac" in result
         assert "\\u" not in result
-
-
-class TestExtractJson:
-    def test_plain_json(self):
-        assert extract_json('{"a": 1}') == {"a": 1}
-
-    def test_json_in_markdown_block(self):
-        text = 'Some text\n```json\n{"a": 1}\n```\nMore text'
-        assert extract_json(text) == {"a": 1}
-
-    def test_json_embedded_in_text(self):
-        text = 'Here is the result: {"a": 1} hope that helps'
-        assert extract_json(text) == {"a": 1}
-
-    def test_array(self):
-        assert extract_json("[1, 2, 3]") == [1, 2, 3]
-
-    def test_raises_on_no_json(self):
-        import pytest
-
-        with pytest.raises(ValueError, match="Could not extract JSON"):
-            extract_json("no json here")
 
 
 class TestCompact:

@@ -2,41 +2,19 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable
 import json
 from typing import Any
 from urllib.parse import urlparse
 
 import jq
+from pydantic_ai import RunContext
 
 from cli.commands.capture.types import Trace
 from cli.helpers.http import sanitize_headers
 from cli.helpers.json import minified
-
-NAME = "query_traces"
+from cli.helpers.llm.tools._deps import ToolDeps
 
 _QUERY_TRACES_MAX_OUTPUT = 8000
-
-DEFINITION: dict[str, Any] = {
-    "name": NAME,
-    "description": (
-        "Run a jq expression against all traces. "
-        "Each trace is an object with fields: id, method, url, path, "
-        "status, request_headers, request_body, response_body. "
-        "The input is the full array of traces. "
-        "Use select() to filter, .field to extract, etc."
-    ),
-    "input_schema": {
-        "type": "object",
-        "properties": {
-            "expression": {
-                "type": "string",
-                "description": "A jq expression to run against the trace array.",
-            },
-        },
-        "required": ["expression"],
-    },
-}
 
 
 def _build_trace_record(trace: Trace) -> dict[str, Any]:
@@ -67,8 +45,8 @@ def _build_trace_record(trace: Trace) -> dict[str, Any]:
     return record
 
 
-def execute(inp: dict[str, Any], traces: list[Trace]) -> str:
-    expression: str = inp.get("expression", "")
+def execute(expression: str, traces: list[Trace]) -> str:
+    """Core logic, importable for direct testing."""
     if not expression:
         return "The 'expression' parameter is required."
 
@@ -92,9 +70,15 @@ def execute(inp: dict[str, Any], traces: list[Trace]) -> str:
     return output
 
 
-def make_executor(
-    *, traces: list[Trace] | None = None, contexts: Any = None,
-) -> Callable[[dict[str, Any]], str]:
-    if traces is None:
-        raise ValueError("query_traces requires traces")
-    return lambda inp: execute(inp, traces)
+def query_traces(ctx: RunContext[ToolDeps], expression: str) -> str:
+    """Run a jq expression against all traces.
+
+    Each trace is an object with fields: id, method, url, path,
+    status, request_headers, request_body, response_body.
+    The input is the full array of traces. Use select() to filter,
+    .field to extract, etc.
+
+    Args:
+        expression: A jq expression to run against the trace array.
+    """
+    return execute(expression, ctx.deps.traces)

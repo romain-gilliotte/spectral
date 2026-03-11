@@ -12,7 +12,7 @@ Usage::
 
 For tests, import setup helpers directly from submodules::
 
-    from cli.helpers.llm._client import setup_client, clear_client
+    from cli.helpers.llm._client import set_test_model, clear_test_model
     from cli.helpers.llm._conversation import set_model
 """
 

@@ -3,8 +3,16 @@
 from __future__ import annotations
 
 import json
-from typing import Any, cast
-from unittest.mock import MagicMock
+from typing import Any
+
+from pydantic_ai.messages import (
+    ModelRequest,
+    ModelResponse,
+    TextPart,
+    ToolCallPart,
+    UserPromptPart,
+)
+from pydantic_ai.models.function import AgentInfo, FunctionModel
 
 from cli.commands.capture.types import CaptureBundle, Trace
 from cli.commands.mcp.identify import identify_capabilities
@@ -16,7 +24,7 @@ from cli.formats.capture_bundle import (
     Timeline,
 )
 from cli.formats.mcp_tool import ToolDefinition, ToolRequest
-from cli.helpers.llm._client import setup_client
+from cli.helpers.llm._client import set_test_model
 from tests.conftest import make_trace
 
 
@@ -35,20 +43,41 @@ def _make_bundle(traces: list[Trace] | None = None) -> CaptureBundle:
     )
 
 
+def _extract_user_prompt(messages: list[Any]) -> str:
+    """Extract the last user prompt text from PydanticAI messages."""
+    for msg in reversed(messages):
+        if isinstance(msg, ModelRequest):
+            for part in msg.parts:
+                if isinstance(part, UserPromptPart):
+                    return str(part.content)
+    return ""
+
+
+def _extract_system_text(messages: list[Any]) -> str:
+    """Extract concatenated system prompt text from messages."""
+    from pydantic_ai.messages import SystemPromptPart
+
+    parts: list[str] = []
+    for msg in messages:
+        if isinstance(msg, ModelRequest):
+            for part in msg.parts:
+                if isinstance(part, SystemPromptPart):
+                    parts.append(part.content)
+    return " ".join(parts)
+
+
 def _setup_llm(response_text: str) -> None:
-    mock_client = MagicMock()
-
-    async def mock_create(**kwargs: object) -> MagicMock:
-        resp = MagicMock()
-        content_block = MagicMock()
-        content_block.type = "text"
-        content_block.text = response_text
-        resp.content = [content_block]
-        resp.stop_reason = "end_turn"
-        return resp
-
-    mock_client.messages.create = mock_create
-    setup_client(mock_client)
+    def model_fn(messages: list[Any], info: AgentInfo) -> ModelResponse:
+        if info.output_tools:
+            return ModelResponse(parts=[
+                ToolCallPart(
+                    tool_name=info.output_tools[0].name,
+                    args=response_text,
+                    tool_call_id="tc_result",
+                ),
+            ])
+        return ModelResponse(parts=[TextPart(content=response_text)])
+    set_test_model(FunctionModel(model_fn))
 
 
 async def test_identify_returns_candidate_when_useful() -> None:
@@ -106,23 +135,19 @@ async def test_identify_returns_none_on_malformed_response() -> None:
 
 
 async def test_identify_no_tools_in_llm_call() -> None:
-    """Verify that the identify step does NOT pass tools to the LLM (lightweight call)."""
-    captured_kwargs: list[dict[str, Any]] = []
+    """Verify that the identify step does NOT pass investigation tools to the LLM."""
+    captured_info: list[AgentInfo] = []
 
-    mock_client = MagicMock()
+    def model_fn(messages: list[Any], info: AgentInfo) -> ModelResponse:
+        captured_info.append(info)
+        text = json.dumps({"useful": False})
+        if info.output_tools:
+            return ModelResponse(parts=[
+                ToolCallPart(tool_name=info.output_tools[0].name, args=text, tool_call_id="tc"),
+            ])
+        return ModelResponse(parts=[TextPart(content=text)])
 
-    async def mock_create(**kwargs: Any) -> MagicMock:
-        captured_kwargs.append(dict(kwargs))
-        resp = MagicMock()
-        content_block = MagicMock()
-        content_block.type = "text"
-        content_block.text = json.dumps({"useful": False})
-        resp.content = [content_block]
-        resp.stop_reason = "end_turn"
-        return resp
-
-    mock_client.messages.create = mock_create
-    setup_client(mock_client)
+    set_test_model(FunctionModel(model_fn))
 
     target = make_trace("t_0001", "GET", "https://api.example.com/data", 200, 1000)
     await identify_capabilities(IdentifyInput(
@@ -133,33 +158,25 @@ async def test_identify_no_tools_in_llm_call() -> None:
         system_context="",
     ))
 
-    assert len(captured_kwargs) == 1
-    # Tools should NOT be passed (lightweight call)
-    assert "tools" not in captured_kwargs[0]
+    assert len(captured_info) == 1
+    # Only the result tool should be present, no investigation tools
+    assert len(captured_info[0].function_tools) == 0
 
 
 async def test_identify_shows_existing_tools() -> None:
     """Verify that existing tools are mentioned in the user prompt."""
-    captured_prompt: list[str] = []
+    captured_prompts: list[str] = []
 
-    mock_client = MagicMock()
+    def model_fn(messages: list[Any], info: AgentInfo) -> ModelResponse:
+        captured_prompts.append(_extract_user_prompt(messages))
+        text = json.dumps({"useful": False})
+        if info.output_tools:
+            return ModelResponse(parts=[
+                ToolCallPart(tool_name=info.output_tools[0].name, args=text, tool_call_id="tc"),
+            ])
+        return ModelResponse(parts=[TextPart(content=text)])
 
-    async def mock_create(**kwargs: Any) -> MagicMock:
-        messages = cast(list[dict[str, Any]], kwargs.get("messages", []))
-        if messages:
-            content = messages[0].get("content", "")
-            if isinstance(content, str):
-                captured_prompt.append(content)
-        resp = MagicMock()
-        content_block = MagicMock()
-        content_block.type = "text"
-        content_block.text = json.dumps({"useful": False})
-        resp.content = [content_block]
-        resp.stop_reason = "end_turn"
-        return resp
-
-    mock_client.messages.create = mock_create
-    setup_client(mock_client)
+    set_test_model(FunctionModel(model_fn))
 
     existing = [
         ToolDefinition(
@@ -179,34 +196,26 @@ async def test_identify_shows_existing_tools() -> None:
         system_context="",
     ))
 
-    assert captured_prompt
-    prompt = captured_prompt[0]
+    assert captured_prompts
+    prompt = captured_prompts[0]
     assert "search_routes" in prompt
     assert "do NOT duplicate" in prompt
 
 
 async def test_identify_shows_request_details_inline() -> None:
     """Verify that target trace request details are shown inline in the prompt."""
-    captured_prompt: list[str] = []
+    captured_prompts: list[str] = []
 
-    mock_client = MagicMock()
+    def model_fn(messages: list[Any], info: AgentInfo) -> ModelResponse:
+        captured_prompts.append(_extract_user_prompt(messages))
+        text = json.dumps({"useful": False})
+        if info.output_tools:
+            return ModelResponse(parts=[
+                ToolCallPart(tool_name=info.output_tools[0].name, args=text, tool_call_id="tc"),
+            ])
+        return ModelResponse(parts=[TextPart(content=text)])
 
-    async def mock_create(**kwargs: Any) -> MagicMock:
-        messages = cast(list[dict[str, Any]], kwargs.get("messages", []))
-        if messages:
-            content = messages[0].get("content", "")
-            if isinstance(content, str):
-                captured_prompt.append(content)
-        resp = MagicMock()
-        content_block = MagicMock()
-        content_block.type = "text"
-        content_block.text = json.dumps({"useful": False})
-        resp.content = [content_block]
-        resp.stop_reason = "end_turn"
-        return resp
-
-    mock_client.messages.create = mock_create
-    setup_client(mock_client)
+    set_test_model(FunctionModel(model_fn))
 
     target = make_trace(
         "t_0001", "POST", "https://api.example.com/api/search", 200, 1000,
@@ -220,8 +229,8 @@ async def test_identify_shows_request_details_inline() -> None:
         system_context="",
     ))
 
-    assert captured_prompt
-    prompt = captured_prompt[0]
+    assert captured_prompts
+    prompt = captured_prompts[0]
     assert "t_0001" in prompt
     assert "POST" in prompt
     assert "api.example.com" in prompt
@@ -230,24 +239,19 @@ async def test_identify_shows_request_details_inline() -> None:
 
 
 async def test_identify_includes_timeline_in_system() -> None:
-    """Verify that the timeline text is included in the system blocks, not the user prompt."""
-    captured_system: list[Any] = []
+    """Verify that the timeline text is included in the system prompt."""
+    captured_systems: list[str] = []
 
-    mock_client = MagicMock()
+    def model_fn(messages: list[Any], info: AgentInfo) -> ModelResponse:
+        captured_systems.append(_extract_system_text(messages))
+        text = json.dumps({"useful": False})
+        if info.output_tools:
+            return ModelResponse(parts=[
+                ToolCallPart(tool_name=info.output_tools[0].name, args=text, tool_call_id="tc"),
+            ])
+        return ModelResponse(parts=[TextPart(content=text)])
 
-    async def mock_create(**kwargs: Any) -> MagicMock:
-        if "system" in kwargs:
-            captured_system.append(kwargs["system"])
-        resp = MagicMock()
-        content_block = MagicMock()
-        content_block.type = "text"
-        content_block.text = json.dumps({"useful": False})
-        resp.content = [content_block]
-        resp.stop_reason = "end_turn"
-        return resp
-
-    mock_client.messages.create = mock_create
-    setup_client(mock_client)
+    set_test_model(FunctionModel(model_fn))
 
     timeline = (
         '\U0001f5b1 [click] "Search" on https://example.com/home\n'
@@ -263,10 +267,8 @@ async def test_identify_includes_timeline_in_system() -> None:
         system_context=timeline,
     ))
 
-    assert captured_system
-    system_blocks = captured_system[0]
-    # system_context is the first block
-    system_text = system_blocks[0]["text"]
+    assert captured_systems
+    system_text = captured_systems[0]
     assert "\U0001f310" in system_text
     assert "\U0001f5b1" in system_text
     assert "/search" in system_text

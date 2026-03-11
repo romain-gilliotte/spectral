@@ -5,7 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any
 
-from pydantic import BaseModel, RootModel
+from pydantic import BaseModel
 
 from cli.commands.capture.types import Trace
 from cli.helpers.correlator import Correlation
@@ -13,14 +13,15 @@ from cli.helpers.correlator import Correlation
 # -- Pydantic response models for LLM calls ----------------------------------
 
 
-class EndpointGroupItem(BaseModel):
+class EndpointGroup(BaseModel):
+    """An LLM-identified endpoint group."""
     method: str
     pattern: str
-    urls: list[str]
+    urls: list[str] = []
 
 
-class EndpointGroupListResponse(RootModel[list[EndpointGroupItem]]):
-    pass
+class EndpointGroupListResponse(BaseModel):
+    items: list[EndpointGroup]
 
 
 class ResponseDetail(BaseModel):
@@ -35,14 +36,6 @@ class EndpointEnrichmentResponse(BaseModel):
     field_descriptions: dict[str, Any] | None = None
     response_details: dict[str, ResponseDetail] | None = None
     discovery_notes: str | None = None
-
-
-@dataclass
-class EndpointGroup:
-    """An LLM-identified endpoint group."""
-    method: str
-    pattern: str
-    urls: list[str] = field(default_factory=lambda: [])
 
 
 @dataclass

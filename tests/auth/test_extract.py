@@ -4,46 +4,39 @@ from __future__ import annotations
 
 from pathlib import Path
 from typing import Any
-from unittest.mock import MagicMock
 
 from click.testing import CliRunner
+from pydantic_ai.messages import ModelResponse, TextPart, ToolCallPart
+from pydantic_ai.models.function import AgentInfo, FunctionModel
 import pytest
 
 from cli.commands.capture.types import CaptureBundle
 from cli.formats.capture_bundle import Header
-from cli.helpers.llm._client import setup_client
+from cli.helpers.llm._client import set_test_model
 from cli.main import cli
 from tests.conftest import make_trace
 
 
-def _make_text_block(text: str) -> MagicMock:
-    block = MagicMock()
-    block.type = "text"
-    block.text = text
-    resp = MagicMock()
-    resp.stop_reason = "end_turn"
-    resp.content = [block]
-    return resp
-
-
-def _setup_extract_llm(
-    *responses: str,
-) -> None:
-    """Set up a mock LLM client that returns given responses in order.
-
-    First response is for base_url detection (if needed), rest for auth header identification.
-    """
+def _setup_extract_llm(*responses: str) -> None:
+    """Set up a FunctionModel that returns given responses in order."""
     call_count = {"n": 0}
     response_list = list(responses)
 
-    async def mock_create(**kwargs: Any) -> MagicMock:
+    def model_fn(messages: list[Any], info: AgentInfo) -> ModelResponse:
         idx = min(call_count["n"], len(response_list) - 1)
         call_count["n"] += 1
-        return _make_text_block(response_list[idx])
+        text = response_list[idx]
+        if info.output_tools:
+            return ModelResponse(parts=[
+                ToolCallPart(
+                    tool_name=info.output_tools[0].name,
+                    args=text,
+                    tool_call_id=f"tc_{idx}",
+                ),
+            ])
+        return ModelResponse(parts=[TextPart(content=text)])
 
-    mock_client = MagicMock()
-    mock_client.messages.create = mock_create
-    setup_client(mock_client)
+    set_test_model(FunctionModel(model_fn))
 
 
 class TestExtractAuthorizationHeader:
@@ -130,9 +123,6 @@ class TestExtractCookieViaLlm:
         ]
         store_capture(sample_bundle, "testapp")
 
-        # First call: base_url detection
-        # Second call: LLM identifies auth header names (tool loop - returns tool_use then text)
-        # The tool loop means the LLM will call query_traces, then return the JSON answer
         _setup_extract_llm(
             '{"base_url": "https://api.example.com"}',
             '{"header_names": ["Cookie"]}',

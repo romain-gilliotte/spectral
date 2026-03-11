@@ -3,30 +3,17 @@
 from __future__ import annotations
 
 import base64
-from collections.abc import Callable
 import re
-from typing import Any
-
-NAME = "decode_base64"
-
-DEFINITION: dict[str, Any] = {
-    "name": NAME,
-    "description": "Decode a base64-encoded string (standard or URL-safe, auto-padding). Returns the decoded text (UTF-8) or a hex dump if the content is binary.",
-    "input_schema": {
-        "type": "object",
-        "properties": {
-            "value": {
-                "type": "string",
-                "description": "The base64-encoded string to decode.",
-            }
-        },
-        "required": ["value"],
-    },
-}
 
 
-def execute(value: str) -> str:
-    """Decode a base64 string (standard or URL-safe, with auto-padding)."""
+def decode_base64(value: str) -> str:
+    """Decode a base64-encoded string (standard or URL-safe, auto-padding).
+
+    Returns the decoded text (UTF-8) or a hex dump if the content is binary.
+
+    Args:
+        value: The base64-encoded string to decode.
+    """
     padded = value + "=" * (-len(value) % 4)
     raw = None
     if re.fullmatch(r"[A-Za-z0-9\-_=]+", padded):
@@ -47,7 +34,5 @@ def execute(value: str) -> str:
         return f"<binary: {raw.hex()}>"
 
 
-def make_executor(
-    *, traces: Any = None, contexts: Any = None,
-) -> Callable[[dict[str, Any]], str]:
-    return lambda inp: execute(inp["value"])
+# Keep legacy alias for callers that import ``execute`` directly.
+execute = decode_base64

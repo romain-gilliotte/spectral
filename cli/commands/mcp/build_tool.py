@@ -12,7 +12,6 @@ from cli.commands.mcp.types import (
     ToolBuildResult,
 )
 import cli.helpers.llm as llm
-from cli.helpers.llm.tools import MCP_TOOL_NAMES
 from cli.helpers.prompt import load, render
 
 
@@ -48,7 +47,11 @@ async def build_tool(input: ToolBuildInput) -> ToolBuildResult:
         target_details=target_details,
     )
 
-    tool_names = list(MCP_TOOL_NAMES)
+    tool_names = [
+        "decode_base64", "decode_url", "decode_jwt",
+        "inspect_request", "inspect_trace",
+        "infer_request_schema", "query_traces",
+    ]
     if input.bundle.contexts:
         tool_names.append("inspect_context")
 

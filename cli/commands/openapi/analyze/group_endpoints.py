@@ -31,7 +31,7 @@ async def group_endpoints(pairs: list[MethodUrlPair]) -> list[EndpointGroup]:
     response = await conv.ask_json(prompt, EndpointGroupListResponse)
 
     groups: list[EndpointGroup] = []
-    for item in response.root:
+    for item in response.items:
         original_urls: list[str] = []
         for curl in item.urls:
             key = MethodUrlPair(item.method, curl)

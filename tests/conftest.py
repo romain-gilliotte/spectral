@@ -7,7 +7,7 @@ import json
 
 import pytest
 
-from cli.helpers.llm._client import clear_client
+from cli.helpers.llm._client import clear_test_model
 import cli.helpers.llm._conversation as _conv_mod
 from cli.helpers.llm._cost import reset_usage
 from cli.helpers.llm._debug import clear_debug_dir
@@ -17,16 +17,16 @@ from cli.helpers.llm._debug import clear_debug_dir
 def reset_llm_globals(monkeypatch: pytest.MonkeyPatch):
     """Reset module globals before/after each test.
 
-    Sets a dummy ANTHROPIC_API_KEY so that tests which call
-    ``setup_client()`` in production mode never trigger an interactive prompt.
+    Sets a dummy ANTHROPIC_API_KEY so that tests which use production mode
+    never trigger an interactive prompt.
     """
     monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-ant-test-dummy")
-    clear_client()
+    clear_test_model()
     reset_usage()
     clear_debug_dir()
     _conv_mod._model_override = None
     yield
-    clear_client()
+    clear_test_model()
     reset_usage()
     clear_debug_dir()
     _conv_mod._model_override = None

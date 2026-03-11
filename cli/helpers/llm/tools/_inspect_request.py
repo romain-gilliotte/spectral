@@ -2,41 +2,22 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable
 import json
 from typing import Any
+
+from pydantic_ai import RunContext
 
 from cli.commands.capture.types import Trace
 from cli.helpers.http import sanitize_headers
 from cli.helpers.json import minified, truncate_json
-
-NAME = "inspect_request"
-
-DEFINITION: dict[str, Any] = {
-    "name": NAME,
-    "description": (
-        "Get request-side details for a trace: method, URL, headers, "
-        "and request body. Does NOT include the response. "
-        "Use this first to understand what an endpoint expects. "
-        "Only use inspect_trace if you also need the response body."
-    ),
-    "input_schema": {
-        "type": "object",
-        "properties": {
-            "trace_id": {
-                "type": "string",
-                "description": "The trace ID (e.g., 't_0001').",
-            },
-        },
-        "required": ["trace_id"],
-    },
-}
+from cli.helpers.llm.tools._deps import ToolDeps
 
 
-def execute(inp: dict[str, Any], index: dict[str, Trace]) -> str:
-    trace = index.get(inp["trace_id"])
+def execute(trace_id: str, index: dict[str, Trace]) -> str:
+    """Core logic, importable for direct testing."""
+    trace = index.get(trace_id)
     if trace is None:
-        return f"Trace {inp['trace_id']} not found"
+        return f"Trace {trace_id} not found"
 
     result: dict[str, Any] = {
         "method": trace.meta.request.method,
@@ -58,10 +39,13 @@ def execute(inp: dict[str, Any], index: dict[str, Trace]) -> str:
     return minified(result)
 
 
-def make_executor(
-    *, traces: list[Trace] | None = None, contexts: Any = None,
-) -> Callable[[dict[str, Any]], str]:
-    if traces is None:
-        raise ValueError("inspect_request requires traces")
-    index = {t.meta.id: t for t in traces}
-    return lambda inp: execute(inp, index)
+def inspect_request(ctx: RunContext[ToolDeps], trace_id: str) -> str:
+    """Get request-side details for a trace: method, URL, headers, and request body.
+
+    Does NOT include the response. Use this first to understand what an endpoint
+    expects. Only use inspect_trace if you also need the response body.
+
+    Args:
+        trace_id: The trace ID (e.g., 't_0001').
+    """
+    return execute(trace_id, ctx.deps.trace_index)

@@ -55,24 +55,21 @@ def get_cache_usage() -> tuple[int, int]:
     return (_total_cache_read_tokens, _total_cache_creation_tokens)
 
 
-def record_usage(response: Any, label: str, model: str) -> None:
-    """Accumulate token counts from *response* and print a dim summary line."""
+def record_usage(usage: Any, label: str, model: str) -> None:
+    """Accumulate token counts from a PydanticAI ``RunUsage`` and print a dim summary."""
     global _total_input_tokens, _total_output_tokens
     global _total_cache_read_tokens, _total_cache_creation_tokens, _total_cost
 
-    usage = getattr(response, "usage", None)
     if usage is None:
         return
-    try:
-        inp = int(getattr(usage, "input_tokens", 0))
-        out = int(getattr(usage, "output_tokens", 0))
-    except (TypeError, ValueError):
-        return
+
+    inp = int(getattr(usage, "input_tokens", 0) or 0)
+    out = int(getattr(usage, "output_tokens", 0) or 0)
     _total_input_tokens += inp
     _total_output_tokens += out
 
-    cache_read = int(getattr(usage, "cache_read_input_tokens", 0) or 0)
-    cache_create = int(getattr(usage, "cache_creation_input_tokens", 0) or 0)
+    cache_read = int(getattr(usage, "cache_read_tokens", 0) or 0)
+    cache_create = int(getattr(usage, "cache_write_tokens", 0) or 0)
     _total_cache_read_tokens += cache_read
     _total_cache_creation_tokens += cache_create
 

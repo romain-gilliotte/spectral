@@ -12,7 +12,7 @@ from collections import defaultdict
 import re
 from typing import Any, cast
 
-from pydantic import BaseModel, RootModel
+from pydantic import BaseModel
 
 import cli.helpers.llm as llm
 from cli.helpers.prompt import render as render_prompt
@@ -24,8 +24,8 @@ class MapDecision(BaseModel):
     is_map: bool
 
 
-class MapDecisionListResponse(RootModel[list[MapDecision]]):
-    pass
+class MapDecisionListResponse(BaseModel):
+    items: list[MapDecision]
 
 # ---------------------------------------------------------------------------
 # Dynamic key pattern detection (regex-based, deterministic)
@@ -237,7 +237,7 @@ async def _resolve_map_candidates(schema: dict[str, Any]) -> None:
     response = await conv.ask_json(prompt, MapDecisionListResponse)
 
     decision_map: dict[int, bool] = {}
-    for d in response.root:
+    for d in response.items:
         decision_map[d.group] = d.is_map
 
     for i, (_path, node, candidate) in enumerate(all_candidates, 1):

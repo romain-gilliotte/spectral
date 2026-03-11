@@ -5,13 +5,6 @@ from __future__ import annotations
 
 import json
 
-from cli.commands.capture.types import CaptureBundle, Context, Trace
-from cli.formats.capture_bundle import (
-    AppInfo,
-    CaptureManifest,
-    CaptureStats,
-    Timeline,
-)
 from cli.helpers.http import sanitize_headers
 from cli.helpers.llm.tools import make_tools
 from cli.helpers.llm.tools._infer_request_schema import (
@@ -48,27 +41,12 @@ def _sample_traces():
     ]
 
 
-def _make_bundle(traces: list[Trace] | None = None, contexts: list[Context] | None = None) -> CaptureBundle:
-    """Build a minimal CaptureBundle for tests."""
-    return CaptureBundle(
-        manifest=CaptureManifest(
-            capture_id="test",
-            created_at="2026-01-01T00:00:00Z",
-            app=AppInfo(name="T", base_url="http://localhost", title="T"),
-            duration_ms=10000,
-            stats=CaptureStats(),
-        ),
-        traces=traces or [],
-        contexts=contexts or [],
-        timeline=Timeline(),
-    )
-
 
 class TestInspectRequest:
     def test_returns_request_only(self) -> None:
         traces = _sample_traces()
         index = {t.meta.id: t for t in traces}
-        result = execute_inspect_request({"trace_id": "t_0001"}, index)
+        result = execute_inspect_request("t_0001", index)
         parsed = json.loads(result)
         assert parsed["method"] == "POST"
         assert "search" in parsed["url"]
@@ -78,7 +56,7 @@ class TestInspectRequest:
         assert "response_headers" not in parsed
 
     def test_not_found(self) -> None:
-        result = execute_inspect_request({"trace_id": "t_9999"}, {})
+        result = execute_inspect_request("t_9999", {})
         assert "not found" in result
 
 
@@ -87,7 +65,7 @@ class TestInferRequestSchema:
         traces = _sample_traces()
         index = {t.meta.id: t for t in traces}
         result = execute_infer_request_schema(
-            {"trace_ids": ["t_0001", "t_0002"]}, index
+            ["t_0001", "t_0002"], index
         )
         schema = json.loads(result)
         assert schema["type"] == "object"
@@ -101,13 +79,13 @@ class TestInferRequestSchema:
         traces = _sample_traces()
         index = {t.meta.id: t for t in traces}
         result = execute_infer_request_schema(
-            {"trace_ids": ["t_0003"]}, index
+            ["t_0003"], index
         )
         assert "No JSON request bodies" in result
 
     def test_unknown_trace(self) -> None:
         result = execute_infer_request_schema(
-            {"trace_ids": ["t_9999"]}, {}
+            ["t_9999"], {}
         )
         assert "No JSON request bodies" in result
 
@@ -116,7 +94,7 @@ class TestQueryTraces:
     def test_filter_by_url(self) -> None:
         traces = _sample_traces()
         result = execute_query_traces(
-            {"expression": '[.[] | select(.url | test("search")) | .id]'},
+            '[.[] | select(.url | test("search")) | .id]',
             traces,
         )
         parsed = json.loads(result)
@@ -125,7 +103,7 @@ class TestQueryTraces:
     def test_filter_by_path(self) -> None:
         traces = _sample_traces()
         result = execute_query_traces(
-            {"expression": '[.[] | select(.path | test("/api/users/")) | .id]'},
+            '[.[] | select(.path | test("/api/users/")) | .id]',
             traces,
         )
         parsed = json.loads(result)
@@ -134,7 +112,7 @@ class TestQueryTraces:
     def test_extract_body_field(self) -> None:
         traces = _sample_traces()
         result = execute_query_traces(
-            {"expression": '[.[] | select(.request_body != null) | {id, origin: .request_body.origin}]'},
+            '[.[] | select(.request_body != null) | {id, origin: .request_body.origin}]',
             traces,
         )
         parsed = json.loads(result)
@@ -149,7 +127,7 @@ class TestQueryTraces:
             make_trace("t_0005", "POST", "https://api.example.com/api/error", 500, timestamp=5000),
         ]
         result = execute_query_traces(
-            {"expression": '[.[] | select(.status >= 400)]'},
+            '[.[] | select(.status >= 400)]',
             traces,
         )
         parsed = json.loads(result)
@@ -159,7 +137,7 @@ class TestQueryTraces:
     def test_invalid_expression(self) -> None:
         traces = _sample_traces()
         result = execute_query_traces(
-            {"expression": "[.[] | select(.invalid syntax"},
+            "[.[] | select(.invalid syntax",
             traces,
         )
         assert "Invalid jq expression" in result
@@ -176,7 +154,7 @@ class TestQueryTraces:
             for i in range(_QUERY_TRACES_MAX_OUTPUT // 100)
         ]
         result = execute_query_traces(
-            {"expression": "[.[] | .response_body]"},
+            "[.[] | .response_body]",
             traces,
         )
         assert "Output too large" in result
@@ -190,7 +168,7 @@ class TestInspectContext:
             page_url="https://example.com/home",
         )
         index = {ctx.meta.id: ctx}
-        result = execute_inspect_context({"context_id": "c_0001"}, index)
+        result = execute_inspect_context("c_0001", index)
         parsed = json.loads(result)
         assert parsed["action"] == "click"
         assert parsed["element"]["text"] == "Search"
@@ -198,7 +176,7 @@ class TestInspectContext:
         assert parsed["page"]["url"] == "https://example.com/home"
 
     def test_not_found(self) -> None:
-        result = execute_inspect_context({"context_id": "c_9999"}, {})
+        result = execute_inspect_context("c_9999", {})
         assert "not found" in result
 
     def test_page_content_included(self) -> None:
@@ -233,7 +211,7 @@ class TestInspectContext:
             )
         )
         index = {ctx.meta.id: ctx}
-        result = execute_inspect_context({"context_id": "c_0010"}, index)
+        result = execute_inspect_context("c_0010", index)
         parsed = json.loads(result)
         assert "page_content" in parsed
         pc = parsed["page_content"]
@@ -245,16 +223,13 @@ class TestInspectContext:
 
 class TestMakeTools:
     def test_tool_set_completeness(self) -> None:
-        traces = _sample_traces()
-        bundle = _make_bundle(traces=traces)
-        tools, executors = make_tools(
+        tools = make_tools(
             ["decode_base64", "decode_url", "decode_jwt",
              "inspect_request", "inspect_trace",
              "infer_request_schema", "query_traces"],
-            bundle=bundle,
         )
 
-        tool_names = {t["name"] for t in tools}
+        tool_names = {t.name for t in tools}
         assert "inspect_request" in tool_names
         assert "inspect_trace" in tool_names
         assert "infer_request_schema" in tool_names
@@ -262,26 +237,19 @@ class TestMakeTools:
         assert "decode_base64" in tool_names
         assert "decode_url" in tool_names
         assert "decode_jwt" in tool_names
-        # No inspect_context without contexts
-        assert "inspect_context" not in tool_names
+        assert len(tools) == 7
 
-        assert set(tool_names) == set(executors.keys())
-
-    def test_includes_inspect_context_with_contexts(self) -> None:
-        traces = _sample_traces()
-        contexts = [make_context("c_0001", 1000)]
-        bundle = _make_bundle(traces=traces, contexts=contexts)
-        tools, executors = make_tools(
+    def test_includes_inspect_context(self) -> None:
+        tools = make_tools(
             ["decode_base64", "decode_url", "decode_jwt",
              "inspect_request", "inspect_trace",
              "infer_request_schema", "query_traces",
              "inspect_context"],
-            bundle=bundle,
         )
 
-        tool_names = {t["name"] for t in tools}
+        tool_names = {t.name for t in tools}
         assert "inspect_context" in tool_names
-        assert set(tool_names) == set(executors.keys())
+        assert len(tools) == 8
 
 
 class TestSanitizeHeaders:
@@ -304,19 +272,15 @@ class TestSanitizeHeaders:
             "authorization": "Bearer eyJhbGciOiJSUzI1NiJ9.long-token-value",
         }
         result = sanitize_headers(headers)
-        # All noise headers should be gone
         for key in (":authority", ":method", ":path", ":scheme",
                     "sec-ch-ua", "sec-ch-ua-mobile", "sec-ch-ua-platform",
                     "sec-fetch-dest", "sec-fetch-mode", "sec-fetch-site",
                     "accept-encoding", "priority"):
             assert key not in result
-        # user-agent should be preserved (needed for WAF/API compatibility)
         assert "user-agent" in result
         assert result["user-agent"] == "Mozilla/5.0 ..."
-        # Meaningful headers should remain
         assert "content-type" in result
         assert result["content-type"] == "application/json"
-        # Auth headers should be redacted but present
         assert "authorization" in result
         assert "...[redacted]" in result["authorization"]
 

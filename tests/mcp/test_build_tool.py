@@ -4,8 +4,10 @@
 from __future__ import annotations
 
 import json
-from unittest.mock import MagicMock
+from typing import Any
 
+from pydantic_ai.messages import ModelResponse, TextPart, ToolCallPart
+from pydantic_ai.models.function import AgentInfo, FunctionModel
 import pytest
 
 from cli.commands.capture.types import CaptureBundle, Context, Trace
@@ -17,7 +19,7 @@ from cli.formats.capture_bundle import (
     CaptureStats,
     Timeline,
 )
-from cli.helpers.llm._client import setup_client
+from cli.helpers.llm._client import set_test_model
 from tests.conftest import make_trace
 
 
@@ -37,19 +39,17 @@ def _make_bundle(traces: list[Trace] | None = None, contexts: list[Context] | No
 
 
 def _setup_llm(response_text: str) -> None:
-    mock_client = MagicMock()
-
-    async def mock_create(**kwargs: object) -> MagicMock:
-        resp = MagicMock()
-        content_block = MagicMock()
-        content_block.type = "text"
-        content_block.text = response_text
-        resp.content = [content_block]
-        resp.stop_reason = "end_turn"
-        return resp
-
-    mock_client.messages.create = mock_create
-    setup_client(mock_client)
+    def model_fn(messages: list[Any], info: AgentInfo) -> ModelResponse:
+        if info.output_tools:
+            return ModelResponse(parts=[
+                ToolCallPart(
+                    tool_name=info.output_tools[0].name,
+                    args=response_text,
+                    tool_call_id="tc_result",
+                ),
+            ])
+        return ModelResponse(parts=[TextPart(content=response_text)])
+    set_test_model(FunctionModel(model_fn))
 
 
 async def test_build_valid_tool() -> None:

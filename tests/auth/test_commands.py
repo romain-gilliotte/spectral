@@ -4,13 +4,14 @@ from __future__ import annotations
 
 from pathlib import Path
 from typing import Any
-from unittest.mock import MagicMock
 
 from click.testing import CliRunner
+from pydantic_ai.messages import ModelResponse, TextPart, ToolCallPart
+from pydantic_ai.models.function import AgentInfo, FunctionModel
 import pytest
 
 from cli.commands.capture.types import CaptureBundle
-from cli.helpers.llm._client import setup_client
+from cli.helpers.llm._client import set_test_model
 from cli.main import cli
 
 _DEFAULT_SCRIPT_RESPONSE = (
@@ -36,46 +37,31 @@ _DEFAULT_SCRIPT_RESPONSE = (
 _BASE_URL_RESPONSE = '{"base_url": "https://api.example.com"}'
 
 
-def _make_text_block(text: str) -> MagicMock:
-    block = MagicMock()
-    block.type = "text"
-    block.text = text
-    resp = MagicMock()
-    resp.stop_reason = "end_turn"
-    resp.content = [block]
-    return resp
-
-
-def _make_async_create(response_text: str):
-    """Create an async mock that always returns the given text."""
-    async def mock_create(**kwargs: Any) -> MagicMock:
-        return _make_text_block(response_text)
-    return mock_create
-
-
 def _setup_auth_llm(script_response: str | None = None) -> None:
-    """Set up a mock LLM client for auth analysis tests.
-
-    Handles multiple LLM calls: first for base URL detection,
-    then for auth script generation.
-    """
+    """Set up a FunctionModel for auth analysis tests."""
     if script_response is None:
         script_response = _DEFAULT_SCRIPT_RESPONSE
 
     call_count = {"n": 0}
     final_script = script_response
 
-    async def mock_create(**kwargs: Any) -> MagicMock:
+    def model_fn(messages: list[Any], info: AgentInfo) -> ModelResponse:
         call_count["n"] += 1
-        # First call: base URL detection
         if call_count["n"] == 1:
-            return _make_text_block(_BASE_URL_RESPONSE)
-        # Subsequent calls: auth script generation
-        return _make_text_block(final_script)
+            text = _BASE_URL_RESPONSE
+        else:
+            text = final_script
+        if info.output_tools:
+            return ModelResponse(parts=[
+                ToolCallPart(
+                    tool_name=info.output_tools[0].name,
+                    args=text,
+                    tool_call_id=f"tc_{call_count['n']}",
+                ),
+            ])
+        return ModelResponse(parts=[TextPart(content=text)])
 
-    mock_client = MagicMock()
-    mock_client.messages.create = mock_create
-    setup_client(mock_client)
+    set_test_model(FunctionModel(model_fn))
 
 
 class TestAuthSet:
@@ -237,9 +223,9 @@ class TestAuthLoginFix:
         update_app_meta("testapp", base_url="https://api.example.com")
 
         # Set up LLM mock — base URL is cached so only the fix call happens
-        mock_client = MagicMock()
-        mock_client.messages.create = _make_async_create(_FIXED_SCRIPT_RESPONSE)
-        setup_client(mock_client)
+        def model_fn(messages: list[Any], info: AgentInfo) -> ModelResponse:
+            return ModelResponse(parts=[TextPart(content=_FIXED_SCRIPT_RESPONSE)])
+        set_test_model(FunctionModel(model_fn))
 
         runner = CliRunner()
         result = runner.invoke(

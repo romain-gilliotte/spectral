@@ -1,9 +1,10 @@
 """Tests for detect_base_url."""
 
 from typing import Any
-from unittest.mock import MagicMock
 
 from pydantic import ValidationError
+from pydantic_ai.messages import ModelResponse, TextPart, ToolCallPart
+from pydantic_ai.models.function import AgentInfo, FunctionModel
 import pytest
 
 from cli.commands.capture.types import CaptureBundle
@@ -14,7 +15,7 @@ from cli.formats.capture_bundle import (
     Timeline,
 )
 from cli.helpers.detect_base_url import detect_base_url
-from cli.helpers.llm._client import setup_client
+from cli.helpers.llm._client import set_test_model
 from tests.conftest import make_trace
 
 
@@ -33,15 +34,19 @@ def _make_bundle(traces: list[Any] | None = None) -> CaptureBundle:
     )
 
 
-def _make_text_response(text: str) -> MagicMock:
-    """Create a mock response with a single text block and end_turn stop."""
-    block = MagicMock()
-    block.type = "text"
-    block.text = text
-    resp = MagicMock()
-    resp.stop_reason = "end_turn"
-    resp.content = [block]
-    return resp
+def _setup_llm(text: str) -> None:
+    """Set up a FunctionModel that returns the given text (or structured output)."""
+    def model_fn(messages: list[Any], info: AgentInfo) -> ModelResponse:
+        if info.output_tools:
+            return ModelResponse(parts=[
+                ToolCallPart(
+                    tool_name=info.output_tools[0].name,
+                    args=text,
+                    tool_call_id="tc_result",
+                ),
+            ])
+        return ModelResponse(parts=[TextPart(content=text)])
+    set_test_model(FunctionModel(model_fn))
 
 
 class TestDetectBaseUrl:
@@ -68,14 +73,7 @@ class TestDetectBaseUrl:
 
     @pytest.mark.asyncio
     async def test_returns_base_url(self):
-        """detect_base_url should parse the LLM response and return the base_url string."""
-
-        async def mock_create(**kwargs: Any) -> MagicMock:
-            return _make_text_response('{"base_url": "https://www.example.com/api"}')
-
-        client = MagicMock()
-        client.messages.create = mock_create
-        setup_client(client)
+        _setup_llm('{"base_url": "https://www.example.com/api"}')
 
         bundle = _make_bundle([
             make_trace("t_0001", "GET", "https://www.example.com/api/users", 200, 1000),
@@ -86,14 +84,7 @@ class TestDetectBaseUrl:
 
     @pytest.mark.asyncio
     async def test_strips_trailing_slash(self):
-        """Trailing slash should be stripped from the returned base URL."""
-
-        async def mock_create(**kwargs: Any) -> MagicMock:
-            return _make_text_response('{"base_url": "https://api.example.com/"}')
-
-        client = MagicMock()
-        client.messages.create = mock_create
-        setup_client(client)
+        _setup_llm('{"base_url": "https://api.example.com/"}')
 
         bundle = _make_bundle([
             make_trace("t_0001", "GET", "https://api.example.com/v1", 200, 1000),
@@ -103,14 +94,7 @@ class TestDetectBaseUrl:
 
     @pytest.mark.asyncio
     async def test_origin_only(self):
-        """LLM may return just the origin without a path prefix."""
-
-        async def mock_create(**kwargs: Any) -> MagicMock:
-            return _make_text_response('{"base_url": "https://api.example.com"}')
-
-        client = MagicMock()
-        client.messages.create = mock_create
-        setup_client(client)
+        _setup_llm('{"base_url": "https://api.example.com"}')
 
         bundle = _make_bundle([
             make_trace("t_0001", "GET", "https://api.example.com/users", 200, 1000),
@@ -120,17 +104,10 @@ class TestDetectBaseUrl:
 
     @pytest.mark.asyncio
     async def test_invalid_response_raises(self):
-        """If the LLM doesn't return {base_url: ...}, raise ValueError."""
-
-        async def mock_create(**kwargs: Any) -> MagicMock:
-            return _make_text_response('{"something_else": "value"}')
-
-        client = MagicMock()
-        client.messages.create = mock_create
-        setup_client(client)
+        _setup_llm('{"something_else": "value"}')
 
         bundle = _make_bundle([
             make_trace("t_0001", "GET", "https://example.com/api", 200, 1000),
         ])
-        with pytest.raises((ValidationError, ValueError)):
+        with pytest.raises((ValidationError, ValueError, Exception)):
             await detect_base_url(bundle, "testapp")

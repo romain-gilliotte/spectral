@@ -2,39 +2,19 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable
 import json
 from typing import Any, cast
 
+from pydantic_ai import RunContext
+
 from cli.commands.capture.types import Trace
 from cli.helpers.json import minified
+from cli.helpers.llm.tools._deps import ToolDeps
 from cli.helpers.schema import infer_schema
 
-NAME = "infer_request_schema"
 
-DEFINITION: dict[str, Any] = {
-    "name": NAME,
-    "description": (
-        "Merge request bodies from the given trace IDs into an annotated JSON Schema. "
-        "Shows which fields vary (parameters) vs stay the same (fixed values) "
-        "across traces, with up to 5 example values per field."
-    ),
-    "input_schema": {
-        "type": "object",
-        "properties": {
-            "trace_ids": {
-                "type": "array",
-                "items": {"type": "string"},
-                "description": "List of trace IDs whose request bodies to merge.",
-            },
-        },
-        "required": ["trace_ids"],
-    },
-}
-
-
-def execute(inp: dict[str, Any], index: dict[str, Trace]) -> str:
-    trace_ids: list[str] = inp["trace_ids"]
+def execute(trace_ids: list[str], index: dict[str, Trace]) -> str:
+    """Core logic, importable for direct testing."""
     samples: list[dict[str, Any]] = []
     for tid in trace_ids:
         trace = index.get(tid)
@@ -55,10 +35,13 @@ def execute(inp: dict[str, Any], index: dict[str, Trace]) -> str:
     return minified(schema)
 
 
-def make_executor(
-    *, traces: list[Trace] | None = None, contexts: Any = None,
-) -> Callable[[dict[str, Any]], str]:
-    if traces is None:
-        raise ValueError("infer_request_schema requires traces")
-    index = {t.meta.id: t for t in traces}
-    return lambda inp: execute(inp, index)
+def infer_request_schema(ctx: RunContext[ToolDeps], trace_ids: list[str]) -> str:
+    """Merge request bodies from the given trace IDs into an annotated JSON Schema.
+
+    Shows which fields vary (parameters) vs stay the same (fixed values)
+    across traces, with up to 5 example values per field.
+
+    Args:
+        trace_ids: List of trace IDs whose request bodies to merge.
+    """
+    return execute(trace_ids, ctx.deps.trace_index)

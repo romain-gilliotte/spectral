@@ -110,7 +110,7 @@ Default model is `claude-sonnet-4-5-20250929`. Options: `--model`, `--skip-enric
 | Component | Dependencies |
 |-----------|-------------|
 | Extension | (no external dependencies) |
-| CLI | click, pydantic, anthropic, graphql-core, pyyaml, rich, requests, mitmproxy, jq, compact-json, mcp |
+| CLI | click, pydantic, pydantic-ai-slim[anthropic], graphql-core, pyyaml, rich, requests, mitmproxy, jq, compact-json, mcp |
 | Dev | pytest, pytest-cov, pytest-asyncio (asyncio_mode="auto"), pyright, ruff, mkdocs-material |
 
 ## Managed storage

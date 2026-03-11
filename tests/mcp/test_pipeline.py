@@ -3,8 +3,17 @@
 from __future__ import annotations
 
 import json
-from typing import Any, cast
-from unittest.mock import MagicMock
+from typing import Any
+
+from pydantic_ai.messages import (
+    ModelRequest,
+    ModelResponse,
+    SystemPromptPart,
+    TextPart,
+    ToolCallPart,
+    UserPromptPart,
+)
+from pydantic_ai.models.function import AgentInfo, FunctionModel
 
 from cli.commands.capture.types import CaptureBundle
 from cli.commands.mcp.analyze import build_mcp_tools
@@ -16,7 +25,7 @@ from cli.formats.capture_bundle import (
     Timeline,
     TimelineEvent,
 )
-from cli.helpers.llm._client import setup_client
+from cli.helpers.llm._client import set_test_model
 from tests.conftest import make_context, make_trace
 
 
@@ -63,59 +72,44 @@ def _make_bundle() -> CaptureBundle:
     )
 
 
+def _extract_user_prompt(messages: list[Any]) -> str:
+    for msg in reversed(messages):
+        if isinstance(msg, ModelRequest):
+            for part in msg.parts:
+                if isinstance(part, UserPromptPart):
+                    return str(part.content)
+    return ""
+
+
+def _extract_system_text(messages: list[Any]) -> str:
+    parts: list[str] = []
+    for msg in messages:
+        if isinstance(msg, ModelRequest):
+            for part in msg.parts:
+                if isinstance(part, SystemPromptPart):
+                    parts.append(part.content)
+    return " ".join(parts)
+
+
 def _setup_pipeline_llm() -> None:
-    """Set up a mock LLM that handles the greedy pipeline calls.
+    """Set up a FunctionModel that handles the greedy pipeline calls."""
 
-    The pipeline calls identify per trace (no tools), then build for useful ones (with tools).
-    Call sequence:
-      1. detect base URL
-      2. identify t_0001 -> useful (search_routes)
-      3. build search_routes (with tools) -> returns tool + consumed [t_0001, t_0002]
-      4. identify t_0003 -> useful (get_account)
-      5. build get_account (with tools) -> returns tool + consumed [t_0003]
-    """
-    mock_client = MagicMock()
-
-    async def mock_create(**kwargs: Any) -> MagicMock:
-        resp = MagicMock()
-        content_block = MagicMock()
-        content_block.type = "text"
-        resp.stop_reason = "end_turn"
-        messages = cast(list[dict[str, Any]], kwargs.get("messages", []))
-
-        # Extract the original prompt (first user message content)
-        prompt = ""
-        for m in messages:
-            if m.get("role") == "user":
-                c = m.get("content", "")
-                if isinstance(c, str):
-                    prompt = c
-                    break
-                if isinstance(c, list):
-                    blocks = cast(list[dict[str, Any]], c)
-                    prompt = "".join(b["text"] for b in blocks if b.get("type") == "text")
-                    break
-
-        # Also extract system text for routing
-        system_text = ""
-        system_raw = kwargs.get("system")
-        if isinstance(system_raw, list):
-            system_blocks = cast(list[dict[str, Any]], system_raw)
-            system_text = " ".join(b.get("text", "") for b in system_blocks)
-
+    def model_fn(messages: list[Any], info: AgentInfo) -> ModelResponse:
+        prompt = _extract_user_prompt(messages)
+        system_text = _extract_system_text(messages)
         prompt_lower = prompt.lower()
         full_text_lower = (prompt + " " + system_text).lower()
 
         if "base url" in prompt_lower and "business api" in prompt_lower:
-            content_block.text = json.dumps({"base_url": "https://api.example.com"})
+            text = json.dumps({"base_url": "https://api.example.com"})
         elif "target trace: t_0001" in prompt_lower:
-            content_block.text = json.dumps({
+            text = json.dumps({
                 "useful": True,
                 "name": "search_routes",
                 "description": "Search for train routes",
             })
         elif "candidate: search_routes" in prompt_lower:
-            content_block.text = json.dumps({
+            text = json.dumps({
                 "tool": {
                     "name": "search_routes",
                     "description": "Search for train routes",
@@ -140,13 +134,13 @@ def _setup_pipeline_llm() -> None:
                 "consumed_trace_ids": ["t_0001", "t_0002"],
             })
         elif "target trace: t_0003" in prompt_lower:
-            content_block.text = json.dumps({
+            text = json.dumps({
                 "useful": True,
                 "name": "get_account",
                 "description": "Get account information",
             })
         elif "candidate: get_account" in prompt_lower:
-            content_block.text = json.dumps({
+            text = json.dumps({
                 "tool": {
                     "name": "get_account",
                     "description": "Get account info",
@@ -156,15 +150,21 @@ def _setup_pipeline_llm() -> None:
                 "consumed_trace_ids": ["t_0003"],
             })
         elif "business capability" in full_text_lower:
-            content_block.text = json.dumps({"useful": False})
+            text = json.dumps({"useful": False})
         else:
-            content_block.text = json.dumps({"useful": False})
+            text = json.dumps({"useful": False})
 
-        resp.content = [content_block]
-        return resp
+        if info.output_tools:
+            return ModelResponse(parts=[
+                ToolCallPart(
+                    tool_name=info.output_tools[0].name,
+                    args=text,
+                    tool_call_id="tc_result",
+                ),
+            ])
+        return ModelResponse(parts=[TextPart(content=text)])
 
-    mock_client.messages.create = mock_create
-    setup_client(mock_client)
+    set_test_model(FunctionModel(model_fn))
 
 
 async def test_pipeline_extracts_tools() -> None:
