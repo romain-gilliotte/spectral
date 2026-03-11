@@ -129,7 +129,7 @@ async def build_mcp_tools(
 )
 def analyze_cmd(app_name: str, debug: bool, skip_enrich: bool) -> None:
     """Generate MCP tool definitions from captures."""
-    from cli.helpers.llm._client import load_model
+    from cli.formats.config import DEFAULT_MODEL
 
     cap_count = len(list_captures(app_name))
     console.print(f"[bold]Loading captures for app:[/bold] {app_name}")
@@ -143,7 +143,7 @@ def analyze_cmd(app_name: str, debug: bool, skip_enrich: bool) -> None:
 
     llm.init_debug(debug=debug)
 
-    console.print(f"[bold]Generating MCP tools with LLM ({load_model()})...[/bold]")
+    console.print(f"[bold]Generating MCP tools with LLM ({DEFAULT_MODEL})...[/bold]")
     result = asyncio.run(
         build_mcp_tools(
             bundle,

@@ -8,7 +8,8 @@ from typing import Any, TypeVar
 from pydantic import BaseModel
 
 from cli.commands.capture.types import CaptureBundle
-from cli.helpers.llm._client import ensure_config, get_test_model, load_model
+from cli.formats.config import DEFAULT_MODEL
+from cli.helpers.llm._client import get_or_create_config, get_test_model
 from cli.helpers.llm._cost import record_usage
 from cli.helpers.llm._debug import DebugSession
 from cli.helpers.llm.tools import ToolDeps, make_tools
@@ -34,11 +35,18 @@ class Conversation:
         label: str = "",
     ) -> None:
         self._system = self._join_system(system)
-        self._model = load_model()
         self._max_tokens = max_tokens
         self._max_iterations = max_iterations
         self._label = label
         self._dbg = DebugSession(label or "call")
+
+        if get_test_model() is None:
+            config = get_or_create_config()
+            self._api_key = config.api_key
+            self._model = config.model
+        else:
+            self._api_key = ""
+            self._model = DEFAULT_MODEL
 
         if tool_names is not None:
             self._tools = make_tools(tool_names)
@@ -52,10 +60,6 @@ class Conversation:
 
         # PydanticAI message history for multi-turn
         self._messages: list[Any] = []
-
-        # Ensure API key is available (skipped when a test model is injected)
-        if get_test_model() is None:
-            ensure_config()
 
     async def ask_text(self, prompt: str) -> str:
         """Send a user message and return the assistant's text response."""
@@ -75,10 +79,16 @@ class Conversation:
     async def _run(self, prompt: str, *, output_type: Any) -> Any:
         """Run the agent and record results."""
         from pydantic_ai import Agent
-        from pydantic_ai.models.anthropic import AnthropicModelSettings
+        from pydantic_ai.models.anthropic import AnthropicModel, AnthropicModelSettings
         from pydantic_ai.usage import UsageLimits
 
-        model: Any = get_test_model() or f"anthropic:{self._model}"
+        if get_test_model():
+            model: Any = get_test_model()
+        else:
+            from pydantic_ai.providers.anthropic import AnthropicProvider
+
+            provider = AnthropicProvider(api_key=self._api_key)
+            model = AnthropicModel(self._model, provider=provider)
 
         settings = AnthropicModelSettings(
             max_tokens=self._max_tokens,

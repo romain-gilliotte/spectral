@@ -5,7 +5,7 @@ The `graphql analyze` command produces an SDL (Schema Definition Language) schem
 ## Prerequisites
 
 - At least one capture for the app (see [Capture](../capture/web.md))
-- An Anthropic API key (set via `ANTHROPIC_API_KEY` or `config.json` — run `spectral config`)
+- An Anthropic API key (configured via `spectral config`)
 - For best results, enable `__typename` injection in the Chrome extension during capture
 
 ## Generating a schema

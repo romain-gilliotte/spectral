@@ -5,7 +5,7 @@ MCP tools are the primary output of Spectral. They let AI agents call any discov
 ## Prerequisites
 
 - At least one capture for the app (see [Capture](../capture/web.md))
-- An Anthropic API key (set via `ANTHROPIC_API_KEY` or `config.json` — run `spectral config`)
+- An Anthropic API key (configured via `spectral config`)
 
 ## Generating tools
 

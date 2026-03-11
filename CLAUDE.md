@@ -12,7 +12,7 @@
   - `uv run spectral mcp analyze ...` — run the CLI
   - `uv add <package>` — add a dependency (updates `pyproject.toml` + `uv.lock`)
   - `uv add --dev <package>` — add a dev dependency
-- The Anthropic API key is resolved in order: `ANTHROPIC_API_KEY` env var → stored config at `~/.local/share/spectral/config.json` → interactive prompt. No `.env` file needed.
+- The Anthropic API key is resolved from stored config at `~/.local/share/spectral/config.json` or created interactively on first use. No `.env` file needed.
 - **Before finishing any code change**, run the full verification suite and fix any new errors:
   - `uv run pytest tests/ -x -q` — all tests must pass
   - `uv run ruff check` — zero lint errors (use `--fix` for auto-fixable import sorting)
@@ -74,7 +74,7 @@ spectral/
 ## CLI commands
 
 ```bash
-# Analyze captures (requires ANTHROPIC_API_KEY)
+# Analyze captures (requires spectral config)
 spectral mcp analyze <app>                          # → MCP tool definitions in storage
 spectral openapi analyze <app> -o <base>           # → <base>.yaml (OpenAPI 3.1)
 spectral graphql analyze <app> -o <base>            # → <base>.graphql (SDL schema)
@@ -139,7 +139,6 @@ Bundle merging (`merge_bundles` in `cli/commands/capture/types.py`) prefixes IDs
 
 | Variable | Purpose |
 |----------|---------|
-| `ANTHROPIC_API_KEY` | Override for analyze commands (otherwise read from `config.json` or prompted) |
 | `SPECTRAL_HOME` | Override managed storage root (default: `~/.local/share/spectral`) |
 
 ## Remaining work

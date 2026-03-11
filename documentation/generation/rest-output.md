@@ -5,7 +5,7 @@ The `openapi analyze` command produces an OpenAPI 3.1 YAML specification from ca
 ## Prerequisites
 
 - At least one capture for the app (see [Capture](../capture/web.md))
-- An Anthropic API key (set via `ANTHROPIC_API_KEY` or `config.json` — run `spectral config`)
+- An Anthropic API key (configured via `spectral config`)
 
 ## Generating a spec
 

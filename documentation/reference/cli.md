@@ -103,7 +103,7 @@ Examines all traces for auth-related patterns (login endpoints, token exchanges,
 
 If no authentication mechanism is detected, prints an informational message and exits without generating a script.
 
-Requires an Anthropic API key (resolved from the `ANTHROPIC_API_KEY` env var or `config.json` in managed storage — run `spectral config` to set up).
+Requires an Anthropic API key (resolved from `config.json` in managed storage — run `spectral config` to set up).
 
 ---
 
@@ -359,7 +359,7 @@ spectral graphql analyze <app_name> -o <name> [--debug] [--skip-enrich]
 
 The command loads all captures for the app and merges them into a single bundle before analysis. Only GraphQL traces are processed; REST traces are ignored.
 
-Requires an Anthropic API key (resolved from the `ANTHROPIC_API_KEY` env var or `config.json` in managed storage — run `spectral config` to set up).
+Requires an Anthropic API key (resolved from `config.json` in managed storage — run `spectral config` to set up).
 
 ---
 
@@ -379,7 +379,7 @@ spectral mcp analyze <app_name> [--debug] [--skip-enrich]
 
 Writes tool definitions to `tools/*.json` in the app's managed storage directory and updates `app.json` with the detected `base_url`.
 
-Requires an Anthropic API key (resolved from the `ANTHROPIC_API_KEY` env var or `config.json` in managed storage — run `spectral config` to set up).
+Requires an Anthropic API key (resolved from `config.json` in managed storage — run `spectral config` to set up).
 
 ---
 
@@ -430,4 +430,4 @@ spectral openapi analyze <app_name> -o <name> [--debug] [--skip-enrich]
 
 The command loads all captures for the app and merges them into a single bundle before analysis. Only REST traces are processed; GraphQL traces are ignored.
 
-Requires an Anthropic API key (resolved from the `ANTHROPIC_API_KEY` env var or `config.json` in managed storage — run `spectral config` to set up).
+Requires an Anthropic API key (resolved from `config.json` in managed storage — run `spectral config` to set up).

@@ -13,13 +13,8 @@ from cli.helpers.llm._debug import clear_debug_dir
 
 
 @pytest.fixture(autouse=True)
-def reset_llm_globals(monkeypatch: pytest.MonkeyPatch):
-    """Reset module globals before/after each test.
-
-    Sets a dummy ANTHROPIC_API_KEY so that tests which use production mode
-    never trigger an interactive prompt.
-    """
-    monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-ant-test-dummy")
+def reset_llm_globals():
+    """Reset module globals before/after each test."""
     clear_test_model()
     reset_usage()
     clear_debug_dir()

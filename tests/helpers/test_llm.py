@@ -68,9 +68,9 @@ class TestConversationAskText:
 
         monkeypatch.setenv("SPECTRAL_HOME", str(tmp_path))
         write_config(Config(api_key="sk-ant-test", model="claude-test-123"))
-        set_test_model(_text_model("ok"))
         conv = llm.Conversation()
         assert conv._model == "claude-test-123"
+        set_test_model(_text_model("ok"))
         await conv.ask_text("hello")
 
     @pytest.mark.asyncio
