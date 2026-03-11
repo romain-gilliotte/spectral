@@ -15,8 +15,8 @@ Use them when URL segments look opaque (base64-encoded, percent-encoded, or JWT 
 Decoding opaque segments will help you understand what they represent and group URLs correctly.
 
 Observed requests:
-{% for line in lines %}
-{{ line }}
+{% for p in pairs %}
+  {{ p.method }} {{ p.url }}
 {% endfor %}
 
 Example format:

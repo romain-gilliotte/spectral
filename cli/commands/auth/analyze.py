@@ -14,7 +14,7 @@ import re
 
 import click
 
-from cli.commands.capture.types import CaptureBundle, Trace
+from cli.commands.capture.types import CaptureBundle
 from cli.helpers.console import console
 import cli.helpers.llm as llm
 from cli.helpers.prompt import render
@@ -43,12 +43,10 @@ async def generate_auth_script(
     optionally ``refresh_token()`` (string).
     Raises NoAuthDetected if the LLM finds no auth.
     """
-    trace_summaries = prepare_trace_list(bundle.traces)
-
     prompt = render(
         "auth-generate-script.j2",
         api_name=api_name,
-        trace_summaries=trace_summaries,
+        traces=bundle.traces,
     )
 
     system: list[str] | None = None
@@ -84,30 +82,6 @@ def validate_script(script: str) -> None:
         raise ValueError(
             "Generated code must define an acquire_token() function",
         )
-
-
-def prepare_trace_list(traces: list[Trace]) -> str:
-    """Build a compact list of auth-related traces for the prompt."""
-    auth_keywords = {
-        "auth", "login", "token", "oauth", "session", "signin",
-        "verification", "otp", "verify", "password", "credential",
-        "callback", "refresh",
-    }
-    lines: list[str] = []
-    for t in traces:
-        url_lower = t.meta.request.url.lower()
-        req_headers = {h.name.lower() for h in t.meta.request.headers}
-        is_auth = (
-            "authorization" in req_headers
-            or any(kw in url_lower for kw in auth_keywords)
-            or t.meta.response.status in (401, 403)
-        )
-        marker = " [AUTH]" if is_auth else ""
-        lines.append(
-            f"- {t.meta.id}: {t.meta.request.method} {t.meta.request.url} "
-            f"→ {t.meta.response.status}{marker}"
-        )
-    return "\n".join(lines)
 
 
 def extract_script(text: str) -> str:

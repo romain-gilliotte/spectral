@@ -1,8 +1,23 @@
 ## Candidate: {{ candidate_name }}
 - Description: {{ candidate_description }}
-{% if existing_tools_hint %}
-{{ existing_tools_hint }}
+{% if existing_tools %}
+
+Existing tools (for reference, do not duplicate):
+{% for t in existing_tools %}
+  - {{ t.name }}: {{ t.description }} ({{ t.request.method }} {{ t.request.path }})
+{% endfor %}
 {% endif %}
-{% if target_details %}
-{{ target_details }}
+{% if target_trace %}
+
+## Target request ({{ target_trace.meta.id }})
+
+**{{ target_trace.meta.request.method }} {{ target_trace.meta.request.url }}**
+Status: {{ target_trace.meta.response.status }}
+{% set headers = target_trace.meta.request.headers | headers_to_dict | sanitize_headers %}
+{% if headers %}
+Headers: {{ headers | dict_join(": ", ", ") }}
+{% endif %}
+{% if request_body %}
+Request body: {{ request_body | truncate_json(max_keys=15) | minified }}
+{% endif %}
 {% endif %}

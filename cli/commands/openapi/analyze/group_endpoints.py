@@ -15,14 +15,13 @@ async def group_endpoints(pairs: list[MethodUrlPair]) -> list[EndpointGroup]:
     compacted_pairs = sorted(
         set(MethodUrlPair(p.method, compact_url(p.url)) for p in unique_pairs)
     )
-    lines = [f"  {p.method} {p.url}" for p in compacted_pairs]
 
     compact_to_originals: dict[MethodUrlPair, list[str]] = {}
     for p in unique_pairs:
         key = MethodUrlPair(p.method, compact_url(p.url))
         compact_to_originals.setdefault(key, []).append(p.url)
 
-    prompt = render("openapi-group-endpoints.j2", lines=lines)
+    prompt = render("openapi-group-endpoints.j2", pairs=compacted_pairs)
 
     conv = llm.Conversation(
         label="analyze_endpoints",

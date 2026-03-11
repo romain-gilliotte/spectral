@@ -2,7 +2,7 @@ You are analyzing a single API endpoint discovered from "{{ app_name }}" ({{ bas
 
 Below is the endpoint's mechanical data as JSON Schema. Nested properties carry an "examples" array with sample values seen in real traffic — use these to understand business meaning.
 
-{{ summary_json }}
+{{ summary | minified }}
 
 Provide a JSON response with these keys:
 - "description": concise description of what this endpoint does in business terms (this becomes the OpenAPI summary)

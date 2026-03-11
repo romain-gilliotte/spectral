@@ -27,19 +27,19 @@ async def enrich_endpoints(ctx: EnrichmentContext) -> list[EndpointSpec]:
 
     async def _enrich_one(ep: EndpointSpec) -> None:
         summary = _build_endpoint_summary(ep, ctx.traces, ctx.correlations)
-        summary_json = minified(summary)
-        if len(summary_json) > _MAX_SUMMARY_CHARS:
-            est_tokens = len(summary_json) // 4
+        summary_size = len(minified(summary))
+        if summary_size > _MAX_SUMMARY_CHARS:
+            est_tokens = summary_size // 4
             console.print(
                 f"  [yellow]Skipping enrichment for {ep.method} {ep.path}: "
-                f"summary too large ({len(summary_json):,} chars, ~{est_tokens:,} tokens)[/yellow]"
+                f"summary too large ({summary_size:,} chars, ~{est_tokens:,} tokens)[/yellow]"
             )
             return
         prompt = render_prompt(
             "openapi-enrich-endpoint.j2",
             app_name=ctx.app_name,
             base_url=ctx.base_url,
-            summary_json=summary_json,
+            summary=summary,
         )
 
         try:

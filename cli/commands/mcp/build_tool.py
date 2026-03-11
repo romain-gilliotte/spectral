@@ -2,10 +2,11 @@
 
 from __future__ import annotations
 
+import json
 import re
 from typing import Any, cast
 
-from cli.commands.mcp.identify import format_request_details
+from cli.commands.capture.types import Trace
 from cli.commands.mcp.types import (
     BuildToolResponse,
     ToolBuildInput,
@@ -13,6 +14,16 @@ from cli.commands.mcp.types import (
 )
 import cli.helpers.llm as llm
 from cli.helpers.prompt import load, render
+
+
+def _parse_request_body(trace: Trace) -> Any | None:
+    """Parse the request body as JSON, returning None on failure."""
+    if not trace.request_body:
+        return None
+    try:
+        return json.loads(trace.request_body)
+    except (json.JSONDecodeError, UnicodeDecodeError):
+        return None
 
 
 async def build_tool(input: ToolBuildInput) -> ToolBuildResult:
@@ -23,28 +34,19 @@ async def build_tool(input: ToolBuildInput) -> ToolBuildResult:
     """
     candidate = input.candidate
 
-    # Format target trace request details inline
     target_trace = next(
         (t for t in input.bundle.traces if t.meta.id in candidate.trace_ids),
         None,
     )
-    target_details = ""
-    if target_trace is not None:
-        target_details = f"\n\n## Target request ({candidate.trace_ids[0]})\n\n{format_request_details(target_trace)}"
-
-    existing_tools_hint = ""
-    if input.existing_tools:
-        existing_tools_hint = "\n\nExisting tools (for reference, do not duplicate):\n" + "\n".join(
-            f"  - {t.name}: {t.description} ({t.request.method} {t.request.path})"
-            for t in input.existing_tools
-        )
+    request_body = _parse_request_body(target_trace) if target_trace else None
 
     prompt = render(
         "mcp-build-tool-user.j2",
         candidate_name=candidate.name,
         candidate_description=candidate.description,
-        existing_tools_hint=existing_tools_hint,
-        target_details=target_details,
+        existing_tools=input.existing_tools,
+        target_trace=target_trace,
+        request_body=request_body,
     )
 
     tool_names = [

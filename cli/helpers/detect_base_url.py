@@ -47,12 +47,8 @@ async def detect_base_url(bundle: CaptureBundle, app_name: str) -> str:
         (t.meta.request.method.upper(), compact_url(t.meta.request.url))
         for t in bundle.traces
     )
-    lines = [
-        f"  {method} {url} ({n}x)" if n > 1 else f"  {method} {url}"
-        for (method, url), n in sorted(counts.items())
-    ]
 
-    prompt = render("detect-base-url.j2", lines=lines)
+    prompt = render("detect-base-url.j2", counts=counts)
 
     conv = llm.Conversation(
         label="detect_api_base_url",

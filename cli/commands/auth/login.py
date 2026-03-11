@@ -141,17 +141,15 @@ async def _request_fix(
     """Send a fix prompt to the conversation and return the fixed script."""
     from cli.commands.auth.analyze import (
         extract_script,
-        prepare_trace_list,
         validate_script,
     )
     from cli.helpers.prompt import render
 
     if is_first:
-        trace_summaries = prepare_trace_list(bundle.traces)
         prompt = render(
             "auth-fix-initial.j2",
             api_name=api_name,
-            trace_summaries=trace_summaries,
+            traces=bundle.traces,
             current_script=current_script,
             error_trace=error_trace,
         )

@@ -219,19 +219,12 @@ async def _resolve_map_candidates(schema: dict[str, Any]) -> None:
     if not all_candidates:
         return
 
-    groups: list[str] = []
-    for i, (_path, _node, candidate) in enumerate(all_candidates, 1):
-        keys_str = ", ".join(f'"{k}"' for k in candidate["keys"])
-        shared_str = ", ".join(candidate["shared_properties"])
-        extra_str = ", ".join(candidate["extra_properties"]) or "(none)"
-        groups.append(
-            f"Group {i}:\n"
-            f"  keys: [{keys_str}]\n"
-            f"  shared properties: [{shared_str}]\n"
-            f"  extra properties: [{extra_str}]"
-        )
+    candidates = [
+        {"keys": candidate["keys"], "shared_properties": candidate["shared_properties"], "extra_properties": candidate["extra_properties"]}
+        for _path, _node, candidate in all_candidates
+    ]
 
-    prompt = render_prompt("schema-resolve-map-candidates.j2", groups=groups)
+    prompt = render_prompt("schema-resolve-map-candidates.j2", candidates=candidates)
 
     conv = llm.Conversation(label="resolve-map-candidates")
     response = await conv.ask_json(prompt, MapDecisionListResponse)

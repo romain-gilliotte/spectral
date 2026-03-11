@@ -13,8 +13,8 @@ Rules:
 - Return ONLY the base URL string, no trailing slash.
 
 Observed requests (call count shown when > 1):
-{% for line in lines %}
-{{ line }}
+{% for (method, url), n in counts.most_common() | sort %}
+  {{ method }} {{ url }}{% if n > 1 %} ({{ n }}x){% endif %}
 {% endfor %}
 
 Response format: {"base_url": "https://..."}

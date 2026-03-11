@@ -14,7 +14,6 @@ from cli.commands.graphql.analyze.types import (
 )
 from cli.helpers.console import console
 from cli.helpers.correlator import Correlation
-from cli.helpers.json import minified
 import cli.helpers.llm as llm
 from cli.helpers.prompt import render
 
@@ -59,7 +58,7 @@ async def enrich_graphql(
         prompt = render(
             "graphql-enrich-type.j2",
             app_name=app_name,
-            summary_json=minified(summary),
+            summary=summary,
         )
 
         try:
@@ -73,12 +72,12 @@ async def enrich_graphql(
             )
 
     async def _enrich_enum(enum_name: str, enum_values: set[str]) -> None:
-        values_list = sorted(enum_values)
+        values = sorted(enum_values)
         prompt = render(
             "graphql-enrich-enum.j2",
             app_name=app_name,
             enum_name=enum_name,
-            values_json=minified(values_list),
+            values=values,
         )
 
         try:
