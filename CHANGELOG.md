@@ -1,6 +1,140 @@
 # CHANGELOG
 
 
+## v0.3.0 (2026-03-12)
+
+### Bug Fixes
+
+- **capture**: Filter out OPTIONS requests in extension and proxy
+  ([`96e8650`](https://github.com/romain-gilliotte/spectral/commit/96e86500e1eb7f31f33ce22d2831c68ee66c9010))
+
+CORS preflight requests carry no business semantics and add noise to the LLM timeline. Drop them
+  early in both capture sources.
+
+Co-Authored-By: Claude Opus 4.6 <noreply@anthropic.com>
+
+- **ci**: Run semantic-release on runner instead of Docker container
+  ([`a0afba6`](https://github.com/romain-gilliotte/spectral/commit/a0afba69137c896b7af2709c26a3145795a73aa7))
+
+The Docker-based GitHub Action didn't have access to uv, causing build_command to fail with exit
+  code 127. Install python-semantic-release as a dev dependency and run it directly on the runner
+  where uv is available.
+
+Co-Authored-By: Claude Opus 4.6 <noreply@anthropic.com>
+
+- **mcp**: Add resilient tool loading and migration command
+  ([`95556b2`](https://github.com/romain-gilliotte/spectral/commit/95556b2e4f96ac592f64f6c6d6409e7ef64eb588))
+
+list_tools() now skips invalid tool files with a warning instead of crashing. New `spectral mcp
+  migrate` command fixes stale on-disk tools (path→url, unused params) and old app.json
+  (base_url→base_urls).
+
+Co-Authored-By: Claude Opus 4.6 <noreply@anthropic.com>
+
+- **mcp**: Reject tool definitions with unused parameters
+  ([`faab31d`](https://github.com/romain-gilliotte/spectral/commit/faab31d680821b89c834de9d4c1a735d294150d3))
+
+The validator only checked that $param references pointed to declared parameters, but not the
+  reverse. An LLM could declare parameters never wired into the request template (e.g. Algolia
+  single-string body) and validation would silently pass, producing a broken tool at runtime.
+
+Co-Authored-By: Claude Opus 4.6 <noreply@anthropic.com>
+
+### Chores
+
+- Update uv.lock automatically during semantic-release
+  ([`ddef397`](https://github.com/romain-gilliotte/spectral/commit/ddef39760580b0d232184db042c8b48cfee039d3))
+
+Co-Authored-By: Claude Opus 4.6 <noreply@anthropic.com>
+
+- Update uv.lock version reference
+  ([`c5ddb0b`](https://github.com/romain-gilliotte/spectral/commit/c5ddb0b4dbdc465fdc3b70d70ffa06fca7855d72))
+
+https://claude.ai/code/session_01RGxzsrBQAQbQPgk59ZoxXh
+
+### Documentation
+
+- Add roadmap and prioritize install script in README
+  ([`3d66d17`](https://github.com/romain-gilliotte/spectral/commit/3d66d17a45c14d8c08ace7d95def56a0018d8734))
+
+Co-Authored-By: Claude Opus 4.6 <noreply@anthropic.com>
+
+### Features
+
+- **auth**: Support body-param authentication for POST-based APIs
+  ([`643c900`](https://github.com/romain-gilliotte/spectral/commit/643c9000503d72e6d40748e0ffd1a973a1e28dfe))
+
+Add body_params to TokenState so APIs that pass credentials in the request body (Firebase auth,
+  POST-based APIs) are injected transparently at runtime alongside header-based auth. End-to-end:
+  `auth set -b`, auth scripts, MCP server request builder, prompts, docs, completions.
+
+Also harden LLM tools (decode_base64, decode_jwt, query_traces) to return error strings instead of
+  raising exceptions, and allow BuildToolResponse.tool to be None so the pipeline can skip traces
+  the LLM deems not useful.
+
+Co-Authored-By: Claude Opus 4.6 <noreply@anthropic.com>
+
+### Refactoring
+
+- Make DEFAULT_MODEL private and enforce import conventions
+  ([`8171d30`](https://github.com/romain-gilliotte/spectral/commit/8171d30187ef0b6d178fdd64a090260aa9b682fe))
+
+Move DEFAULT_MODEL to _DEFAULT_MODEL, access default model via Config.model_fields instead. Expose
+  get_or_create_config in llm public API so commands display the actual configured model. Move lazy
+  imports to top-level in openapi/analyze_cmd.py per import convention. Update tests to provide
+  config before running analyze commands.
+
+Co-Authored-By: Claude Opus 4.6 <noreply@anthropic.com>
+
+- Make internal helper functions private with leading underscore
+  ([`ba4b393`](https://github.com/romain-gilliotte/spectral/commit/ba4b393d6bd3dc973a82f58b327e80fb316d061c))
+
+Co-Authored-By: Claude Opus 4.6 <noreply@anthropic.com>
+
+- Prefix internal module functions with _ to clarify public API
+  ([`2764dbf`](https://github.com/romain-gilliotte/spectral/commit/2764dbf44e4df9c2901446d245bd76af7ef65d09))
+
+Prefix functions that are only used within their own module or package with _ to make each module's
+  public interface immediately obvious.
+
+Functions privatized across: - cli/helpers/context.py: _build_timeline_text, _trace_timeline_line,
+  _format_size - cli/helpers/llm/_cost.py: _estimate_cost, _record_usage -
+  cli/helpers/correlator.py: _find_uncorrelated_traces - cli/commands/mcp/server.py:
+  _apply_defaults, _coerce_arguments, _create_server - cli/commands/mcp/request.py: _resolve_url,
+  _resolve_query, _resolve_body - cli/commands/openapi/analyze/extraction.py: _pattern_to_regex,
+  _match_traces_by_pattern - cli/commands/auth/analyze.py: _get_auth_instructions,
+  _generate_auth_script, _validate_script, _extract_script - cli/commands/auth/extract.py:
+  _extract_auth_from_traces - cli/commands/capture/proxy.py: _run_proxy_to_storage -
+  cli/commands/capture/discover.py: _run_discover - cli/commands/capture/inspect.py:
+  _inspect_summary - cli/commands/capture/_mitmproxy.py: _domain_to_regex -
+  cli/commands/extension/manifest.py: _wrapper_script_path, _write_wrapper_script,
+  _write_wrapper_script_python
+
+Also removes dead code: has_auth_header_or_cookie (never called). Adds private function convention
+  to CLAUDE.md style preferences.
+
+https://claude.ai/code/session_01RGxzsrBQAQbQPgk59ZoxXh
+
+- **llm**: Stream debug messages during agent iteration
+  ([`c1563a7`](https://github.com/romain-gilliotte/spectral/commit/c1563a75d2b7f238ecdda08b65c3ee7c46ed4e09))
+
+Switch from agent.run() to agent.iter() so debug messages are flushed after each tool call instead
+  of only at the end.
+
+Co-Authored-By: Claude Opus 4.6 <noreply@anthropic.com>
+
+- **mcp**: Support multiple base URLs and store absolute URLs in tools
+  ([`67f5776`](https://github.com/romain-gilliotte/spectral/commit/67f57762039fc853e6b559722d25fc1fe088cd8f))
+
+Detect multiple business API base URLs per app (e.g. own backend + Algolia, Mapbox). The MCP
+  pipeline now iterates over all detected URLs and builds tools for each. Tool requests store
+  absolute URLs instead of relative paths, removing the need for base_url lookup at call time. Param
+  validation moves into ToolDefinition as a Pydantic model_validator for earlier, cleaner error
+  handling.
+
+Co-Authored-By: Claude Opus 4.6 <noreply@anthropic.com>
+
+
 ## v0.2.0 (2026-03-12)
 
 ### Bug Fixes
