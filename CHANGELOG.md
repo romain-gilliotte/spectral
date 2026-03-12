@@ -1,6 +1,86 @@
 # CHANGELOG
 
 
+## v0.2.0 (2026-03-12)
+
+### Bug Fixes
+
+- **debug**: Include system prompt in debug logs
+  ([`af93d75`](https://github.com/romain-gilliotte/spectral/commit/af93d75882674e65bd2c204cc912b0998ba52f9c))
+
+SystemPromptPart was not handled in record_messages, so debug files never showed the system prompt
+  sent to the LLM.
+
+Co-Authored-By: Claude Opus 4.6 <noreply@anthropic.com>
+
+- **llm**: Update haiku pricing to claude-haiku-4-5-20251001
+  ([`c22cf3e`](https://github.com/romain-gilliotte/spectral/commit/c22cf3e2f81bb0821a23ca322d2c0d5328c290d1))
+
+Co-Authored-By: Claude Opus 4.6 <noreply@anthropic.com>
+
+### Features
+
+- Replace --model flag and api_key file with config.json
+  ([`3af0d56`](https://github.com/romain-gilliotte/spectral/commit/3af0d569dcfa26f9c5a24467e83094824a04f290))
+
+Consolidate LLM model selection and API key storage into a single config.json file managed by the
+  new `spectral config` command. This removes the --model flag from all 6 analyze commands and
+  replaces the plain-text api_key file with structured configuration.
+
+Co-Authored-By: Claude Opus 4.6 <noreply@anthropic.com>
+
+- Replace Anthropic SDK with PydanticAI framework
+  ([`b26cbe8`](https://github.com/romain-gilliotte/spectral/commit/b26cbe8e7e75594ca840610ec5671eba6ef90cdb))
+
+Switch the LLM layer from direct Anthropic client calls to PydanticAI Agent, which handles
+  structured output, tool calling, retries, and rate limiting.
+
+Key changes: - Conversation._run creates a PydanticAI Agent per call with output_type - Tools use
+  PydanticAI Tool with RunContext[ToolDeps] for stateful tools - DebugSession simplified to single
+  record_messages() parsing PydanticAI messages - Remove dead code: extract_json, _utils.py,
+  RootModel types, EndpointGroupItem - All tests rewritten with PydanticAI FunctionModel
+
+Co-Authored-By: Claude Opus 4.6 <noreply@anthropic.com>
+
+### Refactoring
+
+- Extract nested functions to module level and remove on_progress callbacks
+  ([`9715df6`](https://github.com/romain-gilliotte/spectral/commit/9715df65bbb083f12eea0d0622c08d1079a54ca1))
+
+Replace the on_progress callback pattern with direct console.print calls across all analysis
+  pipelines (MCP, OpenAPI, GraphQL, auth). Extract nested async helpers (_enrich_type, _enrich_enum,
+  _enrich_one, _run, _capture_debug) to module-level functions with explicit parameters.
+
+Co-Authored-By: Claude Opus 4.6 <noreply@anthropic.com>
+
+- Move data formatting from Python to Jinja templates
+  ([`2594c27`](https://github.com/romain-gilliotte/spectral/commit/2594c271c35b2b0b286ff9d378e5120ff5fba5b5))
+
+Register minified, truncate_json, sanitize_headers, headers_to_dict, dict_join, and is_auth_trace as
+  Jinja filters. Pass raw data objects to templates instead of pre-formatted strings, letting
+  templates own the formatting. Remove format_request_details and prepare_trace_list which are now
+  replaced by template logic.
+
+Co-Authored-By: Claude Opus 4.6 <noreply@anthropic.com>
+
+- **llm**: Replace ensure_config/load_model with get_or_create_config
+  ([`06720aa`](https://github.com/romain-gilliotte/spectral/commit/06720aa17df330b8a0d6c8afd80e7448f10aed6b))
+
+Single function returns Config (api_key + model) from disk or interactive prompt. API key is passed
+  explicitly to AnthropicProvider instead of going through os.environ. ANTHROPIC_API_KEY env var is
+  no longer supported.
+
+Co-Authored-By: Claude Opus 4.6 <noreply@anthropic.com>
+
+- **mcp**: Remove wrapper types from pipeline
+  ([`406d339`](https://github.com/romain-gilliotte/spectral/commit/406d3391e37772db7724bd9df89659088a423504))
+
+Replace IdentifyInput, ToolBuildInput, ToolBuildResult, and McpPipelineResult with direct function
+  arguments and a tuple return. Also remove unused skip_enrich parameter from analyze_cmd.
+
+Co-Authored-By: Claude Opus 4.6 <noreply@anthropic.com>
+
+
 ## v0.1.4 (2026-03-10)
 
 ### Chores
