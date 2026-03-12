@@ -112,9 +112,11 @@ class TestAnalyzeCommand:
         self, sample_bundle: CaptureBundle, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
     ) -> None:
         """Test the openapi analyze command with mocked LLM."""
-        from cli.helpers.storage import store_capture
+        from cli.formats.config import Config
+        from cli.helpers.storage import store_capture, write_config
 
         monkeypatch.setenv("SPECTRAL_HOME", str(tmp_path / "store"))
+        write_config(Config(api_key="sk-ant-test-key"))
         store_capture(sample_bundle, "testapp")
 
         output_path = tmp_path / "spec.yaml"
@@ -136,9 +138,11 @@ class TestAnalyzeCommand:
     def test_analyze_produces_endpoints(
         self, sample_bundle: CaptureBundle, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
     ) -> None:
-        from cli.helpers.storage import store_capture
+        from cli.formats.config import Config
+        from cli.helpers.storage import store_capture, write_config
 
         monkeypatch.setenv("SPECTRAL_HOME", str(tmp_path / "store"))
+        write_config(Config(api_key="sk-ant-test-key"))
         store_capture(sample_bundle, "testapp")
 
         output_path = tmp_path / "spec.yaml"
@@ -388,9 +392,11 @@ class TestAnalyzeMcpCommand:
     def test_analyze_mcp_basic(
         self, sample_bundle: CaptureBundle, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
     ) -> None:
-        from cli.helpers.storage import store_capture
+        from cli.formats.config import Config
+        from cli.helpers.storage import store_capture, write_config
 
         monkeypatch.setenv("SPECTRAL_HOME", str(tmp_path / "store"))
+        write_config(Config(api_key="sk-ant-test-key"))
         store_capture(sample_bundle, "testapp")
 
         runner = CliRunner()
@@ -412,9 +418,11 @@ class TestAnalyzeMcpCommand:
     def test_analyze_mcp_updates_app_meta(
         self, sample_bundle: CaptureBundle, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
     ) -> None:
-        from cli.helpers.storage import load_app_meta, store_capture
+        from cli.formats.config import Config
+        from cli.helpers.storage import load_app_meta, store_capture, write_config
 
         monkeypatch.setenv("SPECTRAL_HOME", str(tmp_path / "store"))
+        write_config(Config(api_key="sk-ant-test-key"))
         store_capture(sample_bundle, "testapp")
 
         runner = CliRunner()

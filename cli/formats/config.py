@@ -4,9 +4,9 @@ from __future__ import annotations
 
 from pydantic import BaseModel
 
-DEFAULT_MODEL = "claude-sonnet-4-5-20250929"
+_DEFAULT_MODEL = "claude-sonnet-4-5-20250929"
 
 
 class Config(BaseModel):
     api_key: str
-    model: str = DEFAULT_MODEL
+    model: str = _DEFAULT_MODEL

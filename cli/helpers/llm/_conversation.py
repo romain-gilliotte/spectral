@@ -8,7 +8,6 @@ from typing import Any, TypeVar
 from pydantic import BaseModel
 
 from cli.commands.capture.types import CaptureBundle
-from cli.formats.config import DEFAULT_MODEL
 from cli.helpers.llm._client import get_or_create_config, get_test_model
 from cli.helpers.llm._cost import _record_usage  # pyright: ignore[reportPrivateUsage]
 from cli.helpers.llm._debug import DebugSession
@@ -46,7 +45,7 @@ class Conversation:
             self._model = config.model
         else:
             self._api_key = ""
-            self._model = DEFAULT_MODEL
+            self._model = ""
 
         if tool_names is not None:
             self._tools = make_tools(tool_names)

@@ -11,7 +11,7 @@ from typing import Any
 
 import click
 
-from cli.formats.config import DEFAULT_MODEL, Config
+from cli.formats.config import Config
 import cli.helpers.storage as storage
 
 _test_model: Any | None = None
@@ -33,7 +33,9 @@ def get_or_create_config() -> Config:
         raise click.ClickException(
             "Invalid API key format (expected a key starting with 'sk-ant-')."
         )
-    model = click.prompt("Model", default=DEFAULT_MODEL).strip()
+    model = click.prompt(
+        "Model", default=str(Config.model_fields["model"].default)
+    ).strip()
     config = Config(api_key=key, model=model)
     storage.write_config(config)
     return config

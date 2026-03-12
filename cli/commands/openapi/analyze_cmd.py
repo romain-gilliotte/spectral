@@ -2,11 +2,19 @@
 
 from __future__ import annotations
 
+import asyncio
+from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 import click
+import yaml
 
+from cli.commands.openapi.analyze import rest_analyze
 from cli.helpers.console import console
+from cli.helpers.correlator import correlate
+from cli.helpers.detect_base_url import detect_base_url
+import cli.helpers.llm as llm
+from cli.helpers.storage import list_captures, load_app_bundle
 
 if TYPE_CHECKING:
     from cli.commands.capture.types import CaptureBundle
@@ -15,7 +23,9 @@ if TYPE_CHECKING:
 @click.command()
 @click.argument("app_name")
 @click.option(
-    "-o", "--output", required=True,
+    "-o",
+    "--output",
+    required=True,
     help="Output base name (produces <name>.yaml).",
 )
 @click.option(
@@ -29,15 +39,6 @@ if TYPE_CHECKING:
 )
 def analyze(app_name: str, output: str, debug: bool, skip_enrich: bool) -> None:
     """Analyze captures for an app and produce an OpenAPI spec."""
-    import asyncio
-    from pathlib import Path
-
-    import yaml
-
-    from cli.formats.config import DEFAULT_MODEL
-    import cli.helpers.llm as llm
-    from cli.helpers.storage import list_captures, load_app_bundle
-
     cap_count = len(list_captures(app_name))
     console.print(f"[bold]Loading captures for app:[/bold] {app_name}")
     bundle = load_app_bundle(app_name)
@@ -50,7 +51,9 @@ def analyze(app_name: str, output: str, debug: bool, skip_enrich: bool) -> None:
 
     llm.init_debug(debug=debug)
 
-    console.print(f"[bold]Analyzing with LLM ({DEFAULT_MODEL})...[/bold]")
+    console.print(
+        f"[bold]Analyzing with LLM ({llm.get_or_create_config().model})...[/bold]"
+    )
     openapi_dict = asyncio.run(_run_openapi(bundle, app_name, skip_enrich))
 
     output_base = Path(output)
@@ -60,8 +63,11 @@ def analyze(app_name: str, output: str, debug: bool, skip_enrich: bool) -> None:
 
     with open(out_path, "w") as f:
         yaml.dump(
-            openapi_dict, f,
-            default_flow_style=False, sort_keys=False, allow_unicode=True,
+            openapi_dict,
+            f,
+            default_flow_style=False,
+            sort_keys=False,
+            allow_unicode=True,
         )
 
     console.print(f"[green]OpenAPI 3.1 spec written to {out_path}[/green]")
@@ -72,21 +78,23 @@ def analyze(app_name: str, output: str, debug: bool, skip_enrich: bool) -> None:
 async def _run_openapi(
     bundle: CaptureBundle, app_name: str, skip_enrich: bool
 ) -> dict[str, Any]:
-    from cli.commands.openapi.analyze import rest_analyze
-    from cli.helpers.correlator import correlate
-    from cli.helpers.detect_base_url import detect_base_url
-
     base_url = await detect_base_url(bundle, app_name)
     console.print(f"  API base URL: {base_url}")
     rest_traces = [t for t in bundle.traces if t.meta.request.url.startswith(base_url)]
-    console.print(f"  Kept {len(rest_traces)}/{len(bundle.traces)} traces under {base_url}")
+    console.print(
+        f"  Kept {len(rest_traces)}/{len(bundle.traces)} traces under {base_url}"
+    )
 
     correlations = correlate(bundle)
 
     openapi_dict = await rest_analyze(
         rest_traces,
         base_url=base_url,
-        app_name=(bundle.manifest.app.name + " API" if bundle.manifest.app.name else "Discovered API"),
+        app_name=(
+            bundle.manifest.app.name + " API"
+            if bundle.manifest.app.name
+            else "Discovered API"
+        ),
         source_filename=app_name,
         correlations=correlations,
         skip_enrich=skip_enrich,

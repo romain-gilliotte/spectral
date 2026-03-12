@@ -16,12 +16,14 @@ For tests, import setup helpers directly from submodules::
 
 from __future__ import annotations
 
+from cli.helpers.llm._client import get_or_create_config
 from cli.helpers.llm._conversation import Conversation
 from cli.helpers.llm._cost import print_usage_summary
 from cli.helpers.llm._debug import init_debug
 
 __all__ = [
     "Conversation",
+    "get_or_create_config",
     "init_debug",
     "print_usage_summary",
 ]

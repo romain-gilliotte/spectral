@@ -417,13 +417,13 @@ class TestConfigStorage:
         assert config.api_key == "sk-ant-test-key"
 
     def test_config_default_model(self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
-        from cli.formats.config import DEFAULT_MODEL, Config
+        from cli.formats.config import Config
 
         monkeypatch.setenv("SPECTRAL_HOME", str(tmp_path))
         write_config(Config(api_key="sk-ant-test-key"))
         config = load_config()
         assert config is not None
-        assert config.model == DEFAULT_MODEL
+        assert config.model == Config.model_fields["model"].default
 
     def test_config_custom_model(self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
         from cli.formats.config import Config

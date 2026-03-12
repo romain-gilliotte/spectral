@@ -27,7 +27,7 @@ from cli.formats.capture_bundle import (
     TimelineEvent,
     WsMessageMeta,
 )
-from cli.helpers.storage import store_capture
+import cli.helpers.storage as storage
 
 
 class CaptureAddon:
@@ -202,7 +202,7 @@ def _run_proxy_to_storage(
     start_time, end_time = run_mitmproxy(port, [addon], allow_hosts=allow_hosts)
 
     bundle = addon.build_bundle(app_name, start_time, end_time)
-    cap_dir = store_capture(bundle, app_name)
+    cap_dir = storage.store_capture(bundle, app_name)
 
     return bundle.manifest.stats, cap_dir
 

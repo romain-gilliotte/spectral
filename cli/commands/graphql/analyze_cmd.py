@@ -32,7 +32,6 @@ def analyze(app_name: str, output: str, debug: bool, skip_enrich: bool) -> None:
     import asyncio
     from pathlib import Path
 
-    from cli.formats.config import DEFAULT_MODEL
     import cli.helpers.llm as llm
     from cli.helpers.storage import list_captures, load_app_bundle
 
@@ -48,7 +47,7 @@ def analyze(app_name: str, output: str, debug: bool, skip_enrich: bool) -> None:
 
     llm.init_debug(debug=debug)
 
-    console.print(f"[bold]Analyzing with LLM ({DEFAULT_MODEL})...[/bold]")
+    console.print(f"[bold]Analyzing with LLM ({llm.get_or_create_config().model})...[/bold]")
     sdl = asyncio.run(_run_graphql(bundle, app_name, skip_enrich))
 
     output_base = Path(output)

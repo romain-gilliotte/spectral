@@ -9,7 +9,6 @@ import click
 from cli.commands.capture.types import CaptureBundle
 from cli.commands.mcp.build_tool import build_tool
 from cli.commands.mcp.identify import identify_capabilities
-from cli.formats.config import DEFAULT_MODEL
 from cli.formats.mcp_tool import ToolDefinition
 from cli.helpers.console import console
 from cli.helpers.context import build_shared_context
@@ -118,7 +117,7 @@ def analyze_cmd(app_name: str, debug: bool) -> None:
 
     llm.init_debug(debug=debug)
 
-    console.print(f"[bold]Generating MCP tools with LLM ({DEFAULT_MODEL})...[/bold]")
+    console.print(f"[bold]Generating MCP tools with LLM ({llm.get_or_create_config().model})...[/bold]")
     tools, _base_url = asyncio.run(build_mcp_tools(bundle, app_name))
 
     write_tools(app_name, tools)
