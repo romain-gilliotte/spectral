@@ -92,6 +92,7 @@ async def test_build_valid_tool() -> None:
         system_context="",
     )
 
+    assert result.tool is not None
     assert result.tool.name == "search_routes"
     assert result.tool.request.method == "POST"
     assert result.tool.request.body is not None
@@ -132,6 +133,7 @@ async def test_build_tool_minimal_params() -> None:
         system_context="",
     )
 
+    assert result.tool is not None
     assert result.tool.name == "search_routes"
     assert result.consumed_trace_ids == ["t_0001"]
 
@@ -167,6 +169,7 @@ async def test_build_tool_with_path_params() -> None:
         system_context="",
     )
 
+    assert result.tool is not None
     assert result.tool.name == "get_user"
     assert "{user_id}" in result.tool.request.path
 

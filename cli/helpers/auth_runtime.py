@@ -30,16 +30,16 @@ def is_token_valid(token: TokenState) -> bool:
     return token.expires_at > time.time()
 
 
-def get_auth_headers(app_name: str) -> dict[str, str]:
+def get_auth(app_name: str) -> TokenState:
     """Auth cascade: valid token -> auto-refresh -> raise AuthError.
 
-    Returns auth headers to inject into HTTP requests.
+    Returns the validated/refreshed ``TokenState``.
     """
     token = load_token(app_name)
 
     # Step 1: Valid token
     if token is not None and is_token_valid(token):
-        return dict(token.headers)
+        return token
 
     # Step 2: Auto-refresh
     if token is not None and token.refresh_token is not None:
@@ -48,8 +48,7 @@ def get_auth_headers(app_name: str) -> dict[str, str]:
             mod = load_auth_module(app_name)
             if hasattr(mod, "refresh_token"):
                 try:
-                    new_token = refresh_auth(app_name, token)
-                    return dict(new_token.headers)
+                    return refresh_auth(app_name, token)
                 except Exception as exc:
                     click.echo(f"Warning: token refresh failed: {exc}", err=True)
 
@@ -151,7 +150,8 @@ def _result_to_token_state(result: dict[str, Any]) -> TokenState:
         expires_at = now + float(expires_in)
 
     return TokenState(
-        headers=result["headers"],
+        headers=result.get("headers", {}),
+        body_params=result.get("body_params", {}),
         refresh_token=result.get("refresh_token"),
         expires_at=expires_at,
         obtained_at=now,

@@ -18,9 +18,13 @@ class IdentifyResponse(BaseModel):
 
 
 class BuildToolResponse(BaseModel):
-    """LLM response for the build tool step."""
+    """LLM response for the build tool step.
 
-    tool: ToolDefinition
+    ``tool`` is ``None`` when the LLM decides the trace is not useful after
+    investigation (e.g. auth-only endpoint, config fetch, etc.).
+    """
+
+    tool: ToolDefinition | None = None
     consumed_trace_ids: list[str]
 
 

@@ -9,7 +9,7 @@ import click
 
 from cli.commands.mcp.request import build_request
 from cli.formats.mcp_tool import ToolDefinition
-from cli.helpers.auth_runtime import AuthError, get_auth_headers
+from cli.helpers.auth_runtime import AuthError, get_auth
 from cli.helpers.storage import list_apps, list_tools, load_app_meta
 
 # Registry: MCP tool name -> (app_name, ToolDefinition)
@@ -51,9 +51,12 @@ async def _handle_call(
 
     # Auth cascade
     auth_headers: dict[str, str] = {}
+    auth_body_params: dict[str, Any] = {}
     if tool.requires_auth:
         try:
-            auth_headers = get_auth_headers(app_name)
+            token = get_auth(app_name)
+            auth_headers = dict(token.headers)
+            auth_body_params = dict(token.body_params)
         except AuthError:
             return json.dumps(
                 {
@@ -65,7 +68,9 @@ async def _handle_call(
                 }
             )
 
-    method, url, headers, body = build_request(tool, base_url, arguments, auth_headers)
+    method, url, headers, body = build_request(
+        tool, base_url, arguments, auth_headers, auth_body_params
+    )
 
     try:
         resp = requests.request(

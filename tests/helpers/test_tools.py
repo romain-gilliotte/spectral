@@ -48,8 +48,8 @@ class TestDecodeBase64:
         assert "00010203" in result
 
     def test_invalid_input(self):
-        with pytest.raises(ValueError, match="Cannot base64-decode"):
-            execute_decode_base64("!!!not-base64!!!")
+        result = execute_decode_base64("!!!not-base64!!!")
+        assert "Cannot base64-decode" in result
 
 
 class TestDecodeUrl:
@@ -87,8 +87,26 @@ class TestDecodeJwt:
         assert decoded["payload"]["sub"] == "1234"
 
     def test_invalid_jwt(self):
-        with pytest.raises(ValueError, match="expected at least 2"):
-            execute_decode_jwt("not-a-jwt")
+        result = execute_decode_jwt("not-a-jwt")
+        assert "expected at least 2" in result
+
+    def test_non_json_payload(self):
+        """JWT-shaped token where a segment is valid base64 but not JSON."""
+        header = (
+            base64.urlsafe_b64encode(
+                json.dumps({"alg": "HS256"}).encode()
+            )
+            .decode()
+            .rstrip("=")
+        )
+        # Not valid JSON
+        bad_payload = base64.urlsafe_b64encode(b"not-json-{foo").decode().rstrip("=")
+        token = f"{header}.{bad_payload}.sig"
+
+        result = execute_decode_jwt(token)
+        decoded = json.loads(result)
+        assert decoded["header"]["alg"] == "HS256"
+        assert isinstance(decoded["payload"], str)
 
 
 # --- Conversation tool-use tests (async, with FunctionModel) ---

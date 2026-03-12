@@ -27,7 +27,7 @@ def decode_base64(value: str) -> str:
         except Exception:
             pass
     if raw is None:
-        raise ValueError(f"Cannot base64-decode: {value[:80]}")
+        return f"Cannot base64-decode: {value[:80]}"
     try:
         return raw.decode("utf-8")
     except UnicodeDecodeError:

@@ -30,7 +30,7 @@ _spectral() {
                 logout|refresh)
                     [[ "$cur" == -* ]] && COMPREPLY=($(compgen -W "--help" -- "$cur")) || _spectral_apps ;;
                 set)
-                    [[ "$cur" == -* ]] && COMPREPLY=($(compgen -W "-H --header -c --cookie --help" -- "$cur")) || _spectral_apps ;;
+                    [[ "$cur" == -* ]] && COMPREPLY=($(compgen -W "-H --header -c --cookie -b --body-param --help" -- "$cur")) || _spectral_apps ;;
             esac ;;
         capture)
             if [[ $cword -eq 2 ]]; then

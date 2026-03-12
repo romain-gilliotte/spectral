@@ -181,6 +181,50 @@ class TestCallTool:
         assert headers["Authorization"] == "Bearer tok123"
 
     @patch("requests.request")
+    async def test_call_tool_with_auth_body_params(
+        self,
+        mock_request: MagicMock,
+        monkeypatch: pytest.MonkeyPatch,
+        tmp_path: pytest.TempPathFactory,
+    ) -> None:
+        import time
+
+        from cli.formats.mcp_tool import TokenState
+        from cli.helpers.storage import (
+            ensure_app,
+            update_app_meta,
+            write_token,
+            write_tools,
+        )
+
+        monkeypatch.setenv("SPECTRAL_HOME", str(tmp_path))
+        ensure_app("testapp")
+        write_tools("testapp", [_make_tool("search")])
+        update_app_meta("testapp", base_url="https://api.example.com")
+
+        write_token("testapp", TokenState(
+            headers={},
+            body_params={"userToken": "tok123", "userId": "u1"},
+            obtained_at=time.time(),
+            expires_at=time.time() + 3600,
+        ))
+
+        mock_resp = MagicMock()
+        mock_resp.status_code = 200
+        mock_resp.headers = {}
+        mock_resp.text = '{"ok": true}'
+        mock_request.return_value = mock_resp
+
+        tool = _make_tool("search", requires_auth=True)
+        await _handle_call("testapp", tool, {"q": "test"})
+
+        call_kwargs = mock_request.call_args
+        body = call_kwargs.kwargs["json"]
+        assert body["userToken"] == "tok123"
+        assert body["userId"] == "u1"
+        assert body["query"] == "test"
+
+    @patch("requests.request")
     async def test_call_tool_http_error(
         self,
         mock_request: MagicMock,

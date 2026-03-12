@@ -142,6 +142,14 @@ class TestQueryTraces:
         )
         assert "Invalid jq expression" in result
 
+    def test_runtime_error(self) -> None:
+        traces = _sample_traces()
+        result = execute_query_traces(
+            '[.[] | select(.status | contains("text"))]',
+            traces,
+        )
+        assert "jq runtime error" in result
+
     def test_output_too_large(self) -> None:
         # Create traces with large response bodies that will exceed the limit
         traces = [

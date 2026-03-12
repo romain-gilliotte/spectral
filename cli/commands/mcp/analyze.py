@@ -77,8 +77,6 @@ async def build_mcp_tools(bundle: CaptureBundle, app_name: str) -> tuple[list[To
             existing_tools=tools,
             system_context=system_context,
         )
-        tools.append(build_result.tool)
-
         # Remove consumed traces
         consumed = set(build_result.consumed_trace_ids)
         before_count = len(remaining_bundle.traces)
@@ -86,11 +84,19 @@ async def build_mcp_tools(bundle: CaptureBundle, app_name: str) -> tuple[list[To
             lambda t: t.meta.id not in consumed
         )
         removed = before_count - len(remaining_bundle.traces)
-        console.print(
-            f"      \u2192 {build_result.tool.name}: {build_result.tool.request.method} "
-            f"{build_result.tool.request.path} "
-            f"(removed {removed} traces, {len(remaining_bundle.traces)} remaining)"
-        )
+
+        if build_result.tool is not None:
+            tools.append(build_result.tool)
+            console.print(
+                f"      \u2192 {build_result.tool.name}: {build_result.tool.request.method} "
+                f"{build_result.tool.request.path} "
+                f"(removed {removed} traces, {len(remaining_bundle.traces)} remaining)"
+            )
+        else:
+            console.print(
+                f"      \u2192 skipped after investigation "
+                f"(removed {removed} traces, {len(remaining_bundle.traces)} remaining)"
+            )
 
     console.print(f"  Extracted {len(tools)} tool(s).")
 

@@ -20,7 +20,9 @@ When a tool is called, the MCP server checks whether the tool requires authentic
 
 1. Loads the stored token from `token.json` in the app's managed storage directory.
 2. If the token has expired and a refresh function is available (from a generated auth script), it auto-refreshes before making the request.
-3. Injects the token's headers into the outgoing HTTP request.
+3. Injects the token's headers into the outgoing HTTP request, and merges body params into the request body.
+
+Some APIs (Firebase-based apps, POST-based APIs) pass credentials in the request body instead of HTTP headers. Spectral supports both: `token.json` stores headers for header-based auth and body params for body-based auth. Both are injected transparently at runtime.
 
 If no valid token is available and refresh fails, the server returns an error instructing the user to run `spectral auth login`.
 
@@ -28,7 +30,7 @@ This means AI agents never need to handle authentication themselves — it happe
 
 ## Token lifecycle
 
-Tokens are stored in `token.json` within the app's managed storage directory (`~/.local/share/spectral/apps/<app>/token.json`). The file contains headers to inject, an optional refresh token, and an optional expiry timestamp.
+Tokens are stored in `token.json` within the app's managed storage directory (`~/.local/share/spectral/apps/<app>/token.json`). The file contains headers to inject, optional body params to merge into request bodies, an optional refresh token, and an optional expiry timestamp.
 
 | Action | What happens |
 |--------|-------------|

@@ -183,6 +183,46 @@ class TestBuildRequest:
         assert "username=alice" in body
         assert "grant_type=password" in body
 
+    def test_auth_body_params_merged_into_body(self) -> None:
+        tool = self._make_tool(
+            request=ToolRequest(
+                method="POST",
+                path="/api/action",
+                body={"query": {"$param": "q"}},
+            )
+        )
+        method, url, headers, body = build_request(
+            tool,
+            "https://api.example.com",
+            {"q": "hello"},
+            auth_body_params={"userToken": "tok", "userId": "u1"},
+        )
+        assert body == {"query": "hello", "userToken": "tok", "userId": "u1"}
+
+    def test_auth_body_params_creates_body_when_none(self) -> None:
+        tool = self._make_tool(
+            request=ToolRequest(method="GET", path="/api/data")
+        )
+        method, url, headers, body = build_request(
+            tool,
+            "https://api.example.com",
+            {},
+            auth_body_params={"userToken": "tok"},
+        )
+        assert body == {"userToken": "tok"}
+
+    def test_auth_body_params_empty_dict_no_effect(self) -> None:
+        tool = self._make_tool(
+            request=ToolRequest(method="GET", path="/api/data")
+        )
+        method, url, headers, body = build_request(
+            tool,
+            "https://api.example.com",
+            {},
+            auth_body_params={},
+        )
+        assert body is None
+
 
 class TestResolveValueMissingOptional:
     def test_missing_param_returns_omit(self) -> None:

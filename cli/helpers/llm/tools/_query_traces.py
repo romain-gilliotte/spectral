@@ -57,7 +57,10 @@ def execute(expression: str, traces: list[Trace]) -> str:
     except ValueError as exc:
         return f"Invalid jq expression: {exc}"
 
-    results: list[Any] = compiled.input(records).all()  # pyright: ignore[reportUnknownMemberType, reportUnknownVariableType]
+    try:
+        results: list[Any] = compiled.input(records).all()  # pyright: ignore[reportUnknownMemberType, reportUnknownVariableType]
+    except ValueError as exc:
+        return f"jq runtime error: {exc}. Try a different expression."
     output = minified(results)
 
     if len(output) > _QUERY_TRACES_MAX_OUTPUT:

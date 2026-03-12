@@ -51,6 +51,7 @@ _spectral() {
                         _arguments \
                             '(-H --header)'{-H,--header}'[Header as Name: Value]' \
                             '(-c --cookie)'{-c,--cookie}'[Cookie as name=value]' \
+                            '(-b --body-param)'{-b,--body-param}'[Body param as key=value]' \
                             '--help[Show help]' \
                             '*:app name:_spectral_apps' && ret=0 ;;
                 esac

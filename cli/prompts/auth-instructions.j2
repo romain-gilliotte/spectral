@@ -25,6 +25,7 @@ These functions are loaded dynamically by spectral. Helper functions are injecte
 - Must perform the FULL authentication flow (all steps: request OTP, then verify, etc.)
 - Returns a dict with:
   - "headers": dict of HTTP headers to inject (e.g., {"Authorization": "Bearer ey..."})
+  - "body_params": optional, dict of fields to merge into the body of every authenticated request (e.g., {"userToken": "...", "userId": "..."}). Use this when the API passes credentials in the POST body instead of HTTP headers (Firebase auth, POST-based APIs)
   - "refresh_token": optional, for later use with refresh_token()
   - "expires_in": optional, token lifetime in seconds
 

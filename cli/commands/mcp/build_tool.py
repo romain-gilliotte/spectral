@@ -68,11 +68,13 @@ async def build_tool(
     )
     result = await conv.ask_json(prompt, BuildToolResponse)
 
-    _validate_tool_result(result)
+    if result.tool is not None:
+        _validate_tool_result(result)
     return result
 
 
 def _validate_tool_result(output: BuildToolResponse) -> None:
+    assert output.tool is not None
     tool = output.tool
     # Validate path params match parameters
     path_params = set(re.findall(r"\{(\w+)\}", tool.request.path))

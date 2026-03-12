@@ -179,10 +179,10 @@ Loads `token.json`, calls `refresh_token()` from the auth script, and updates `t
 
 ## auth set
 
-Manually set auth headers or cookies for an app.
+Manually set auth headers, cookies, or body params for an app.
 
 ```
-spectral auth set <app_name> [-H HEADER ...] [-c COOKIE ...]
+spectral auth set <app_name> [-H HEADER ...] [-c COOKIE ...] [-b BODY_PARAM ...]
 ```
 
 | Argument / Option | Required | Default | Description |
@@ -190,10 +190,13 @@ spectral auth set <app_name> [-H HEADER ...] [-c COOKIE ...]
 | `app_name` | Yes | — | Name of the app in managed storage |
 | `-H, --header` | No | — | Header as `"Name: Value"` (repeatable) |
 | `-c, --cookie` | No | — | Cookie as `"name=value"` (repeatable) |
+| `-b, --body-param` | No | — | Body param as `"key=value"` (repeatable) — merged into every authenticated request body |
 
-Fallback when the generated auth script does not work. Pass headers and/or cookies directly to store in `token.json`. If neither `--header` nor `--cookie` is given, prompts for a token interactively and stores it as `Authorization: Bearer <token>`.
+Fallback when the generated auth script does not work. Pass headers, cookies, and/or body params directly to store in `token.json`. If none of `--header`, `--cookie`, or `--body-param` is given, prompts for a token interactively and stores it as `Authorization: Bearer <token>`.
 
 Cookies are joined into a single `Cookie` header (e.g., `-c "a=1" -c "b=2"` becomes `Cookie: a=1; b=2`).
+
+Body params are for APIs that pass credentials in the request body (Firebase auth, POST-based APIs) instead of HTTP headers.
 
 ---
 

@@ -40,7 +40,7 @@ The tool definition must be a JSON object with these fields:
 
 - Remove the base URL prefix from the path (the server will prepend it)
 - Include only parameters the LLM should provide — omit fixed API version headers, client IDs, etc.
-- Do NOT include authentication headers (Authorization, Cookie, x-authorization, etc.) in the request template. Auth is injected separately at runtime. The `headers` field only supports literal string values, not `$param` references.
+- Spectral handles authentication injection at runtime — both in headers and in the request body. Do NOT include any authentication-related field in the tool definition: not in `parameters`, not in `request.headers`, not in `request.body`. This includes tokens (userToken, sessionId, authToken, apiKey, idToken…) AND identity fields derived from the auth session (userId, localId, user_id…). These fields are injected automatically by Spectral and must not appear anywhere in the tool.
 - Give each parameter a clear description so the LLM knows what to provide
 - Mark required parameters in the JSON Schema `required` array
 

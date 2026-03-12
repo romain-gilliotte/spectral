@@ -28,7 +28,21 @@ Multiple headers and cookies can be combined:
 spectral auth set myapp -H "Authorization: Bearer eyJ..." -c "csrf=xyz"
 ```
 
-If neither `--header` nor `--cookie` is given, the command prompts for a token interactively and stores it as `Authorization: Bearer <token>`.
+## Body-based authentication
+
+Some APIs (Firebase-based apps, POST-based APIs) pass credentials in the request body instead of HTTP headers. Use `-b` / `--body-param` to inject key-value pairs into every authenticated request body:
+
+```bash
+spectral auth set myapp -b "userToken=eyJ..." -b "userId=abc123"
+```
+
+Headers and body params can be combined when both are needed:
+
+```bash
+spectral auth set myapp -H "X-Api-Key: key123" -b "userToken=eyJ..."
+```
+
+If none of `--header`, `--cookie`, or `--body-param` is given, the command prompts for a token interactively and stores it as `Authorization: Bearer <token>`.
 
 ## Clearing credentials
 

@@ -32,6 +32,7 @@ class TokenState(BaseModel):
     """Persisted authentication state (token.json)."""
 
     headers: dict[str, str]
+    body_params: dict[str, Any] = {}
     refresh_token: str | None = None
     expires_at: float | None = None
     obtained_at: float

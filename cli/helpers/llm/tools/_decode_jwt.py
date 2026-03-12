@@ -19,12 +19,19 @@ def decode_jwt(token: str) -> str:
     """
     parts = token.split(".")
     if len(parts) < 2:
-        raise ValueError("Invalid JWT: expected at least 2 dot-separated parts")
+        return "Invalid JWT: expected at least 2 dot-separated parts"
     decoded: dict[str, Any] = {}
     for label, part in zip(("header", "payload"), parts[:2]):
         padded = part + "=" * (-len(part) % 4)
-        raw = base64.urlsafe_b64decode(padded)
-        decoded[label] = json.loads(raw)
+        try:
+            raw = base64.urlsafe_b64decode(padded)
+        except Exception:
+            decoded[label] = f"<base64 decode error for {label}>"
+            continue
+        try:
+            decoded[label] = json.loads(raw)
+        except json.JSONDecodeError:
+            decoded[label] = raw.decode("utf-8", errors="replace")
     return minified(decoded)
 
 

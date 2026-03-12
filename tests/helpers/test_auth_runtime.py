@@ -1,4 +1,5 @@
 """Tests for auth runtime (token validation, acquire, refresh)."""
+# pyright: reportPrivateUsage=false
 
 from __future__ import annotations
 
@@ -10,8 +11,9 @@ import pytest
 from cli.formats.mcp_tool import TokenState
 from cli.helpers.auth_runtime import (
     AuthError,
+    _result_to_token_state,
     acquire_auth,
-    get_auth_headers,
+    get_auth,
     is_token_valid,
     load_auth_module,
     refresh_auth,
@@ -41,7 +43,7 @@ class TestIsTokenValid:
         assert is_token_valid(token) is False
 
 
-class TestGetAuthHeaders:
+class TestGetAuth:
     def test_valid_token(self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
         monkeypatch.setenv("SPECTRAL_HOME", str(tmp_path))
         ensure_app("myapp")
@@ -53,14 +55,29 @@ class TestGetAuthHeaders:
                 expires_at=time.time() + 3600,
             ),
         )
-        headers = get_auth_headers("myapp")
-        assert headers == {"Authorization": "Bearer tok123"}
+        token = get_auth("myapp")
+        assert token.headers == {"Authorization": "Bearer tok123"}
+
+    def test_valid_token_with_body_params(self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+        monkeypatch.setenv("SPECTRAL_HOME", str(tmp_path))
+        ensure_app("myapp")
+        write_token(
+            "myapp",
+            TokenState(
+                headers={},
+                body_params={"userToken": "abc", "userId": "u1"},
+                obtained_at=time.time(),
+                expires_at=time.time() + 3600,
+            ),
+        )
+        token = get_auth("myapp")
+        assert token.body_params == {"userToken": "abc", "userId": "u1"}
 
     def test_no_token_raises(self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
         monkeypatch.setenv("SPECTRAL_HOME", str(tmp_path))
         ensure_app("myapp")
         with pytest.raises(AuthError, match="No valid token"):
-            get_auth_headers("myapp")
+            get_auth("myapp")
 
     def test_expired_no_refresh_raises(self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
         monkeypatch.setenv("SPECTRAL_HOME", str(tmp_path))
@@ -74,7 +91,7 @@ class TestGetAuthHeaders:
             ),
         )
         with pytest.raises(AuthError, match="No valid token"):
-            get_auth_headers("myapp")
+            get_auth("myapp")
 
     def test_expired_with_auto_refresh(self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
         monkeypatch.setenv("SPECTRAL_HOME", str(tmp_path))
@@ -98,8 +115,8 @@ class TestGetAuthHeaders:
             '    return {"headers": {"Authorization": "Bearer refreshed"}, "expires_in": 3600}\n'
         )
 
-        headers = get_auth_headers("myapp")
-        assert headers == {"Authorization": "Bearer refreshed"}
+        token = get_auth("myapp")
+        assert token.headers == {"Authorization": "Bearer refreshed"}
 
 
 class TestLoadAuthModule:
@@ -143,6 +160,24 @@ class TestAcquireAuth:
         script.write_text("# no acquire_token function\n")
         with pytest.raises(AuthError, match="does not define acquire_token"):
             acquire_auth("myapp")
+
+
+class TestResultToTokenState:
+    def test_body_params_from_result(self) -> None:
+        result = {
+            "headers": {"X-Custom": "val"},
+            "body_params": {"userToken": "tok", "userId": "u1"},
+            "expires_in": 3600,
+        }
+        token = _result_to_token_state(result)
+        assert token.headers == {"X-Custom": "val"}
+        assert token.body_params == {"userToken": "tok", "userId": "u1"}
+        assert token.expires_at is not None
+
+    def test_missing_body_params_defaults_empty(self) -> None:
+        result = {"headers": {"Authorization": "Bearer x"}}
+        token = _result_to_token_state(result)
+        assert token.body_params == {}
 
 
 class TestRefreshAuth:

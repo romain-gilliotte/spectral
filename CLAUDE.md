@@ -84,6 +84,7 @@ spectral graphql analyze <app> -o <base>            # → <base>.graphql (SDL sc
 spectral auth analyze <app>                         # detect auth, generate script
 spectral auth set <app> -H "Authorization: ..."     # manually set auth headers
 spectral auth set <app> -c "session=abc"            # set cookies
+spectral auth set <app> -b "userToken=eyJ..."       # set body params (POST-based auth)
 spectral auth login/logout/refresh <app>            # interactive auth operations
 
 # Configuration
@@ -126,7 +127,7 @@ config.json               # Config (api_key, model)
 apps/<name>/
 ├── app.json              # AppMeta (name, display_name, base_url, timestamps)
 ├── auth_acquire.py       # Generated auth script (acquire_token, refresh_token)
-├── token.json            # TokenState (headers, refresh_token, expires_at)
+├── token.json            # TokenState (headers, body_params, refresh_token, expires_at)
 ├── tools/<tool>.json     # ToolDefinition (name, description, parameters, request)
 └── captures/<timestamp>_<source>_<id-prefix>/
     ├── manifest.json, traces/, ws/, contexts/, timeline.json

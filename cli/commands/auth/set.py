@@ -11,8 +11,19 @@ from cli.helpers.console import console
 @click.argument("app_name")
 @click.option("--header", "-H", multiple=True, help='Header as "Name: Value" (repeatable)')
 @click.option("--cookie", "-c", multiple=True, help='Cookie as "name=value" (repeatable)')
-def set_token(app_name: str, header: tuple[str, ...], cookie: tuple[str, ...]) -> None:
-    """Manually set auth headers/cookies for an app.
+@click.option(
+    "--body-param",
+    "-b",
+    multiple=True,
+    help='Body param as "key=value" (repeatable)',
+)
+def set_token(
+    app_name: str,
+    header: tuple[str, ...],
+    cookie: tuple[str, ...],
+    body_param: tuple[str, ...],
+) -> None:
+    """Manually set auth headers/cookies/body params for an app.
 
     Fallback when the generated auth script doesn't work.
     """
@@ -36,12 +47,23 @@ def set_token(app_name: str, header: tuple[str, ...], cookie: tuple[str, ...]) -
     if cookie:
         headers["Cookie"] = "; ".join(cookie)
 
-    if not headers:
+    body_params: dict[str, str] = {}
+    for bp in body_param:
+        if "=" not in bp:
+            raise click.ClickException(
+                f"Invalid body param format: {bp!r}. Expected 'key=value'."
+            )
+        key, value = bp.split("=", 1)
+        body_params[key] = value
+
+    if not headers and not body_params:
         token = click.prompt("Token")
         if token.startswith("Bearer "):
             token = token[len("Bearer "):]
         headers["Authorization"] = f"Bearer {token}"
 
-    token_state = TokenState(headers=headers, obtained_at=time.time())
+    token_state = TokenState(
+        headers=headers, body_params=body_params, obtained_at=time.time()
+    )
     write_token(app_name, token_state)
     console.print("[green]Token saved.[/green]")

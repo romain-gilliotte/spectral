@@ -86,6 +86,7 @@ def build_request(
     base_url: str,
     params: dict[str, Any],
     auth_headers: dict[str, str] | None = None,
+    auth_body_params: dict[str, Any] | None = None,
 ) -> tuple[str, str, dict[str, str], Any]:
     """Build a complete HTTP request from a tool definition.
 
@@ -117,5 +118,13 @@ def build_request(
         else:
             body = resolved_body
             headers.setdefault("Content-Type", "application/json")
+
+    # Merge auth body params
+    if auth_body_params:
+        if body is None:
+            body = dict(auth_body_params)
+        else:
+            body_dict: dict[str, Any] = body
+            body_dict.update(auth_body_params)
 
     return (req.method, url, headers, body)
