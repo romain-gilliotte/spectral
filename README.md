@@ -10,10 +10,11 @@
   <a href="#install">Install</a> ·
   <a href="#why-spectral">Why Spectral</a> ·
   <a href="#how-it-works">How it works</a> ·
-  <a href="https://romain-gilliotte.github.io/spectral/"><strong>Documentation</strong></a>
+  <a href="https://www.getspectral.sh/getting-started/"><strong>Documentation</strong></a> ·
+  <a href="https://www.getspectral.sh/"><strong>Website</strong></a>
 </p>
 
-Browse any website or mobile app normally. Spectral observes what you do, figures out the meaning behind each API call, and builds MCP tools that let AI agents use the same app.
+AI agents shouldn't need a browser. Mobile and web apps talk to APIs all day — Spectral gives that same access to your AI agents.
 
 <p align="center">
   <img src="https://raw.githubusercontent.com/romain-gilliotte/spectral/main/assets/demo.gif" width="750" alt="Spectral demo — analyze traffic, then Claude uses the API">
@@ -40,7 +41,7 @@ Most apps — web, mobile, desktop — sit on top of undocumented HTTP APIs. Spe
 The install script sets up Spectral, installs shell completions, and ensures your PATH is configured:
 
 ```bash
-curl -LsSf https://raw.githubusercontent.com/romain-gilliotte/spectral/main/install.sh | bash
+curl -LsSf https://getspectral.sh/install.sh | bash
 ```
 
 If you prefer managing packages yourself, you can install directly with pip or [uv](https://docs.astral.sh/uv/) — but you will need to set up shell completions manually:
@@ -53,7 +54,7 @@ uv tool install spectral-mcp
 
 You also need an [Anthropic API key](https://console.anthropic.com/) — Spectral will prompt for it on first analysis.
 
-See the [documentation](https://romain-gilliotte.github.io/spectral/) for setup guides, capture instructions, and CLI reference.
+See the [documentation](https://www.getspectral.sh/getting-started/) for setup guides, capture instructions, and CLI reference.
 
 ## How it works
 
