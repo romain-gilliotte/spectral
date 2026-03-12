@@ -1,6 +1,36 @@
 # CHANGELOG
 
 
+## v0.3.1 (2026-03-12)
+
+### Bug Fixes
+
+- **ci**: Detect no-op releases by comparing tags before and after
+  ([`0098a78`](https://github.com/romain-gilliotte/spectral/commit/0098a783a79e0e57eb619bf18b3cb5e33c29c177))
+
+semantic-release --print-tag outputs the current version even when no release is needed, causing the
+  publish job to re-upload an existing version to PyPI (400 Bad Request). Compare git tags
+  before/after to reliably detect whether a new release was actually created.
+
+Co-Authored-By: Claude Opus 4.6 <noreply@anthropic.com>
+
+### Chores
+
+- Remove GitHub Pages docs, mkdocs config, and demo assets
+  ([`73294dd`](https://github.com/romain-gilliotte/spectral/commit/73294dd20d706562f18c5f487c5d2f865180baf9))
+
+Documentation is now hosted on https://www.getspectral.sh/
+
+Co-Authored-By: Claude Opus 4.6 <noreply@anthropic.com>
+
+### Documentation
+
+- Update README with landing page links and tagline
+  ([`6a56475`](https://github.com/romain-gilliotte/spectral/commit/6a5647527a4b4a62e99e6e9d58ee9914f63c137a))
+
+Co-Authored-By: Claude Opus 4.6 <noreply@anthropic.com>
+
+
 ## v0.3.0 (2026-03-12)
 
 ### Bug Fixes
