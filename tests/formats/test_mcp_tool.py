@@ -27,6 +27,55 @@ class TestToolRequest:
         assert loaded.body == {"origin": {"$param": "origin"}, "currency": "EUR"}
 
 
+class TestValidateParamRefs:
+    def test_unused_parameter_rejected(self) -> None:
+        import pytest
+
+        with pytest.raises(ValueError, match="Declared parameters not referenced"):
+            ToolDefinition(
+                name="broken",
+                description="Broken tool",
+                parameters={
+                    "type": "object",
+                    "properties": {"category": {"type": "string"}},
+                },
+                request=ToolRequest(method="GET", url="/search"),
+            )
+
+    def test_all_params_referenced_in_body(self) -> None:
+        ToolDefinition(
+            name="ok",
+            description="OK tool",
+            parameters={
+                "type": "object",
+                "properties": {"q": {"type": "string"}},
+            },
+            request=ToolRequest(method="POST", url="/search", body={"query": {"$param": "q"}}),
+        )
+
+    def test_all_params_referenced_in_url(self) -> None:
+        ToolDefinition(
+            name="ok",
+            description="OK tool",
+            parameters={
+                "type": "object",
+                "properties": {"user_id": {"type": "string"}},
+            },
+            request=ToolRequest(method="GET", url="/users/{user_id}"),
+        )
+
+    def test_all_params_referenced_in_query(self) -> None:
+        ToolDefinition(
+            name="ok",
+            description="OK tool",
+            parameters={
+                "type": "object",
+                "properties": {"q": {"type": "string"}},
+            },
+            request=ToolRequest(method="GET", url="/search", query={"q": {"$param": "q"}}),
+        )
+
+
 class TestToolDefinition:
     def test_roundtrip(self) -> None:
         tool = ToolDefinition(

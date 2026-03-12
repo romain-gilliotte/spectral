@@ -49,6 +49,12 @@ class ToolDefinition(BaseModel):
             raise ValueError(
                 f"$param references not in parameters: {missing}",
             )
+
+        unused = properties - all_refs
+        if unused:
+            raise ValueError(
+                f"Declared parameters not referenced in request: {unused}",
+            )
         return self
 
 
