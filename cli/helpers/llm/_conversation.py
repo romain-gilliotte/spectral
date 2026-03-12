@@ -78,6 +78,7 @@ class Conversation:
     async def _run(self, prompt: str, *, output_type: Any) -> Any:
         """Run the agent and record results."""
         from pydantic_ai import Agent
+        from pydantic_ai.agent import CallToolsNode
         from pydantic_ai.models.anthropic import AnthropicModel, AnthropicModelSettings
         from pydantic_ai.usage import UsageLimits
 
@@ -105,14 +106,23 @@ class Conversation:
             model_settings=settings,
         )
 
-        result = await agent.run(
+        flushed_len = len(self._messages)
+
+        async with agent.iter(
             prompt,
             deps=self._deps,
             message_history=self._messages,
             usage_limits=UsageLimits(request_limit=self._max_iterations),
-        )
+        ) as agent_run:
+            async for node in agent_run:
+                if isinstance(node, CallToolsNode):
+                    messages = agent_run.all_messages()
+                    self._dbg.record_messages(messages, flushed_len)
+                    flushed_len = len(messages)
 
-        self._dbg.record_messages(result.all_messages(), len(self._messages))
+        result = agent_run.result
+        assert result is not None
+        self._dbg.record_messages(result.all_messages(), flushed_len)
         self._messages = result.all_messages()
         _record_usage(result.usage(), self._label, self._model)
 
