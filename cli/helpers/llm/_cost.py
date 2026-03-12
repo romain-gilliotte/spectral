@@ -20,7 +20,7 @@ _MODEL_PRICING: dict[str, tuple[float, float]] = {
 }
 
 
-def estimate_cost(
+def _estimate_cost(
     model: str,
     input_tokens: int,
     output_tokens: int,
@@ -55,7 +55,7 @@ def get_cache_usage() -> tuple[int, int]:
     return (_total_cache_read_tokens, _total_cache_creation_tokens)
 
 
-def record_usage(usage: Any, label: str, model: str) -> None:
+def _record_usage(usage: Any, label: str, model: str) -> None:  # pyright: ignore[reportUnusedFunction]
     """Accumulate token counts from a PydanticAI ``RunUsage`` and print a dim summary."""
     global _total_input_tokens, _total_output_tokens
     global _total_cache_read_tokens, _total_cache_creation_tokens, _total_cost
@@ -73,7 +73,7 @@ def record_usage(usage: Any, label: str, model: str) -> None:
     _total_cache_read_tokens += cache_read
     _total_cache_creation_tokens += cache_create
 
-    call_cost = estimate_cost(model, inp, out, cache_read, cache_create)
+    call_cost = _estimate_cost(model, inp, out, cache_read, cache_create)
     if call_cost is not None:
         _total_cost += call_cost
 

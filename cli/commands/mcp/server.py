@@ -95,7 +95,7 @@ async def _handle_call(
     return "\n\n".join(result_parts)
 
 
-def apply_defaults(arguments: dict[str, Any], schema: dict[str, Any]) -> dict[str, Any]:
+def _apply_defaults(arguments: dict[str, Any], schema: dict[str, Any]) -> dict[str, Any]:
     """Insert default values for optional parameters absent from *arguments*."""
     properties = schema.get("properties", {})
     result = dict(arguments)
@@ -105,7 +105,7 @@ def apply_defaults(arguments: dict[str, Any], schema: dict[str, Any]) -> dict[st
     return result
 
 
-def coerce_arguments(
+def _coerce_arguments(
     arguments: dict[str, Any], schema: dict[str, Any]
 ) -> dict[str, Any]:
     """Coerce string arguments to the types declared in the JSON schema.
@@ -132,7 +132,7 @@ def coerce_arguments(
     return result
 
 
-def create_server() -> Any:
+def _create_server() -> Any:
     """Create and configure the MCP server."""
     import jsonschema
     from mcp import types
@@ -157,7 +157,7 @@ def create_server() -> Any:
 
         # Coerce string values to declared schema types, then validate
         schema = tool.parameters
-        args = coerce_arguments(args, schema)
+        args = _coerce_arguments(args, schema)
         try:
             jsonschema.validate(args, schema)
         except jsonschema.ValidationError as exc:
@@ -165,7 +165,7 @@ def create_server() -> Any:
                 types.TextContent(type="text", text=f"Invalid arguments: {exc.message}")
             ]
 
-        args = apply_defaults(args, schema)
+        args = _apply_defaults(args, schema)
         result = await _handle_call(app_name, tool, args)
         return [types.TextContent(type="text", text=result)]
 
@@ -177,7 +177,7 @@ async def run_server() -> None:
     """Start the MCP server on stdio."""
     from mcp.server.stdio import stdio_server
 
-    server = create_server()
+    server = _create_server()
     options = server.create_initialization_options()
     async with stdio_server() as (read_stream, write_stream):
         await server.run(read_stream, write_stream, options)

@@ -11,11 +11,11 @@ from mcp import types as mcp_types
 import pytest
 
 from cli.commands.mcp.server import (
+    _apply_defaults,
     _build_registry,
+    _create_server,
     _handle_call,
     _registry,
-    apply_defaults,
-    create_server,
 )
 from cli.formats.mcp_tool import ToolDefinition, ToolRequest
 
@@ -82,7 +82,7 @@ class TestListTools:
         ensure_app("testapp")
         write_tools("testapp", [_make_tool("search")])
 
-        server = create_server()
+        server = _create_server()
         handler = server.request_handlers[mcp_types.ListToolsRequest]
         req = mcp_types.ListToolsRequest(method="tools/list")
         result = await handler(req)
@@ -257,7 +257,7 @@ class TestServerCallTool:
     ) -> None:
         monkeypatch.setenv("SPECTRAL_HOME", str(tmp_path))
 
-        server = create_server()
+        server = _create_server()
         handler = server.request_handlers[mcp_types.CallToolRequest]
         req = mcp_types.CallToolRequest(
             method="tools/call",
@@ -282,7 +282,7 @@ class TestApplyDefaults:
             },
             "required": [],
         }
-        result = apply_defaults({}, schema)
+        result = _apply_defaults({}, schema)
         assert result == {"power": "ON", "mode": "HEAT"}
 
     def test_preserves_provided_values(self) -> None:
@@ -293,7 +293,7 @@ class TestApplyDefaults:
             },
             "required": [],
         }
-        result = apply_defaults({"power": "OFF"}, schema)
+        result = _apply_defaults({"power": "OFF"}, schema)
         assert result == {"power": "OFF"}
 
     def test_ignores_properties_without_default(self) -> None:
@@ -305,7 +305,7 @@ class TestApplyDefaults:
             },
             "required": ["name"],
         }
-        result = apply_defaults({"name": "test"}, schema)
+        result = _apply_defaults({"name": "test"}, schema)
         assert result == {"name": "test", "color": "blue"}
         assert "name" in result  # provided value kept
 
@@ -359,7 +359,7 @@ class TestCallToolWithDefaults:
         mock_request.return_value = mock_resp
 
         # Register and call via server handler
-        server = create_server()
+        server = _create_server()
         handler = server.request_handlers[mcp_types.CallToolRequest]
         req = mcp_types.CallToolRequest(
             method="tools/call",

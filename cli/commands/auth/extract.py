@@ -80,7 +80,7 @@ def _extract_headers_by_name(
     return None
 
 
-async def extract_auth_from_traces(
+async def _extract_auth_from_traces(
     bundle: CaptureBundle, app_name: str
 ) -> TokenState | None:
     """Extract auth headers from the most recent traces.
@@ -132,7 +132,7 @@ def extract(app_name: str, debug: bool) -> None:
 
     llm.init_debug(debug=debug)
 
-    token = asyncio.run(extract_auth_from_traces(bundle, app_name))
+    token = asyncio.run(_extract_auth_from_traces(bundle, app_name))
 
     if token is None:
         console.print(

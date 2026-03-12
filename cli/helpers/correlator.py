@@ -55,7 +55,7 @@ def correlate(
     return correlations
 
 
-def find_uncorrelated_traces(
+def _find_uncorrelated_traces(  # pyright: ignore[reportUnusedFunction]
     bundle: CaptureBundle, correlations: list[Correlation]
 ) -> list[Trace]:
     """Find traces that were not correlated with any context."""

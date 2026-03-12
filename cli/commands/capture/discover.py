@@ -34,7 +34,7 @@ class DiscoveryAddon:
             self.domains[host] = self.domains.get(host, 0) + 1
 
 
-def run_discover(port: int) -> dict[str, int]:
+def _run_discover(port: int) -> dict[str, int]:
     """Start a proxy in discovery mode: log domains without MITM.
 
     All TLS connections pass through untouched. The addon records
@@ -64,7 +64,7 @@ def discover(port: int) -> None:
     console.print("  No MITM — logging domains only.")
     click.echo("\n  Listening... press Ctrl+C to stop.\n")
 
-    domains = run_discover(port)
+    domains = _run_discover(port)
 
     if domains:
         console.print(f"\n  Discovered {len(domains)} domain(s):\n")

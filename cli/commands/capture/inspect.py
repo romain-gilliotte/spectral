@@ -18,7 +18,7 @@ def _truncate(s: str, max_len: int) -> str:
     return s[: max_len - 3] + "..."
 
 
-def inspect_summary(bundle: CaptureBundle) -> None:
+def _inspect_summary(bundle: CaptureBundle) -> None:
     """Print a summary of the capture bundle."""
     m = bundle.manifest
     console.print("[bold]Capture Bundle Summary[/bold]")
@@ -141,4 +141,4 @@ def inspect_cmd(app_name: str, trace_id: str | None) -> None:
     if trace_id:
         inspect_trace(bundle, trace_id)
     else:
-        inspect_summary(bundle)
+        _inspect_summary(bundle)

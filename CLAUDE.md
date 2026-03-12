@@ -4,6 +4,7 @@
 
 - **No code samples in documentation.** Documentation files should describe concepts in prose and tables, not paste code. The code lives in the code.
 - **Import convention.** All imports go at the top of the file (standard Python style). Two exceptions: (1) Click command bodies in `cmd.py` files may use lazy imports to keep `spectral --help` fast, and (2) optional dependencies may use a lazy try/except with a user-friendly error. For mutable module-level state (e.g., `_model` in `llm/_client.py`), import the *module* at the top and access the attribute at call time to avoid stale references.
+- **Private function convention.** Every module should clearly separate its public API from internal helpers. Prefix internal functions with `_` (e.g. `_build_timeline_text`, `_resolve_url`). The public API of a module is the set of unprefixed functions and classes — only those should be imported by other packages. Tests may import private functions for unit testing, but production code in other packages should only depend on the public API.
 
 ## Development environment
 

@@ -103,7 +103,7 @@ def _extract_ws_protocols(flow: HTTPFlow) -> list[str]:
     return []
 
 
-def domain_to_regex(pattern: str) -> str:
+def _domain_to_regex(pattern: str) -> str:
     """Convert a user-friendly domain pattern to a regex for mitmproxy.
 
     Handles common patterns:
@@ -142,7 +142,7 @@ def run_mitmproxy(
     loop = asyncio.new_event_loop()
     opts = Options(listen_port=port, mode=["regular"])
     if allow_hosts:
-        regex_hosts = [domain_to_regex(h) for h in allow_hosts]
+        regex_hosts = [_domain_to_regex(h) for h in allow_hosts]
         opts.update(allow_hosts=regex_hosts)  # pyright: ignore[reportUnknownMemberType]
     master = DumpMaster(opts, loop=loop)
     for addon in addons:

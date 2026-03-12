@@ -10,7 +10,7 @@ from pydantic import BaseModel
 from cli.commands.capture.types import CaptureBundle
 from cli.formats.config import DEFAULT_MODEL
 from cli.helpers.llm._client import get_or_create_config, get_test_model
-from cli.helpers.llm._cost import record_usage
+from cli.helpers.llm._cost import _record_usage  # pyright: ignore[reportPrivateUsage]
 from cli.helpers.llm._debug import DebugSession
 from cli.helpers.llm.tools import ToolDeps, make_tools
 
@@ -115,7 +115,7 @@ class Conversation:
 
         self._dbg.record_messages(result.all_messages(), len(self._messages))
         self._messages = result.all_messages()
-        record_usage(result.usage(), self._label, self._model)
+        _record_usage(result.usage(), self._label, self._model)
 
         return result.output
 

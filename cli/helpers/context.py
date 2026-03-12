@@ -19,11 +19,11 @@ def build_shared_context(bundle: CaptureBundle, base_url: str) -> str:
     This is pure data with no task-specific framing, so it can be
     reused as the first system block across different analysis steps.
     """
-    timeline = build_timeline_text(bundle, base_url)
+    timeline = _build_timeline_text(bundle, base_url)
     return f"## Base URL\n{base_url}\n\n## Session timeline\n{timeline}"
 
 
-def build_timeline_text(bundle: CaptureBundle, base_url: str) -> str:
+def _build_timeline_text(bundle: CaptureBundle, base_url: str) -> str:
     """Build a chronological timeline string from the bundle's timeline events."""
     parsed_base = urlparse(base_url)
     base_origin = f"{parsed_base.scheme}://{parsed_base.netloc}"
@@ -46,12 +46,12 @@ def build_timeline_text(bundle: CaptureBundle, base_url: str) -> str:
             trace = trace_index.get(event.ref)
             if trace is None:
                 continue
-            lines.append(trace_timeline_line(trace, base_origin, base_path))
+            lines.append(_trace_timeline_line(trace, base_origin, base_path))
 
     return "\n".join(lines)
 
 
-def trace_timeline_line(
+def _trace_timeline_line(
     trace: Trace, base_origin: str, base_path: str
 ) -> str:
     """Build a chronological timeline line for a trace."""
@@ -70,7 +70,7 @@ def trace_timeline_line(
     body_size = trace.meta.response.body_size or (
         len(trace.response_body) if trace.response_body else 0
     )
-    size_str = format_size(body_size) if body_size else ""
+    size_str = _format_size(body_size) if body_size else ""
 
     extras = " ".join(filter(None, [ct_short, size_str]))
     extras_part = f" ({extras})" if extras else ""
@@ -82,7 +82,7 @@ def trace_timeline_line(
     )
 
 
-def format_size(size: int) -> str:
+def _format_size(size: int) -> str:
     """Format a byte size into a human-readable string."""
     if size >= 1024 * 1024:
         return f"{size / (1024 * 1024):.1f}MB"

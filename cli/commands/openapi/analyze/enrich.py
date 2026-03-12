@@ -6,7 +6,9 @@ import asyncio
 from typing import Any, TypeGuard
 
 from cli.commands.capture.types import Trace
-from cli.commands.openapi.analyze.extraction import match_traces_by_pattern
+from cli.commands.openapi.analyze.extraction import (
+    _match_traces_by_pattern,  # pyright: ignore[reportPrivateUsage]
+)
 from cli.commands.openapi.analyze.types import (
     EndpointEnrichmentResponse,
     EndpointSpec,
@@ -70,7 +72,7 @@ def _build_endpoint_summary(
         path=ep.path,
     )
 
-    ep_traces = match_traces_by_pattern(ep.method, ep.path, all_traces)
+    ep_traces = _match_traces_by_pattern(ep.method, ep.path, all_traces)
 
     ui_triggers: list[dict[str, str]] = []
     for corr in correlations:

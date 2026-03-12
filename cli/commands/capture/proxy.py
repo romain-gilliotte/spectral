@@ -183,7 +183,7 @@ class CaptureAddon:
         )
 
 
-def run_proxy_to_storage(
+def _run_proxy_to_storage(
     port: int,
     app_name: str,
     allow_hosts: list[str] | None = None,
@@ -241,7 +241,7 @@ def proxy_cmd(app_name: str | None, port: int, domains: tuple[str, ...]) -> None
 
     click.echo("\n  Capturing... press Ctrl+C to stop.\n")
 
-    stats, cap_dir = run_proxy_to_storage(port, app_name, allow_hosts=allow_hosts)
+    stats, cap_dir = _run_proxy_to_storage(port, app_name, allow_hosts=allow_hosts)
     console.print()
     console.print(f"[green]Capture stored in {cap_dir}[/green]")
     console.print(

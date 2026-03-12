@@ -265,7 +265,7 @@ class TestInspectCommand:
 
 
 class TestProxyCommand:
-    @patch("cli.commands.capture.proxy.run_proxy_to_storage")
+    @patch("cli.commands.capture.proxy._run_proxy_to_storage")
     def test_proxy_default_intercepts_all(
         self, mock_run: MagicMock, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
     ) -> None:
@@ -283,7 +283,7 @@ class TestProxyCommand:
         _, kwargs = mock_run.call_args
         assert kwargs.get("allow_hosts") is None
 
-    @patch("cli.commands.capture.proxy.run_proxy_to_storage")
+    @patch("cli.commands.capture.proxy._run_proxy_to_storage")
     def test_proxy_with_domains(
         self, mock_run: MagicMock, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
     ) -> None:
@@ -305,7 +305,7 @@ class TestProxyCommand:
 
 
 class TestDiscoverCommand:
-    @patch("cli.commands.capture.discover.run_discover")
+    @patch("cli.commands.capture.discover._run_discover")
     def test_discover_shows_domains(self, mock_discover: MagicMock) -> None:
         mock_discover.return_value = {"api.example.com": 15, "cdn.example.com": 3}
         runner = CliRunner()
@@ -317,7 +317,7 @@ class TestDiscoverCommand:
         assert "Discovered 2 domain(s)" in result.output
         mock_discover.assert_called_once_with(8080)
 
-    @patch("cli.commands.capture.discover.run_discover")
+    @patch("cli.commands.capture.discover._run_discover")
     def test_discover_empty(self, mock_discover: MagicMock) -> None:
         mock_discover.return_value = {}
         runner = CliRunner()
@@ -326,7 +326,7 @@ class TestDiscoverCommand:
         assert result.exit_code == 0
         assert "No domains discovered" in result.output
 
-    @patch("cli.commands.capture.discover.run_discover")
+    @patch("cli.commands.capture.discover._run_discover")
     def test_discover_custom_port(self, mock_discover: MagicMock) -> None:
         mock_discover.return_value = {}
         runner = CliRunner()

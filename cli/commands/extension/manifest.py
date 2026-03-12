@@ -71,31 +71,31 @@ def generate_manifest(extension_id: str, host_path: str) -> dict[str, object]:
     }
 
 
-def wrapper_script_path() -> Path:
+def _wrapper_script_path() -> Path:
     """Return the path for the wrapper shell script."""
     return store_root() / "native_host.sh"
 
 
-def write_wrapper_script(spectral_path: str) -> Path:
+def _write_wrapper_script(spectral_path: str) -> Path:
     """Write a wrapper shell script that invokes ``spectral extension listen``.
 
     Uses the ``spectral`` entry-point script directly (must be an absolute path).
     Returns the script path.
     """
-    script = wrapper_script_path()
+    script = _wrapper_script_path()
     script.parent.mkdir(parents=True, exist_ok=True)
     script.write_text(f"#!/bin/sh\nexec {shlex.quote(spectral_path)} extension listen\n")
     script.chmod(0o755)
     return script
 
 
-def write_wrapper_script_python(python_path: str) -> Path:
+def _write_wrapper_script_python(python_path: str) -> Path:
     """Write a wrapper that invokes ``python -m cli.main extension listen``.
 
     Fallback when ``spectral`` is not on PATH (e.g. running via ``uv run``).
     Returns the script path.
     """
-    script = wrapper_script_path()
+    script = _wrapper_script_path()
     script.parent.mkdir(parents=True, exist_ok=True)
     script.write_text(
         f"#!/bin/sh\nexec {shlex.quote(python_path)} -m cli.main extension listen\n"
@@ -125,10 +125,10 @@ def install(extension_id: str, browser: str | None) -> None:
     spectral_path = shutil.which("spectral")
     if spectral_path:
         # shutil.which returns absolute path — use it directly
-        script = write_wrapper_script(spectral_path)
+        script = _write_wrapper_script(spectral_path)
     else:
         # Fallback: call via the current Python interpreter + module
-        script = write_wrapper_script_python(sys.executable)
+        script = _write_wrapper_script_python(sys.executable)
 
     # Generate and write manifests
     paths = host_manifest_paths(browser)

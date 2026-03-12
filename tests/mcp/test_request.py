@@ -7,22 +7,22 @@ from typing import Any
 
 from cli.commands.mcp.request import (
     _Omit,
+    _resolve_body,
+    _resolve_query,
+    _resolve_url,
     _resolve_value,
     build_request,
-    resolve_body,
-    resolve_query,
-    resolve_url,
 )
 from cli.formats.mcp_tool import ToolDefinition, ToolRequest
 
 
 class TestResolveUrl:
     def test_simple_path(self) -> None:
-        url = resolve_url("https://api.example.com", "/api/status", {})
+        url = _resolve_url("https://api.example.com", "/api/status", {})
         assert url == "https://api.example.com/api/status"
 
     def test_path_params(self) -> None:
-        url = resolve_url(
+        url = _resolve_url(
             "https://api.example.com",
             "/api/users/{user_id}/orders/{order_id}",
             {"user_id": "123", "order_id": "456"},
@@ -30,21 +30,21 @@ class TestResolveUrl:
         assert url == "https://api.example.com/api/users/123/orders/456"
 
     def test_base_url_with_path_prefix(self) -> None:
-        url = resolve_url("https://www.example.com/api/v2", "/users", {})
+        url = _resolve_url("https://www.example.com/api/v2", "/users", {})
         assert url == "https://www.example.com/api/v2/users"
 
     def test_base_url_trailing_slash(self) -> None:
-        url = resolve_url("https://api.example.com/", "/users", {})
+        url = _resolve_url("https://api.example.com/", "/users", {})
         assert url == "https://api.example.com/users"
 
 
 class TestResolveQuery:
     def test_literal_values(self) -> None:
-        result = resolve_query({"format": "json", "limit": "10"}, {})
+        result = _resolve_query({"format": "json", "limit": "10"}, {})
         assert result == {"format": "json", "limit": "10"}
 
     def test_param_markers(self) -> None:
-        result = resolve_query(
+        result = _resolve_query(
             {"q": {"$param": "search_term"}, "limit": "10"},
             {"search_term": "hello"},
         )
@@ -53,21 +53,21 @@ class TestResolveQuery:
 
 class TestResolveBody:
     def test_none_body(self) -> None:
-        assert resolve_body(None, {}) is None
+        assert _resolve_body(None, {}) is None
 
     def test_fixed_values(self) -> None:
-        body = resolve_body({"currency": "EUR", "version": "1"}, {})
+        body = _resolve_body({"currency": "EUR", "version": "1"}, {})
         assert body == {"currency": "EUR", "version": "1"}
 
     def test_param_markers(self) -> None:
-        body = resolve_body(
+        body = _resolve_body(
             {"origin": {"$param": "origin"}, "currency": "EUR"},
             {"origin": "Paris"},
         )
         assert body == {"origin": "Paris", "currency": "EUR"}
 
     def test_nested_body(self) -> None:
-        body = resolve_body(
+        body = _resolve_body(
             {"data": {"name": {"$param": "name"}, "fixed": True}},
             {"name": "Alice"},
         )
@@ -75,14 +75,14 @@ class TestResolveBody:
 
     def test_array_param(self) -> None:
         passengers = [{"count": 1, "type": "adult"}]
-        body = resolve_body(
+        body = _resolve_body(
             {"passengers": {"$param": "passengers"}, "currency": "EUR"},
             {"passengers": passengers},
         )
         assert body == {"passengers": passengers, "currency": "EUR"}
 
     def test_array_with_nested_markers(self) -> None:
-        body = resolve_body(
+        body = _resolve_body(
             {"items": [{"name": {"$param": "item_name"}}, {"name": "fixed"}]},
             {"item_name": "dynamic"},
         )
@@ -201,14 +201,14 @@ class TestResolveValueMissingOptional:
         assert result == 42
 
     def test_resolve_body_omits_missing_optional(self) -> None:
-        body = resolve_body(
+        body = _resolve_body(
             {"required_field": {"$param": "a"}, "optional_field": {"$param": "b"}},
             {"a": "hello"},
         )
         assert body == {"required_field": "hello"}
 
     def test_resolve_query_omits_missing_optional(self) -> None:
-        result = resolve_query(
+        result = _resolve_query(
             {"q": {"$param": "search"}, "page": {"$param": "page"}},
             {"search": "hello"},
         )

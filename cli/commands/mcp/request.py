@@ -12,7 +12,7 @@ from urllib.parse import urlencode, urljoin
 from cli.formats.mcp_tool import ToolDefinition
 
 
-def resolve_url(base_url: str, path_template: str, params: dict[str, Any]) -> str:
+def _resolve_url(base_url: str, path_template: str, params: dict[str, Any]) -> str:
     """Substitute ``{param}`` placeholders in *path_template* and join with *base_url*."""
     path = path_template
     for key, value in params.items():
@@ -27,7 +27,7 @@ def resolve_url(base_url: str, path_template: str, params: dict[str, Any]) -> st
     return urljoin(base_url, path)
 
 
-def resolve_query(query_template: dict[str, Any], params: dict[str, Any]) -> dict[str, str]:
+def _resolve_query(query_template: dict[str, Any], params: dict[str, Any]) -> dict[str, str]:
     """Replace ``{"$param": "name"}`` markers in *query_template* with values from *params*."""
     result: dict[str, str] = {}
     for key, value in query_template.items():
@@ -37,7 +37,7 @@ def resolve_query(query_template: dict[str, Any], params: dict[str, Any]) -> dic
     return result
 
 
-def resolve_body(
+def _resolve_body(
     body_template: dict[str, Any] | None, params: dict[str, Any]
 ) -> dict[str, Any] | None:
     """Recursive walk: replace ``{"$param": "name"}`` markers in *body_template*."""
@@ -94,10 +94,10 @@ def build_request(
     req = tool.request
 
     # URL with path params
-    url = resolve_url(base_url, req.path, params)
+    url = _resolve_url(base_url, req.path, params)
 
     # Query params
-    query = resolve_query(req.query, params) if req.query else {}
+    query = _resolve_query(req.query, params) if req.query else {}
     if query:
         url = url + "?" + urlencode(query)
 
@@ -110,7 +110,7 @@ def build_request(
     # Body
     body: Any = None
     if req.body is not None:
-        resolved_body = resolve_body(req.body, params)
+        resolved_body = _resolve_body(req.body, params)
         if req.content_type == "application/x-www-form-urlencoded":
             body = urlencode(resolved_body) if resolved_body else ""
             headers.setdefault("Content-Type", "application/x-www-form-urlencoded")

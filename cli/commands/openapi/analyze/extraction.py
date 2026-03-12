@@ -20,7 +20,7 @@ from cli.helpers.http import get_header
 from cli.helpers.schema import analyze_schema, infer_path_schema, infer_query_schema
 
 
-def pattern_to_regex(pattern: str) -> re.Pattern[str]:
+def _pattern_to_regex(pattern: str) -> re.Pattern[str]:
     """Convert a path pattern like /api/users/{user_id}/orders to a regex."""
     parts = re.split(r"\{[^}]+\}", pattern)
     placeholders = re.findall(r"\{[^}]+\}", pattern)
@@ -48,11 +48,11 @@ async def mechanical_extraction(
     return endpoints
 
 
-def match_traces_by_pattern(
+def _match_traces_by_pattern(
     method: str, path_pattern: str, traces: list[Trace]
 ) -> list[Trace]:
     """Return traces whose method and URL path match *path_pattern*."""
-    pattern_re = pattern_to_regex(path_pattern)
+    pattern_re = _pattern_to_regex(path_pattern)
     return [
         t
         for t in traces
@@ -72,7 +72,7 @@ def find_traces_for_group(group: EndpointGroup, traces: list[Trace]) -> list[Tra
     ]
 
     matched_set = set(id(t) for t in matched)
-    for t in match_traces_by_pattern(group.method, group.pattern, traces):
+    for t in _match_traces_by_pattern(group.method, group.pattern, traces):
         if id(t) not in matched_set:
             matched.append(t)
             matched_set.add(id(t))
@@ -221,15 +221,3 @@ def extract_rate_limit(traces: list[Trace]) -> str | None:
         parts.append(f"retry-after={retry}")
 
     return ", ".join(parts) if parts else None
-
-
-def has_auth_header_or_cookie(trace: Trace) -> bool:
-    """Check if a trace has auth headers or auth-related cookies."""
-    if get_header(trace.meta.request.headers, "authorization") is not None:
-        return True
-    cookie = get_header(trace.meta.request.headers, "cookie")
-    if cookie and any(
-        name in cookie.lower() for name in ["session", "token", "auth", "jwt"]
-    ):
-        return True
-    return False

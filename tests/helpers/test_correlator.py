@@ -1,4 +1,5 @@
 """Tests for time-window correlator."""
+# pyright: reportPrivateUsage=false
 
 from cli.commands.capture.types import CaptureBundle, Context, Trace, WsConnection
 from cli.formats.capture_bundle import (
@@ -8,7 +9,7 @@ from cli.formats.capture_bundle import (
     CaptureStats,
     Timeline,
 )
-from cli.helpers.correlator import correlate, find_uncorrelated_traces
+from cli.helpers.correlator import _find_uncorrelated_traces, correlate
 from tests.conftest import make_context, make_trace, make_ws_connection, make_ws_message
 
 
@@ -164,7 +165,7 @@ class TestFindUncorrelated:
 
         bundle = _make_bundle(traces=[trace1, trace2], contexts=[ctx])
         correlations = correlate(bundle)
-        uncorrelated = find_uncorrelated_traces(bundle, correlations)
+        uncorrelated = _find_uncorrelated_traces(bundle, correlations)
 
         assert len(uncorrelated) == 1
         assert uncorrelated[0].meta.id == "t_0002"
@@ -175,6 +176,6 @@ class TestFindUncorrelated:
 
         bundle = _make_bundle(traces=[trace], contexts=[ctx])
         correlations = correlate(bundle)
-        uncorrelated = find_uncorrelated_traces(bundle, correlations)
+        uncorrelated = _find_uncorrelated_traces(bundle, correlations)
 
         assert len(uncorrelated) == 0

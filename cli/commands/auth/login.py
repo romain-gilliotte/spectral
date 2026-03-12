@@ -1,4 +1,5 @@
 """CLI command: spectral auth login."""
+# pyright: reportPrivateUsage=false
 
 from __future__ import annotations
 
@@ -111,11 +112,11 @@ def _create_fix_conversation(
     bundle: CaptureBundle, system_context: str
 ) -> Conversation:
     """Create the LLM conversation for auth script fixing."""
-    from cli.commands.auth.analyze import get_auth_instructions
+    from cli.commands.auth.analyze import _get_auth_instructions
     import cli.helpers.llm as llm_mod
 
     return llm_mod.Conversation(
-        system=[system_context, get_auth_instructions()],
+        system=[system_context, _get_auth_instructions()],
         max_tokens=8192,
         label="fix_auth_script",
         tool_names=["decode_base64", "decode_url", "decode_jwt", "inspect_trace"],
@@ -134,8 +135,8 @@ async def _request_fix(
 ) -> str:
     """Send a fix prompt to the conversation and return the fixed script."""
     from cli.commands.auth.analyze import (
-        extract_script,
-        validate_script,
+        _extract_script,
+        _validate_script,
     )
     from cli.helpers.prompt import render
 
@@ -151,6 +152,6 @@ async def _request_fix(
         prompt = render("auth-fix-followup.j2", error_trace=error_trace)
 
     text = await conv.ask_text(prompt)
-    script = extract_script(text)
-    validate_script(script)
+    script = _extract_script(text)
+    _validate_script(script)
     return script

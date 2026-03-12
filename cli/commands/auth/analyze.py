@@ -27,12 +27,12 @@ class NoAuthDetected(Exception):
 _NO_AUTH_SENTINEL = "NO_AUTH"
 
 
-def get_auth_instructions() -> str:
+def _get_auth_instructions() -> str:
     """Return the rendered auth system prompt."""
     return render("auth-instructions.j2", no_auth_sentinel=_NO_AUTH_SENTINEL)
 
 
-async def generate_auth_script(
+async def _generate_auth_script(
     bundle: CaptureBundle,
     api_name: str,
     system_context: str | None = None,
@@ -51,7 +51,7 @@ async def generate_auth_script(
 
     system: list[str] | None = None
     if system_context is not None:
-        system = [system_context, get_auth_instructions()]
+        system = [system_context, _get_auth_instructions()]
 
     conv = llm.Conversation(
         system=system,
@@ -65,12 +65,12 @@ async def generate_auth_script(
     if _NO_AUTH_SENTINEL in text and "```" not in text:
         raise NoAuthDetected("LLM found no authentication mechanism")
 
-    script = extract_script(text)
-    validate_script(script)
+    script = _extract_script(text)
+    _validate_script(script)
     return script
 
 
-def validate_script(script: str) -> None:
+def _validate_script(script: str) -> None:
     try:
         compile(script, "<auth-acquire>", "exec")
     except SyntaxError as e:
@@ -84,7 +84,7 @@ def validate_script(script: str) -> None:
         )
 
 
-def extract_script(text: str) -> str:
+def _extract_script(text: str) -> str:
     """Extract Python code from a markdown code block."""
     match = re.search(r"```python\s*\n(.*?)```", text, re.DOTALL)
     if match:
@@ -141,7 +141,7 @@ async def _run_auth(bundle: CaptureBundle, app_name: str) -> str:
 
     system_context = build_shared_context(bundle, base_url)
 
-    script = await generate_auth_script(
+    script = await _generate_auth_script(
         bundle=bundle,
         api_name=app_name,
         system_context=system_context,
