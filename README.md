@@ -17,7 +17,7 @@
   <a href="#install">Install</a> ·
   <a href="#why-spectral">Why Spectral</a> ·
   <a href="#how-it-works">How it works</a> ·
-  <a href="https://www.getspectral.sh/getting-started/"><strong>Documentation</strong></a> ·
+  <a href="https://www.getspectral.sh/documentation/getting-started/"><strong>Documentation</strong></a> ·
   <a href="https://www.getspectral.sh/"><strong>Website</strong></a>
 </p>
 
