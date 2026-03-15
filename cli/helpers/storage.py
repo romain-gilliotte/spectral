@@ -21,6 +21,7 @@ from datetime import datetime, timezone
 import os
 from pathlib import Path
 import re
+import time
 
 import click
 
@@ -28,6 +29,7 @@ from cli.commands.capture.loader import load_bundle, load_bundle_dir, write_bund
 from cli.commands.capture.types import CaptureBundle, merge_bundles
 from cli.formats.app_meta import AppMeta
 from cli.formats.capture_bundle import CaptureManifest
+from cli.formats.catalog import CatalogToken, ToolExecStats, ToolStats
 from cli.formats.config import Config
 from cli.formats.mcp_tool import TokenState, ToolDefinition
 
@@ -296,6 +298,70 @@ def load_app_meta(app_name: str) -> AppMeta:
     if not meta_path.is_file():
         raise click.ClickException(f"App '{app_name}' not found.")
     return AppMeta.model_validate_json(meta_path.read_text())
+
+
+def load_catalog_token() -> CatalogToken | None:
+    """Read catalog_token.json, or ``None`` if not logged in."""
+    path = store_root() / "catalog_token.json"
+    if not path.is_file():
+        return None
+    return CatalogToken.model_validate_json(path.read_text())
+
+
+def write_catalog_token(token: CatalogToken) -> None:
+    """Write catalog_token.json to managed storage."""
+    path = store_root() / "catalog_token.json"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(token.model_dump_json(indent=2))
+
+
+def delete_catalog_token() -> bool:
+    """Delete catalog_token.json. Returns True if a token was removed."""
+    path = store_root() / "catalog_token.json"
+    if path.is_file():
+        path.unlink()
+        return True
+    return False
+
+
+def load_stats(app_name: str) -> ToolStats:
+    """Read stats.json for an app, returning empty stats if missing."""
+    stats_path = app_dir(app_name) / "stats.json"
+    if not stats_path.is_file():
+        return ToolStats({})
+    return ToolStats.model_validate_json(stats_path.read_text())
+
+
+def write_stats(app_name: str, stats: ToolStats) -> None:
+    """Write stats.json for an app."""
+    stats_path = app_dir(app_name) / "stats.json"
+    stats_path.parent.mkdir(parents=True, exist_ok=True)
+    stats_path.write_text(stats.model_dump_json(indent=2))
+
+
+def record_tool_call(
+    app_name: str, tool_name: str, status_code: int | None, latency_ms: float
+) -> None:
+    """Record a single tool execution in stats.json."""
+    stats = load_stats(app_name)
+    entry = stats.root.get(tool_name, ToolExecStats())
+    prev_total = entry.call_count
+    entry.call_count += 1
+    if status_code is not None and 200 <= status_code < 400:
+        entry.success_count += 1
+    else:
+        entry.error_count += 1
+    entry.last_called_at = time.time()
+    entry.last_status_code = status_code
+    # Running average
+    if prev_total > 0:
+        entry.avg_latency_ms = (
+            entry.avg_latency_ms * prev_total + latency_ms
+        ) / entry.call_count
+    else:
+        entry.avg_latency_ms = latency_ms
+    stats.root[tool_name] = entry
+    write_stats(app_name, stats)
 
 
 def update_app_meta(app_name: str, **kwargs: object) -> None:

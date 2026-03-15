@@ -10,6 +10,7 @@ import click
 from cli.commands.android import android
 from cli.commands.auth import auth
 from cli.commands.capture import capture
+from cli.commands.catalog import catalog
 from cli.commands.completion import completion
 from cli.commands.config import config
 from cli.commands.extension import extension
@@ -52,6 +53,7 @@ def cli(ctx: click.Context) -> None:
 cli.add_command(android)
 cli.add_command(auth)
 cli.add_command(capture)
+cli.add_command(catalog)
 cli.add_command(completion)
 cli.add_command(config)
 cli.add_command(extension)

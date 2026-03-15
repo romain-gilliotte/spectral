@@ -13,6 +13,7 @@ _spectral() {
             'android:Android APK tools'
             'auth:Authentication management'
             'capture:Capture management'
+            'catalog:Community tool catalog'
             'completion:Generate shell completion script'
             'config:Configure API key and model'
             'extension:Chrome Extension integration'
@@ -25,6 +26,27 @@ _spectral() {
     fi
 
     case "${words[2]}" in
+        catalog)
+            if (( CURRENT == 3 )); then
+                local -a subcmds=(
+                    'install:Install a tool collection'
+                    'login:Authenticate with GitHub'
+                    'logout:Remove stored GitHub token'
+                    'publish:Publish tools to the catalog'
+                    'search:Search for tool collections'
+                )
+                _describe 'catalog command' subcmds && ret=0
+            else
+                case "${words[3]}" in
+                    publish)
+                        _arguments \
+                            '--help[Show help]' \
+                            '*:app name:_spectral_apps' && ret=0 ;;
+                    search|install)
+                        _arguments \
+                            '--help[Show help]' && ret=0 ;;
+                esac
+            fi ;;
         auth)
             if (( CURRENT == 3 )); then
                 local -a subcmds=(

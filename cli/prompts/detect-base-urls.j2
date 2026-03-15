@@ -1,15 +1,16 @@
 You are analyzing HTTP traffic captured from a web application.
-We are building MCP tools that let an AI agent call the app's APIs. A web app may use several independent APIs — its own backend, plus third-party services the frontend calls directly (e.g. Algolia for search, Mapbox for geocoding). We need all of them to get full coverage of the app's capabilities.
+We are building MCP tools that let an AI agent perform actions on behalf of the user — things like searching for a hairdresser, booking a train ticket, renewing a parking subscription, making a reservation, etc.
 
-Identify all business API base URLs from the observed traffic.
+Identify the API base URLs from the observed traffic that power these user-facing actions.
 
 A base URL can be:
 - Just the origin: https://api.example.com
 - Origin + path prefix: https://www.example.com/api
 
 Rules:
-- Include the app's own backend API AND third-party APIs called by the frontend for business features (search, maps, payments, etc.)
-- Exclude infrastructure: CDN domains, analytics (google-analytics, hotjar, segment, etc.), ad trackers, font services, static asset hosts
+- Include APIs that let an agent act on behalf of the user: the app's own backend, and third-party APIs that carry business logic (e.g. Algolia powering the app's search, Stripe for payments)
+- Exclude APIs that only support UI rendering and have no actionable value for an agent: map tiles and geocoding (Google Maps, Mapbox), font services, image/video CDNs
+- Exclude infrastructure: analytics (google-analytics, hotjar, segment), ad trackers, error reporting (sentry), feature flags
 - If the API endpoints share a common path prefix (e.g. /api/v1), include it
 - A single URL called many times (e.g. POST /graphql) often indicates a GraphQL API — that's still a valid business API
 - List the primary/most-important URL first

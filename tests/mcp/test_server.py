@@ -307,6 +307,79 @@ class TestServerCallTool:
         assert any("Unknown tool" in c.text for c in call_result.content if isinstance(c, mcp_types.TextContent))
 
 
+class TestCatalogToolsInRegistry:
+    """Verify that catalog-installed tools (user__app) are exposed as <user>__<app>_<tool>."""
+
+    def test_catalog_tools_registered(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: pytest.TempPathFactory
+    ) -> None:
+        from cli.helpers.storage import ensure_app, write_tools
+
+        monkeypatch.setenv("SPECTRAL_HOME", str(tmp_path))
+        ensure_app("romain__planity-com", display_name="Planity")
+        write_tools("romain__planity-com", [_make_tool("search")])
+
+        _build_registry()
+
+        assert "romain__planity-com_search" in _registry
+        app_name, tool = _registry["romain__planity-com_search"]
+        assert app_name == "romain__planity-com"
+        assert tool.name == "search"
+
+    @patch("requests.request")
+    async def test_catalog_tool_records_stats(
+        self,
+        mock_request: MagicMock,
+        monkeypatch: pytest.MonkeyPatch,
+        tmp_path: pytest.TempPathFactory,
+    ) -> None:
+        from cli.helpers.storage import ensure_app, load_stats, write_tools
+
+        monkeypatch.setenv("SPECTRAL_HOME", str(tmp_path))
+        ensure_app("romain__planity-com")
+        write_tools("romain__planity-com", [_make_tool("search")])
+
+        mock_resp = MagicMock()
+        mock_resp.status_code = 200
+        mock_resp.headers = {}
+        mock_resp.text = '{"results": []}'
+        mock_request.return_value = mock_resp
+
+        tool = _make_tool("search")
+        await _handle_call("romain__planity-com", tool, {"q": "test"})
+
+        stats = load_stats("romain__planity-com")
+        assert "search" in stats.root
+        assert stats.root["search"].call_count == 1
+        assert stats.root["search"].success_count == 1
+        assert stats.root["search"].last_status_code == 200
+        assert stats.root["search"].avg_latency_ms > 0
+
+    @patch("requests.request")
+    async def test_stats_recorded_on_http_error(
+        self,
+        mock_request: MagicMock,
+        monkeypatch: pytest.MonkeyPatch,
+        tmp_path: pytest.TempPathFactory,
+    ) -> None:
+        from cli.helpers.storage import ensure_app, load_stats, write_tools
+
+        monkeypatch.setenv("SPECTRAL_HOME", str(tmp_path))
+        ensure_app("myapp")
+        write_tools("myapp", [_make_tool("search")])
+
+        mock_request.side_effect = ConnectionError("offline")
+
+        tool = _make_tool("search")
+        result = await _handle_call("myapp", tool, {"q": "test"})
+
+        assert "error" in result
+        stats = load_stats("myapp")
+        assert stats.root["search"].call_count == 1
+        assert stats.root["search"].error_count == 1
+        assert stats.root["search"].last_status_code is None
+
+
 class TestApplyDefaults:
     def test_injects_missing_defaults(self) -> None:
         schema: dict[str, Any] = {

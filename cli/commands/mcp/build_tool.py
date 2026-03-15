@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 from typing import Any
 
-from pydantic_ai.exceptions import UnexpectedModelBehavior
+from pydantic_ai.exceptions import UnexpectedModelBehavior, UsageLimitExceeded
 
 from cli.commands.capture.types import CaptureBundle, Trace
 from cli.commands.mcp.types import (
@@ -70,6 +70,6 @@ async def build_tool(
     )
     try:
         return await conv.ask_json(prompt, BuildToolResponse)
-    except UnexpectedModelBehavior as exc:
+    except (UnexpectedModelBehavior, UsageLimitExceeded) as exc:
         console.print(f"      [yellow]⚠ LLM returned invalid output for {candidate.name}, skipping ({exc})[/yellow]")
         return BuildToolResponse(tool=None, consumed_trace_ids=candidate.trace_ids)

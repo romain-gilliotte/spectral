@@ -42,7 +42,11 @@ async def _handle_call(
     app_name: str, tool: ToolDefinition, arguments: dict[str, Any]
 ) -> str:
     """Execute a tool call: build request, inject auth, make HTTP call."""
+    import time
+
     import requests
+
+    from cli.helpers.storage import record_tool_call
 
     # Auth cascade
     auth_headers: dict[str, str] = {}
@@ -67,6 +71,8 @@ async def _handle_call(
         tool, arguments, auth_headers, auth_body_params
     )
 
+    start = time.monotonic()
+    status_code: int | None = None
     try:
         resp = requests.request(
             method=method,
@@ -80,8 +86,14 @@ async def _handle_call(
             else None,
             timeout=30,
         )
+        status_code = resp.status_code
     except Exception as exc:
+        latency_ms = (time.monotonic() - start) * 1000
+        record_tool_call(app_name, tool.name, None, latency_ms)
         return json.dumps({"error": f"HTTP request failed: {exc}"})
+
+    latency_ms = (time.monotonic() - start) * 1000
+    record_tool_call(app_name, tool.name, status_code, latency_ms)
 
     # Format response
     result_parts = [f"HTTP {resp.status_code}"]
