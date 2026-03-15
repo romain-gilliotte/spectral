@@ -24,6 +24,10 @@ Creating and testing tools is laborious. Once a user has working, validated tool
 - Tools are scoped per user but public (security implications), which requires a website to browse them
 - When a published tool fails, Spectral reports it back to the central server
 
+## Auth extract with refresh token discovery
+
+`auth extract` currently grabs auth headers from captured traffic, but the extracted tokens expire and aren't renewable. The idea is to use the LLM to also find a refresh token in the captured traces, so that `auth extract` produces a renewable token out of the box — no need to fall back to `auth analyze` + `auth login`.
+
 ## Request template engine improvements
 
 The current tool definition format is too minimalistic for complex protocols (e.g. Algolia). It needs to support transformations on parameters and responses, while keeping the format simple and declarative. No request chaining, but the ability to transform data between the MCP call and the underlying HTTP request.
