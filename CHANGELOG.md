@@ -1,6 +1,32 @@
 # CHANGELOG
 
 
+## v0.6.0 (2026-03-16)
+
+### Documentation
+
+- Update install script and CLAUDE.md for multi-provider LLM support
+  ([`467fe86`](https://github.com/spectral-mcp/spectral/commit/467fe86f1494c0daa51e6d6f52c0b19bc333e563))
+
+- **readme**: Fix GitHub links and update pitch
+  ([`809e579`](https://github.com/spectral-mcp/spectral/commit/809e5792b3640cbb60ad5d7a1efad40200dbd477))
+
+- Update all GitHub URLs from romain-gilliotte/spectral to spectral-mcp/spectral - Update
+  documentation links to new URL - Refresh tagline copy
+
+- **roadmap**: Add auth extract with refresh token discovery idea
+  ([`f54a52f`](https://github.com/spectral-mcp/spectral/commit/f54a52f4f501fdc4ee82a913d203c601d75f42f6))
+
+### Features
+
+- Add multi-provider LLM support (OpenRouter, OpenAI, Ollama)
+  ([`25c28d0`](https://github.com/spectral-mcp/spectral/commit/25c28d096f16e942059ef62da21fdbba9a557a18))
+
+Support multiple LLM providers beyond Anthropic. Add provider selection in `spectral config`, model
+  browsing for OpenRouter, and a minimal public API for the llm module (current_model,
+  create_config_interactive).
+
+
 ## v0.5.0 (2026-03-15)
 
 ### Chores
