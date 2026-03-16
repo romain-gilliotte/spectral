@@ -13,7 +13,7 @@
   - `uv run spectral mcp analyze ...` — run the CLI
   - `uv add <package>` — add a dependency (updates `pyproject.toml` + `uv.lock`)
   - `uv add --dev <package>` — add a dev dependency
-- The Anthropic API key is resolved from stored config at `~/.local/share/spectral/config.json` or created interactively on first use. No `.env` file needed.
+- The LLM provider and API key are resolved from stored config at `~/.local/share/spectral/config.json` or created interactively on first use via `spectral config`. Supports Anthropic, OpenRouter, OpenAI, and Ollama. No `.env` file needed.
 - **Before finishing any code change**, run the full verification suite and fix any new errors:
   - `uv run pytest tests/ -x -q` — all tests must pass
   - `uv run ruff check` — zero lint errors (use `--fix` for auto-fixable import sorting)
@@ -69,7 +69,7 @@ spectral/
 
 - **Extension**: Vanilla JS, Chrome Manifest V3, Chrome DevTools Protocol (via `chrome.debugger`), Chrome Native Messaging for capture transfer
 - **CLI**: Python 3.11+, Click for CLI, Pydantic for data models
-- **LLM**: Anthropic API (Claude Sonnet) for semantic analysis
+- **LLM**: Multi-provider support (Anthropic, OpenRouter, OpenAI, Ollama) for semantic analysis
 - **Packaging**: pyproject.toml with `[project.scripts]` entry point for `spectral`
 
 ## CLI commands
@@ -115,7 +115,7 @@ Default model is `claude-sonnet-4-5-20250929`, configurable via `spectral config
 | Component | Dependencies |
 |-----------|-------------|
 | Extension | (no external dependencies) |
-| CLI | click, pydantic, pydantic-ai-slim[anthropic], graphql-core, pyyaml, rich, requests, mitmproxy, jq, compact-json, mcp |
+| CLI | click, pydantic, pydantic-ai-slim[anthropic,openai], graphql-core, pyyaml, rich, requests, mitmproxy, jq, compact-json, mcp, questionary |
 | Dev | pytest, pytest-cov, pytest-asyncio (asyncio_mode="auto"), pyright, ruff, mkdocs-material |
 
 ## Managed storage
@@ -123,7 +123,7 @@ Default model is `claude-sonnet-4-5-20250929`, configurable via `spectral config
 Layout under `~/.local/share/spectral/` (overridable with `SPECTRAL_HOME`):
 
 ```
-config.json               # Config (api_key, model)
+config.json               # Config (provider, api_key, model, base_url, pricing)
 apps/<name>/
 ├── app.json              # AppMeta (name, display_name, base_url, timestamps)
 ├── auth_acquire.py       # Generated auth script (acquire_token, refresh_token)

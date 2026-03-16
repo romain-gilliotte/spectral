@@ -96,8 +96,8 @@ esac
 
 echo ""
 echo -e "${bold}Next steps:${reset}"
-echo "  1. Get an Anthropic API key at https://console.anthropic.com/"
-echo "     (spectral will prompt for it on first analyze)"
+echo "  1. Configure your LLM provider:  spectral config"
+echo "     (supports Anthropic, OpenRouter, OpenAI, Ollama)"
 echo "  2. Load the Chrome extension from the extension/ directory"
 echo "     or use the MITM proxy: spectral capture proxy -a myapp"
 echo "  3. Analyze traffic:  spectral mcp analyze myapp"
