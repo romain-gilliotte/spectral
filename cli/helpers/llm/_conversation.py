@@ -85,14 +85,17 @@ class Conversation:
             max_tokens=self._max_tokens,
         )
 
-        agent = Agent(
-            model,
-            system_prompt=self._system or "",
+        agent_kwargs: dict[str, Any] = dict(
+            model=model,
             tools=self._tools or [],
             deps_type=ToolDeps,
             output_type=output_type,
             model_settings=settings,
         )
+        if self._system:
+            agent_kwargs["system_prompt"] = self._system
+
+        agent = Agent(**agent_kwargs)
 
         flushed_len = len(self._messages)
 
