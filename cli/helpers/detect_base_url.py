@@ -36,7 +36,7 @@ class BaseUrlsResponse(BaseModel):
         return result
 
 
-async def detect_base_urls(bundle: CaptureBundle, app_name: str) -> list[str]:
+def detect_base_urls(bundle: CaptureBundle, app_name: str) -> list[str]:
     """Detect the business API base URLs from a capture bundle.
 
     Checks app.json cache first, then falls back to LLM detection.
@@ -57,7 +57,7 @@ async def detect_base_urls(bundle: CaptureBundle, app_name: str) -> list[str]:
         label="detect_api_base_urls",
         tool_names=["decode_base64", "decode_url", "decode_jwt"],
     )
-    result = await conv.ask_json(prompt, BaseUrlsResponse)
+    result = conv.ask_json(prompt, BaseUrlsResponse)
     try:
         update_app_meta(app_name, base_urls=result.base_urls)
     except Exception:

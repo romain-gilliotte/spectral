@@ -9,7 +9,7 @@ import cli.helpers.llm as llm
 from cli.helpers.prompt import render
 
 
-async def group_endpoints(pairs: list[MethodUrlPair]) -> list[EndpointGroup]:
+def group_endpoints(pairs: list[MethodUrlPair]) -> list[EndpointGroup]:
     """Ask the LLM to group URLs into endpoint patterns with {param} syntax."""
     unique_pairs = sorted(set(pairs))
     compacted_pairs = sorted(
@@ -27,7 +27,7 @@ async def group_endpoints(pairs: list[MethodUrlPair]) -> list[EndpointGroup]:
         label="analyze_endpoints",
         tool_names=["decode_base64", "decode_url", "decode_jwt"],
     )
-    response = await conv.ask_json(prompt, EndpointGroupListResponse)
+    response = conv.ask_json(prompt, EndpointGroupListResponse)
 
     groups: list[EndpointGroup] = []
     for item in response.items:

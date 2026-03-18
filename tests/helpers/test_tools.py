@@ -113,8 +113,7 @@ class TestDecodeJwt:
 
 
 class TestCallWithTools:
-    @pytest.mark.asyncio
-    async def test_direct_response_no_tool_use(self):
+    def test_direct_response_no_tool_use(self):
         """When the LLM responds without tool_use, return text directly."""
         call_count = {"n": 0}
 
@@ -127,12 +126,11 @@ class TestCallWithTools:
         conv = llm.Conversation(
             tool_names=["decode_base64", "decode_url", "decode_jwt"],
         )
-        result = await conv.ask_text("hi")
+        result = conv.ask_text("hi")
         assert result == '{"endpoints": []}'
         assert call_count["n"] == 1
 
-    @pytest.mark.asyncio
-    async def test_one_tool_round_then_response(self):
+    def test_one_tool_round_then_response(self):
         """LLM calls decode_base64, gets result, then responds with text."""
         encoded = base64.b64encode(b'{"page":1}').decode()
         call_count = {"n": 0}
@@ -156,12 +154,11 @@ class TestCallWithTools:
         conv = llm.Conversation(
             tool_names=["decode_base64", "decode_url", "decode_jwt"],
         )
-        result = await conv.ask_text("analyze")
+        result = conv.ask_text("analyze")
         assert "/api/data/{param}" in result
         assert call_count["n"] == 2
 
-    @pytest.mark.asyncio
-    async def test_max_iterations_raises(self):
+    def test_max_iterations_raises(self):
         """If the LLM keeps calling tools beyond max_iterations, raise."""
 
         def model_fn(messages: list[Any], info: AgentInfo) -> ModelResponse:
@@ -180,4 +177,4 @@ class TestCallWithTools:
             max_iterations=3,
         )
         with pytest.raises(Exception):
-            await conv.ask_text("go")
+            conv.ask_text("go")

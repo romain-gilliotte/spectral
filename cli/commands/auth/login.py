@@ -3,7 +3,6 @@
 
 from __future__ import annotations
 
-import asyncio
 from typing import TYPE_CHECKING
 
 import click
@@ -77,7 +76,7 @@ def _fix_loop(
     llm_mod.init_debug(debug=debug)
 
     bundle = load_app_bundle(app_name)
-    base_url = asyncio.run(detect_base_urls(bundle, app_name))[0]
+    base_url = detect_base_urls(bundle, app_name)[0]
     system_context = build_shared_context(bundle, base_url)
 
     conv = _create_fix_conversation(bundle, system_context)
@@ -86,9 +85,7 @@ def _fix_loop(
     current_script = script_path.read_text()
 
     # First fix attempt
-    fixed_script = asyncio.run(
-        _request_fix(conv, bundle, app_name, current_script, initial_error, is_first=True)
-    )
+    fixed_script = _request_fix(conv, bundle, app_name, current_script, initial_error, is_first=True)
 
     while True:
         script_path.parent.mkdir(parents=True, exist_ok=True)
@@ -103,9 +100,7 @@ def _fix_loop(
             console.print("[red]Login failed:[/red]")
             console.print(error_str)
 
-            fixed_script = asyncio.run(
-                _request_fix(conv, bundle, app_name, fixed_script, error_str, is_first=False)
-            )
+            fixed_script = _request_fix(conv, bundle, app_name, fixed_script, error_str, is_first=False)
 
 
 def _create_fix_conversation(
@@ -124,7 +119,7 @@ def _create_fix_conversation(
     )
 
 
-async def _request_fix(
+def _request_fix(
     conv: Conversation,
     bundle: CaptureBundle,
     api_name: str,
@@ -151,7 +146,7 @@ async def _request_fix(
     else:
         prompt = render("auth-fix-followup.j2", error_trace=error_trace)
 
-    text = await conv.ask_text(prompt)
+    text = conv.ask_text(prompt)
     script = _extract_script(text)
     _validate_script(script)
     return script

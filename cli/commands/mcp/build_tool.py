@@ -28,7 +28,7 @@ def _parse_request_body(trace: Trace) -> Any | None:
         return None
 
 
-async def build_tool(
+def build_tool(
     candidate: ToolCandidate,
     bundle: CaptureBundle,
     existing_tools: list[ToolDefinition],
@@ -69,7 +69,7 @@ async def build_tool(
         max_tokens=8192,
     )
     try:
-        return await conv.ask_json(prompt, BuildToolResponse)
+        return conv.ask_json(prompt, BuildToolResponse)
     except (UnexpectedModelBehavior, UsageLimitExceeded) as exc:
         console.print(f"      [yellow]⚠ LLM returned invalid output for {candidate.name}, skipping ({exc})[/yellow]")
         return BuildToolResponse(tool=None, consumed_trace_ids=candidate.trace_ids)

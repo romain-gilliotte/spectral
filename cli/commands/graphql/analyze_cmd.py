@@ -29,7 +29,6 @@ if TYPE_CHECKING:
 )
 def analyze(app_name: str, output: str, debug: bool, skip_enrich: bool) -> None:
     """Analyze captures for an app and produce a GraphQL SDL schema."""
-    import asyncio
     from pathlib import Path
 
     import cli.helpers.llm as llm
@@ -48,7 +47,7 @@ def analyze(app_name: str, output: str, debug: bool, skip_enrich: bool) -> None:
     llm.init_debug(debug=debug)
 
     console.print(f"[bold]Analyzing with LLM ({llm.current_model()})...[/bold]")
-    sdl = asyncio.run(_run_graphql(bundle, app_name, skip_enrich))
+    sdl = _run_graphql(bundle, app_name, skip_enrich)
 
     output_base = Path(output)
     output_base = output_base.parent / output_base.stem
@@ -64,7 +63,7 @@ def analyze(app_name: str, output: str, debug: bool, skip_enrich: bool) -> None:
         console.print("[yellow]No GraphQL traces found in the capture bundle.[/yellow]")
 
 
-async def _run_graphql(
+def _run_graphql(
     bundle: CaptureBundle, app_name: str, skip_enrich: bool
 ) -> str:
     import click as click_mod
@@ -73,7 +72,7 @@ async def _run_graphql(
     from cli.helpers.correlator import correlate
     from cli.helpers.detect_base_url import detect_base_urls
 
-    base_urls = await detect_base_urls(bundle, app_name)
+    base_urls = detect_base_urls(bundle, app_name)
     if len(base_urls) > 1:
         base_url = click_mod.prompt(
             "Multiple API base URLs detected. Pick one to analyze",
@@ -87,7 +86,7 @@ async def _run_graphql(
 
     correlations = correlate(bundle)
 
-    sdl = await graphql_analyze(
+    sdl = graphql_analyze(
         gql_traces,
         app_name=(bundle.manifest.app.name + " API" if bundle.manifest.app.name else "Discovered API"),
         correlations=correlations,

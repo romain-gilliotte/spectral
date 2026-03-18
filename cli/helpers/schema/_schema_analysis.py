@@ -1,4 +1,4 @@
-"""Async schema analysis: detect dynamic-key maps and resolve via LLM.
+"""Schema analysis: detect dynamic-key maps and resolve via LLM.
 
 Builds on :func:`infer_schema` by post-processing the inferred schema tree
 to detect objects whose property names are actually dynamic keys (UUIDs,
@@ -213,7 +213,7 @@ def _collect_map_candidates(
     return results
 
 
-async def _resolve_map_candidates(schema: dict[str, Any]) -> None:
+def _resolve_map_candidates(schema: dict[str, Any]) -> None:
     """Resolve ``x-map-candidate`` annotations on a single schema via LLM."""
     all_candidates = _collect_map_candidates(schema)
     if not all_candidates:
@@ -227,7 +227,7 @@ async def _resolve_map_candidates(schema: dict[str, Any]) -> None:
     prompt = render_prompt("schema-resolve-map-candidates.j2", candidates=candidates)
 
     conv = llm.Conversation(label="resolve-map-candidates")
-    response = await conv.ask_json(prompt, MapDecisionListResponse)
+    response = conv.ask_json(prompt, MapDecisionListResponse)
 
     decision_map: dict[int, bool] = {}
     for d in response.items:
@@ -271,7 +271,7 @@ def _merge_property_schemas(schemas: list[dict[str, Any]]) -> dict[str, Any]:
 # ---------------------------------------------------------------------------
 
 
-async def analyze_schema(samples: list[dict[str, Any]]) -> dict[str, Any]:
+def analyze_schema(samples: list[dict[str, Any]]) -> dict[str, Any]:
     """Infer a schema from *samples* with full map detection and resolution.
 
     Calls :func:`infer_schema` for pure structural inference, then:
@@ -286,5 +286,5 @@ async def analyze_schema(samples: list[dict[str, Any]]) -> dict[str, Any]:
     schema = infer_schema(samples)
     _detect_regex_maps(schema)
     _detect_structural_maps(schema)
-    await _resolve_map_candidates(schema)
+    _resolve_map_candidates(schema)
     return schema

@@ -1,8 +1,7 @@
-"""Enrich GraphQL types with business semantics via parallel per-type LLM calls."""
+"""Enrich GraphQL types with business semantics via per-type LLM calls."""
 
 from __future__ import annotations
 
-import asyncio
 from typing import Any
 
 from cli.commands.capture.types import Trace
@@ -19,13 +18,13 @@ import cli.helpers.llm as llm
 from cli.helpers.prompt import render
 
 
-async def enrich_graphql(
+def enrich_graphql(
     schema_data: GraphQLSchemaData,
     traces: list[Trace],
     correlations: list[Correlation],
     app_name: str,
 ) -> GraphQLSchemaData:
-    """Parallel per-type LLM calls to enrich each type with business descriptions.
+    """Per-type LLM calls to enrich each type with business descriptions.
 
     Each call receives:
     - Type name and list of fields with inferred types
@@ -54,17 +53,15 @@ async def enrich_graphql(
     # Enrich enums too
     enums_to_enrich = [e for e in registry.enums.values() if e.values]
 
-    tasks: list[Any] = [_enrich_type(t, app_name) for t in types_to_enrich]
-    tasks.extend(
+    for t in types_to_enrich:
+        _enrich_type(t, app_name)
+    for e in enums_to_enrich:
         _enrich_enum(e.name, e.values, app_name, registry)
-        for e in enums_to_enrich
-    )
-    await asyncio.gather(*tasks)
 
     return schema_data
 
 
-async def _enrich_type(type_rec: TypeRecord, app_name: str) -> None:
+def _enrich_type(type_rec: TypeRecord, app_name: str) -> None:
     summary = _build_type_summary(type_rec)
     prompt = render(
         "graphql-enrich-type.j2",
@@ -74,7 +71,7 @@ async def _enrich_type(type_rec: TypeRecord, app_name: str) -> None:
 
     try:
         conv = llm.Conversation(max_tokens=1024, label=f"enrich_gql_{type_rec.name}")
-        result = await conv.ask_json(prompt, TypeEnrichmentResponse)
+        result = conv.ask_json(prompt, TypeEnrichmentResponse)
         _apply_type_enrichment(type_rec, result)
     except Exception as exc:
         console.print(
@@ -83,7 +80,7 @@ async def _enrich_type(type_rec: TypeRecord, app_name: str) -> None:
         )
 
 
-async def _enrich_enum(
+def _enrich_enum(
     enum_name: str,
     enum_values: set[str],
     app_name: str,
@@ -99,7 +96,7 @@ async def _enrich_enum(
 
     try:
         conv = llm.Conversation(max_tokens=256, label=f"enrich_gql_enum_{enum_name}")
-        result = await conv.ask_json(prompt, EnumEnrichmentResponse)
+        result = conv.ask_json(prompt, EnumEnrichmentResponse)
         registry.enums[enum_name].description = result.description
     except Exception:
         pass

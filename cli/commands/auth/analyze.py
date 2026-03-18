@@ -9,7 +9,6 @@ Also contains the ``spectral auth analyze`` Click command.
 
 from __future__ import annotations
 
-import asyncio
 import re
 
 import click
@@ -32,7 +31,7 @@ def _get_auth_instructions() -> str:
     return render("auth-instructions.j2", no_auth_sentinel=_NO_AUTH_SENTINEL)
 
 
-async def _generate_auth_script(
+def _generate_auth_script(
     bundle: CaptureBundle,
     api_name: str,
     system_context: str | None = None,
@@ -60,7 +59,7 @@ async def _generate_auth_script(
         tool_names=["decode_base64", "decode_url", "decode_jwt", "inspect_trace"],
         bundle=bundle,
     )
-    text = await conv.ask_text(prompt)
+    text = conv.ask_text(prompt)
 
     if _NO_AUTH_SENTINEL in text and "```" not in text:
         raise NoAuthDetected("LLM found no authentication mechanism")
@@ -117,7 +116,7 @@ def analyze(app_name: str, debug: bool) -> None:
     llm.init_debug(debug=debug)
 
     try:
-        script = asyncio.run(_run_auth(bundle, app_name))
+        script = _run_auth(bundle, app_name)
     except NoAuthDetected:
         console.print()
         console.print(
@@ -132,16 +131,16 @@ def analyze(app_name: str, debug: bool) -> None:
     console.print(f"[green]Auth script written to {script_path}[/green]")
 
 
-async def _run_auth(bundle: CaptureBundle, app_name: str) -> str:
+def _run_auth(bundle: CaptureBundle, app_name: str) -> str:
     from cli.helpers.context import build_shared_context
     from cli.helpers.detect_base_url import detect_base_urls
 
-    base_url = (await detect_base_urls(bundle, app_name))[0]
+    base_url = detect_base_urls(bundle, app_name)[0]
     console.print(f"  API base URL: {base_url}")
 
     system_context = build_shared_context(bundle, base_url)
 
-    script = await _generate_auth_script(
+    script = _generate_auth_script(
         bundle=bundle,
         api_name=app_name,
         system_context=system_context,

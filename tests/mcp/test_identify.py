@@ -57,7 +57,7 @@ def _setup_llm(response_text: str) -> None:
     set_test_model(FunctionModel(model_fn))
 
 
-async def test_identify_returns_candidate_when_useful() -> None:
+def test_identify_returns_candidate_when_useful() -> None:
     _setup_llm(json.dumps({
         "useful": True,
         "name": "search_routes",
@@ -66,7 +66,7 @@ async def test_identify_returns_candidate_when_useful() -> None:
 
     target = make_trace("t_0001", "POST", "https://api.example.com/search", 200, 1000)
 
-    result = await identify_capabilities(
+    result = identify_capabilities(
         target_trace=target,
         existing_tools=[],
         system_context="\U0001f310 t_0001: POST /search \u2192 200",
@@ -78,11 +78,11 @@ async def test_identify_returns_candidate_when_useful() -> None:
     assert result.trace_ids == ["t_0001"]
 
 
-async def test_identify_returns_none_when_not_useful() -> None:
+def test_identify_returns_none_when_not_useful() -> None:
     _setup_llm(json.dumps({"useful": False}))
 
     target = make_trace("t_0001", "GET", "https://cdn.example.com/font.woff", 200, 1000)
-    result = await identify_capabilities(
+    result = identify_capabilities(
         target_trace=target,
         existing_tools=[],
         system_context="",
@@ -91,12 +91,12 @@ async def test_identify_returns_none_when_not_useful() -> None:
     assert result is None
 
 
-async def test_identify_returns_none_on_malformed_response() -> None:
+def test_identify_returns_none_on_malformed_response() -> None:
     """When LLM returns useful: false with minimal JSON, step returns None."""
     _setup_llm(json.dumps({"useful": False, "name": None, "description": None}))
 
     target = make_trace("t_0001", "GET", "https://cdn.example.com/font.woff", 200, 1000)
-    result = await identify_capabilities(
+    result = identify_capabilities(
         target_trace=target,
         existing_tools=[],
         system_context="",
@@ -105,7 +105,7 @@ async def test_identify_returns_none_on_malformed_response() -> None:
     assert result is None
 
 
-async def test_identify_no_tools_in_llm_call() -> None:
+def test_identify_no_tools_in_llm_call() -> None:
     """Verify that the identify step does NOT pass investigation tools to the LLM."""
     captured_info: list[AgentInfo] = []
 
@@ -121,7 +121,7 @@ async def test_identify_no_tools_in_llm_call() -> None:
     set_test_model(FunctionModel(model_fn))
 
     target = make_trace("t_0001", "GET", "https://api.example.com/data", 200, 1000)
-    await identify_capabilities(
+    identify_capabilities(
         target_trace=target,
         existing_tools=[],
         system_context="",
@@ -132,7 +132,7 @@ async def test_identify_no_tools_in_llm_call() -> None:
     assert len(captured_info[0].function_tools) == 0
 
 
-async def test_identify_shows_existing_tools() -> None:
+def test_identify_shows_existing_tools() -> None:
     """Verify that existing tools are mentioned in the user prompt."""
     captured_prompts: list[str] = []
 
@@ -157,7 +157,7 @@ async def test_identify_shows_existing_tools() -> None:
     ]
 
     target = make_trace("t_0003", "GET", "https://api.example.com/account", 200, 3000)
-    await identify_capabilities(
+    identify_capabilities(
         target_trace=target,
         existing_tools=existing,
         system_context="",
@@ -169,7 +169,7 @@ async def test_identify_shows_existing_tools() -> None:
     assert "do NOT duplicate" in prompt
 
 
-async def test_identify_shows_request_details_inline() -> None:
+def test_identify_shows_request_details_inline() -> None:
     """Verify that target trace request details are shown inline in the prompt."""
     captured_prompts: list[str] = []
 
@@ -188,7 +188,7 @@ async def test_identify_shows_request_details_inline() -> None:
         "t_0001", "POST", "https://api.example.com/api/search", 200, 1000,
         request_body=json.dumps({"origin": "Paris", "destination": "Lyon"}).encode(),
     )
-    await identify_capabilities(
+    identify_capabilities(
         target_trace=target,
         existing_tools=[],
         system_context="",
@@ -203,7 +203,7 @@ async def test_identify_shows_request_details_inline() -> None:
     assert "Lyon" in prompt
 
 
-async def test_identify_includes_timeline_in_system() -> None:
+def test_identify_includes_timeline_in_system() -> None:
     """Verify that the timeline text is included in the system prompt."""
     captured_systems: list[str] = []
 
@@ -224,7 +224,7 @@ async def test_identify_includes_timeline_in_system() -> None:
     )
 
     target = make_trace("t_0001", "POST", "https://api.example.com/api/search", 200, 1000)
-    await identify_capabilities(
+    identify_capabilities(
         target_trace=target,
         existing_tools=[],
         system_context=timeline,

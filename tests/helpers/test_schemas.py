@@ -1,9 +1,7 @@
 """Tests for schema inference utilities."""
 
 from typing import Any
-from unittest.mock import AsyncMock, MagicMock, patch
-
-import pytest
+from unittest.mock import MagicMock, patch
 
 from cli.helpers.schema import (
     analyze_schema,
@@ -330,8 +328,7 @@ class TestQueryParamExtraction:
 
 
 class TestDynamicKeyDetection:
-    @pytest.mark.asyncio
-    async def test_date_keys_detected(self):
+    def test_date_keys_detected(self):
         samples = [
             {
                 "2025-01-01": 100,
@@ -341,15 +338,14 @@ class TestDynamicKeyDetection:
                 "2025-05-01": 500,
             }
         ]
-        schema = await analyze_schema(samples)
+        schema = analyze_schema(samples)
         assert "additionalProperties" in schema
         assert "properties" not in schema
         assert schema["x-key-pattern"] == "date"
         assert schema["additionalProperties"]["type"] == "integer"
         assert len(schema["x-key-examples"]) == 5
 
-    @pytest.mark.asyncio
-    async def test_year_keys_detected(self):
+    def test_year_keys_detected(self):
         samples = [
             {
                 "2022": {"total": 100, "avg": 25},
@@ -358,7 +354,7 @@ class TestDynamicKeyDetection:
                 "2025": {"total": 400, "avg": 100},
             }
         ]
-        schema = await analyze_schema(samples)
+        schema = analyze_schema(samples)
         assert "additionalProperties" in schema
         assert "properties" not in schema
         assert schema["x-key-pattern"] == "year"
@@ -367,8 +363,7 @@ class TestDynamicKeyDetection:
         assert "total" in val_schema["properties"]
         assert "avg" in val_schema["properties"]
 
-    @pytest.mark.asyncio
-    async def test_numeric_id_keys_detected(self):
+    def test_numeric_id_keys_detected(self):
         samples = [
             {
                 "706001": "active",
@@ -376,13 +371,12 @@ class TestDynamicKeyDetection:
                 "706003": "active",
             }
         ]
-        schema = await analyze_schema(samples)
+        schema = analyze_schema(samples)
         assert "additionalProperties" in schema
         assert schema["x-key-pattern"] == "numeric-id"
         assert schema["additionalProperties"]["type"] == "string"
 
-    @pytest.mark.asyncio
-    async def test_uuid_keys_detected(self):
+    def test_uuid_keys_detected(self):
         samples = [
             {
                 "a1b2c3d4-e5f6-7890-abcd-ef1234567890": 1,
@@ -390,20 +384,18 @@ class TestDynamicKeyDetection:
                 "22222222-3333-4444-5555-666666666666": 3,
             }
         ]
-        schema = await analyze_schema(samples)
+        schema = analyze_schema(samples)
         assert "additionalProperties" in schema
         assert schema["x-key-pattern"] == "uuid"
 
-    @pytest.mark.asyncio
-    async def test_below_threshold_not_detected(self):
+    def test_below_threshold_not_detected(self):
         """Two numeric keys are below the minimum threshold — stay as properties."""
         samples = [{"100": "a", "200": "b"}]
-        schema = await analyze_schema(samples)
+        schema = analyze_schema(samples)
         assert "properties" in schema
         assert "additionalProperties" not in schema
 
-    @pytest.mark.asyncio
-    async def test_mixed_types_not_detected(self):
+    def test_mixed_types_not_detected(self):
         """Keys match a pattern but values have different types — stay as properties."""
         samples = [
             {
@@ -412,20 +404,18 @@ class TestDynamicKeyDetection:
                 "2025-03-01": 300,
             }
         ]
-        schema = await analyze_schema(samples)
+        schema = analyze_schema(samples)
         assert "properties" in schema
         assert "additionalProperties" not in schema
 
-    @pytest.mark.asyncio
-    async def test_non_matching_keys_not_detected(self):
+    def test_non_matching_keys_not_detected(self):
         """Regular field names should not trigger dynamic key detection."""
         samples = [{"name": "Alice", "email": "a@b.com", "age": 30}]
-        schema = await analyze_schema(samples)
+        schema = analyze_schema(samples)
         assert "properties" in schema
         assert "additionalProperties" not in schema
 
-    @pytest.mark.asyncio
-    async def test_nested_dynamic_keys(self):
+    def test_nested_dynamic_keys(self):
         """Dynamic keys nested inside a regular object property."""
         samples = [
             {
@@ -436,23 +426,21 @@ class TestDynamicKeyDetection:
                 }
             }
         ]
-        schema = await analyze_schema(samples)
+        schema = analyze_schema(samples)
         assert "properties" in schema
         data_prop = schema["properties"]["data"]
         assert data_prop["type"] == "object"
         assert "additionalProperties" in data_prop
         assert data_prop["x-key-pattern"] == "date"
 
-    @pytest.mark.asyncio
-    async def test_key_examples_limited(self):
+    def test_key_examples_limited(self):
         """More than 5 keys should produce at most 5 x-key-examples."""
         samples = [{f"2025-{m:02d}-01": m for m in range(1, 13)}]
-        schema = await analyze_schema(samples)
+        schema = analyze_schema(samples)
         assert "additionalProperties" in schema
         assert len(schema["x-key-examples"]) <= 5
 
-    @pytest.mark.asyncio
-    async def test_value_schema_merged(self):
+    def test_value_schema_merged(self):
         """Values from different keys are merged into a unified schema."""
         samples = [
             {
@@ -461,15 +449,14 @@ class TestDynamicKeyDetection:
                 "2025": {"total": 300, "count": 10},
             }
         ]
-        schema = await analyze_schema(samples)
+        schema = analyze_schema(samples)
         assert "additionalProperties" in schema
         val_schema = schema["additionalProperties"]
         assert val_schema["type"] == "object"
         assert "total" in val_schema["properties"]
         assert "count" in val_schema["properties"]
 
-    @pytest.mark.asyncio
-    async def test_prefixed_uuid_keys_detected(self):
+    def test_prefixed_uuid_keys_detected(self):
         """Prefixed UUID keys like journey-<uuid> should be detected."""
         samples = [
             {
@@ -478,12 +465,11 @@ class TestDynamicKeyDetection:
                 "fare-a1b2c3d4-e5f6-7890-abcd-ef1234567890": {"id": 3},
             }
         ]
-        schema = await analyze_schema(samples)
+        schema = analyze_schema(samples)
         assert "additionalProperties" in schema
         assert schema["x-key-pattern"] == "prefixed-uuid"
 
-    @pytest.mark.asyncio
-    async def test_hex_id_keys_detected(self):
+    def test_hex_id_keys_detected(self):
         """40-char hex hashes (SHA-1) should be detected as hex-id."""
         samples = [
             {
@@ -492,12 +478,11 @@ class TestDynamicKeyDetection:
                 "f1e2d3c4b5a697081234567890abcdef12345678": "val3",
             }
         ]
-        schema = await analyze_schema(samples)
+        schema = analyze_schema(samples)
         assert "additionalProperties" in schema
         assert schema["x-key-pattern"] == "hex-id"
 
-    @pytest.mark.asyncio
-    async def test_short_hex_not_detected(self):
+    def test_short_hex_not_detected(self):
         """Hex strings under 20 chars should not be detected as hex-id."""
         samples = [
             {
@@ -506,12 +491,11 @@ class TestDynamicKeyDetection:
                 "789abc": "val3",
             }
         ]
-        schema = await analyze_schema(samples)
+        schema = analyze_schema(samples)
         assert "properties" in schema
         assert "additionalProperties" not in schema
 
-    @pytest.mark.asyncio
-    async def test_single_hex_id_detected(self):
+    def test_single_hex_id_detected(self):
         """A single 40-char hex key is enough to trigger hex-id detection."""
         samples = [
             {
@@ -521,22 +505,20 @@ class TestDynamicKeyDetection:
                 }
             }
         ]
-        schema = await analyze_schema(samples)
+        schema = analyze_schema(samples)
         assert "additionalProperties" in schema
         assert schema["x-key-pattern"] == "hex-id"
 
-    @pytest.mark.asyncio
-    async def test_single_uuid_key_detected(self):
+    def test_single_uuid_key_detected(self):
         """A single UUID key is enough to trigger uuid detection."""
         samples = [{"a1b2c3d4-e5f6-7890-abcd-ef1234567890": {"status": "active"}}]
-        schema = await analyze_schema(samples)
+        schema = analyze_schema(samples)
         assert "additionalProperties" in schema
         assert schema["x-key-pattern"] == "uuid"
 
 
 class TestStructuralAnnotation:
-    @pytest.mark.asyncio
-    async def test_structural_candidate_resolved(self):
+    def test_structural_candidate_resolved(self):
         """5+ keys with same-shape object values → LLM asked to resolve."""
         samples = [
             {
@@ -550,35 +532,32 @@ class TestStructuralAnnotation:
         )
 
         mock_conv = MagicMock()
-        mock_conv.ask_json = AsyncMock(
+        mock_conv.ask_json = MagicMock(
             return_value=MapDecisionListResponse(items=[MapDecision(group=1, is_map=True)])
         )
         with patch("cli.helpers.schema._schema_analysis.llm") as mock_llm:
             mock_llm.Conversation.return_value = mock_conv
 
-            schema = await analyze_schema(samples)
+            schema = analyze_schema(samples)
 
         assert "additionalProperties" in schema
         assert "properties" not in schema
         assert schema["x-key-pattern"] == "dynamic"
 
-    @pytest.mark.asyncio
-    async def test_structural_ignores_scalars(self):
+    def test_structural_ignores_scalars(self):
         """5+ keys with scalar values should not be annotated."""
         samples = [{f"key-{i}": f"value-{i}" for i in range(6)}]
-        schema = await analyze_schema(samples)
+        schema = analyze_schema(samples)
         assert "x-map-candidate" not in schema
         assert "properties" in schema
 
-    @pytest.mark.asyncio
-    async def test_structural_below_threshold(self):
+    def test_structural_below_threshold(self):
         """4 keys same shape should not be annotated (below _MIN_STRUCTURAL_KEYS)."""
         samples = [{f"key-{i}": {"id": i, "name": f"item-{i}"} for i in range(4)}]
-        schema = await analyze_schema(samples)
+        schema = analyze_schema(samples)
         assert "x-map-candidate" not in schema
 
-    @pytest.mark.asyncio
-    async def test_structural_low_overlap(self):
+    def test_structural_low_overlap(self):
         """5+ keys with <50% property overlap should not be annotated."""
         samples = [
             {
@@ -589,5 +568,5 @@ class TestStructuralAnnotation:
                 "key-4": {"i": 9, "j": 10},
             }
         ]
-        schema = await analyze_schema(samples)
+        schema = analyze_schema(samples)
         assert "x-map-candidate" not in schema

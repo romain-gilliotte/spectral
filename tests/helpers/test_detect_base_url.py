@@ -50,8 +50,7 @@ def _setup_llm(text: str) -> None:
 
 
 class TestDetectBaseUrls:
-    @pytest.mark.asyncio
-    async def test_returns_cached_base_urls(self, monkeypatch: pytest.MonkeyPatch, tmp_path: Any):
+    def test_returns_cached_base_urls(self, monkeypatch: pytest.MonkeyPatch, tmp_path: Any):
         """When app.json has base_urls cached, return them without LLM call."""
         from cli.formats.app_meta import AppMeta
 
@@ -68,57 +67,52 @@ class TestDetectBaseUrls:
         bundle = _make_bundle([
             make_trace("t_0001", "GET", "https://cached.example.com/api/users", 200, 1000),
         ])
-        result = await detect_base_urls(bundle, "myapp")
+        result = detect_base_urls(bundle, "myapp")
         assert result == ["https://cached.example.com/api"]
 
-    @pytest.mark.asyncio
-    async def test_returns_base_urls(self):
+    def test_returns_base_urls(self):
         _setup_llm('{"base_urls": ["https://www.example.com/api"]}')
 
         bundle = _make_bundle([
             make_trace("t_0001", "GET", "https://www.example.com/api/users", 200, 1000),
             make_trace("t_0002", "GET", "https://cdn.example.com/style.css", 200, 2000),
         ])
-        result = await detect_base_urls(bundle, "testapp")
+        result = detect_base_urls(bundle, "testapp")
         assert result == ["https://www.example.com/api"]
 
-    @pytest.mark.asyncio
-    async def test_strips_trailing_slash(self):
+    def test_strips_trailing_slash(self):
         _setup_llm('{"base_urls": ["https://api.example.com/"]}')
 
         bundle = _make_bundle([
             make_trace("t_0001", "GET", "https://api.example.com/v1", 200, 1000),
         ])
-        result = await detect_base_urls(bundle, "testapp")
+        result = detect_base_urls(bundle, "testapp")
         assert result == ["https://api.example.com"]
 
-    @pytest.mark.asyncio
-    async def test_origin_only(self):
+    def test_origin_only(self):
         _setup_llm('{"base_urls": ["https://api.example.com"]}')
 
         bundle = _make_bundle([
             make_trace("t_0001", "GET", "https://api.example.com/users", 200, 1000),
         ])
-        result = await detect_base_urls(bundle, "testapp")
+        result = detect_base_urls(bundle, "testapp")
         assert result == ["https://api.example.com"]
 
-    @pytest.mark.asyncio
-    async def test_multiple_urls(self):
+    def test_multiple_urls(self):
         _setup_llm('{"base_urls": ["https://api.example.com", "https://search.algolia.com"]}')
 
         bundle = _make_bundle([
             make_trace("t_0001", "GET", "https://api.example.com/users", 200, 1000),
             make_trace("t_0002", "POST", "https://search.algolia.com/1/indexes", 200, 2000),
         ])
-        result = await detect_base_urls(bundle, "testapp")
+        result = detect_base_urls(bundle, "testapp")
         assert result == ["https://api.example.com", "https://search.algolia.com"]
 
-    @pytest.mark.asyncio
-    async def test_invalid_response_raises(self):
+    def test_invalid_response_raises(self):
         _setup_llm('{"something_else": "value"}')
 
         bundle = _make_bundle([
             make_trace("t_0001", "GET", "https://example.com/api", 200, 1000),
         ])
         with pytest.raises((ValidationError, ValueError, Exception)):
-            await detect_base_urls(bundle, "testapp")
+            detect_base_urls(bundle, "testapp")

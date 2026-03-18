@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 from collections.abc import Sequence
 from typing import Any, TypeVar
 
@@ -54,22 +55,26 @@ class Conversation:
         # PydanticAI message history for multi-turn
         self._messages: list[Any] = []
 
-    async def ask_text(self, prompt: str) -> str:
+    def ask_text(self, prompt: str) -> str:
         """Send a user message and return the assistant's text response."""
-        return await self._run(prompt, output_type=str)
+        return self._run(prompt, output_type=str)
 
-    async def ask_json(self, prompt: str, response_model: type[T]) -> T:
+    def ask_json(self, prompt: str, response_model: type[T]) -> T:
         """Send a user message and return validated structured output.
 
         PydanticAI handles validation and retry via tool-calling.
         """
-        return await self._run(prompt, output_type=response_model)
+        return self._run(prompt, output_type=response_model)
 
     # ------------------------------------------------------------------
     # Private helpers
     # ------------------------------------------------------------------
 
-    async def _run(self, prompt: str, *, output_type: Any) -> Any:
+    def _run(self, prompt: str, *, output_type: Any) -> Any:
+        """Sync wrapper around the async agent run."""
+        return asyncio.run(self._run_async(prompt, output_type=output_type))
+
+    async def _run_async(self, prompt: str, *, output_type: Any) -> Any:
         """Run the agent and record results."""
         from pydantic_ai import Agent
         from pydantic_ai.agent import CallToolsNode

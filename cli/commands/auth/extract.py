@@ -5,7 +5,6 @@ Also contains the ``spectral auth extract`` Click command.
 
 from __future__ import annotations
 
-import asyncio
 import time
 
 import click
@@ -42,7 +41,7 @@ def _find_authorization_header(
     return None
 
 
-async def _llm_identify_auth_headers(
+def _llm_identify_auth_headers(
     bundle: CaptureBundle, base_url: str
 ) -> list[str]:
     """LLM fallback: ask the LLM which request header names carry authentication."""
@@ -59,7 +58,7 @@ async def _llm_identify_auth_headers(
 
     prompt = load("auth-extract-headers.j2")
 
-    result = await conv.ask_json(prompt, AuthHeaderNamesResponse)
+    result = conv.ask_json(prompt, AuthHeaderNamesResponse)
     return result.header_names
 
 
@@ -80,7 +79,7 @@ def _extract_headers_by_name(
     return None
 
 
-async def _extract_auth_from_traces(
+def _extract_auth_from_traces(
     bundle: CaptureBundle, app_name: str
 ) -> TokenState | None:
     """Extract auth headers from the most recent traces.
@@ -89,7 +88,7 @@ async def _extract_auth_from_traces(
     """
     from cli.helpers.detect_base_url import detect_base_urls
 
-    base_url = (await detect_base_urls(bundle, app_name))[0]
+    base_url = detect_base_urls(bundle, app_name)[0]
 
     filtered = _filter_traces_by_base_url(bundle.traces, base_url)
     if not filtered:
@@ -101,7 +100,7 @@ async def _extract_auth_from_traces(
         return TokenState(headers=auth_headers, obtained_at=time.time())
 
     # LLM fallback: ask which headers carry auth
-    header_names = await _llm_identify_auth_headers(bundle, base_url)
+    header_names = _llm_identify_auth_headers(bundle, base_url)
     if not header_names:
         return None
 
@@ -132,7 +131,7 @@ def extract(app_name: str, debug: bool) -> None:
 
     llm.init_debug(debug=debug)
 
-    token = asyncio.run(_extract_auth_from_traces(bundle, app_name))
+    token = _extract_auth_from_traces(bundle, app_name)
 
     if token is None:
         console.print(

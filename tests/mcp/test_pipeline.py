@@ -167,11 +167,11 @@ def _setup_pipeline_llm() -> None:
     set_test_model(FunctionModel(model_fn))
 
 
-async def test_pipeline_extracts_tools() -> None:
+def test_pipeline_extracts_tools() -> None:
     _setup_pipeline_llm()
     bundle = _make_bundle()
 
-    tools = await build_mcp_tools(bundle, "testapp")
+    tools = build_mcp_tools(bundle, "testapp")
 
     assert len(tools) >= 1
     tool_names = {t.name for t in tools}

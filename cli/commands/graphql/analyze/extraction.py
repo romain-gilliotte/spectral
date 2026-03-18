@@ -91,7 +91,7 @@ def _is_enum_literal(value: str) -> bool:
     return True
 
 
-async def extract_graphql(traces: list[Trace]) -> GraphQLSchemaData:
+def extract_graphql(traces: list[Trace]) -> GraphQLSchemaData:
     """Extract a GraphQL schema from captured traces.
 
     For each GraphQL trace:

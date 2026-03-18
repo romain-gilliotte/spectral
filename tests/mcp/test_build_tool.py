@@ -53,7 +53,7 @@ def _setup_llm(response_text: str) -> None:
     set_test_model(FunctionModel(model_fn))
 
 
-async def test_build_valid_tool() -> None:
+def test_build_valid_tool() -> None:
     _setup_llm(json.dumps({
         "tool": {
             "name": "search_routes",
@@ -86,7 +86,7 @@ async def test_build_valid_tool() -> None:
         ),
     ]
 
-    result = await build_tool(
+    result = build_tool(
         candidate=ToolCandidate("search_routes", "Search routes", ["t_0001"]),
         bundle=_make_bundle(traces=traces),
         existing_tools=[],
@@ -101,7 +101,7 @@ async def test_build_valid_tool() -> None:
     assert result.consumed_trace_ids == ["t_0001"]
 
 
-async def test_build_tool_minimal_params() -> None:
+def test_build_tool_minimal_params() -> None:
     """Tool with minimal parameters is built correctly."""
     _setup_llm(json.dumps({
         "tool": {
@@ -127,7 +127,7 @@ async def test_build_tool_minimal_params() -> None:
         make_trace("t_0001", "POST", "https://api.example.com/api/search", 200, 1000),
     ]
 
-    result = await build_tool(
+    result = build_tool(
         candidate=ToolCandidate("search_routes", "Search routes", ["t_0001"]),
         bundle=_make_bundle(traces=traces),
         existing_tools=[],
@@ -139,7 +139,7 @@ async def test_build_tool_minimal_params() -> None:
     assert result.consumed_trace_ids == ["t_0001"]
 
 
-async def test_build_tool_with_path_params() -> None:
+def test_build_tool_with_path_params() -> None:
     _setup_llm(json.dumps({
         "tool": {
             "name": "get_user",
@@ -163,7 +163,7 @@ async def test_build_tool_with_path_params() -> None:
         make_trace("t_0001", "GET", "https://api.example.com/api/users/123", 200, 1000),
     ]
 
-    result = await build_tool(
+    result = build_tool(
         candidate=ToolCandidate("get_user", "Get user", ["t_0001"]),
         bundle=_make_bundle(traces=traces),
         existing_tools=[],
@@ -175,7 +175,7 @@ async def test_build_tool_with_path_params() -> None:
     assert "{user_id}" in result.tool.request.url
 
 
-async def test_build_tool_validation_missing_param_returns_fallback() -> None:
+def test_build_tool_validation_missing_param_returns_fallback() -> None:
     """Invalid $param refs → warning + fallback response with no tool."""
     _setup_llm(json.dumps({
         "tool": {
@@ -189,7 +189,7 @@ async def test_build_tool_validation_missing_param_returns_fallback() -> None:
 
     traces = [make_trace("t_0001", "GET", "https://api.example.com/api/users/123", 200, 1000)]
 
-    result = await build_tool(
+    result = build_tool(
         candidate=ToolCandidate("get_user", "Get user", ["t_0001"]),
         bundle=_make_bundle(traces=traces),
         existing_tools=[],

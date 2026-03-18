@@ -2,9 +2,7 @@
 # pyright: reportPrivateUsage=false
 
 from typing import Any
-from unittest.mock import AsyncMock, MagicMock, patch
-
-import pytest
+from unittest.mock import MagicMock, patch
 
 from cli.commands.openapi.analyze.enrich import (
     _apply_enrichment,
@@ -22,8 +20,7 @@ from cli.commands.openapi.analyze.types import (
 
 
 class TestEnrichSizeGuard:
-    @pytest.mark.asyncio
-    async def test_skips_oversized_endpoint(self):
+    def test_skips_oversized_endpoint(self):
         """Endpoints whose summary exceeds _MAX_SUMMARY_CHARS skip the LLM call."""
         # Build an endpoint with a huge request body schema (many properties).
         # Use request body rather than response schema because response schemas
@@ -52,18 +49,17 @@ class TestEnrichSizeGuard:
             base_url="https://api.example.com",
         )
 
-        mock_ask_json = AsyncMock(return_value=EndpointEnrichmentResponse(description="should not be called"))
+        mock_ask_json = MagicMock(return_value=EndpointEnrichmentResponse(description="should not be called"))
         with patch("cli.commands.openapi.analyze.enrich.llm") as mock_llm:
             mock_conv = MagicMock()
             mock_conv.ask_json = mock_ask_json
             mock_llm.Conversation.return_value = mock_conv
-            result = await enrich_endpoints(ctx)
+            result = enrich_endpoints(ctx)
 
         mock_ask_json.assert_not_called()
         assert result[0].description is None
 
-    @pytest.mark.asyncio
-    async def test_enriches_normal_endpoint(self):
+    def test_enriches_normal_endpoint(self):
         """Normal-sized endpoints are enriched as usual."""
         ep = EndpointSpec(
             id="small",
@@ -90,12 +86,12 @@ class TestEnrichSizeGuard:
             base_url="https://api.example.com",
         )
 
-        mock_ask_json = AsyncMock(return_value=EndpointEnrichmentResponse(description="Returns a user"))
+        mock_ask_json = MagicMock(return_value=EndpointEnrichmentResponse(description="Returns a user"))
         with patch("cli.commands.openapi.analyze.enrich.llm") as mock_llm:
             mock_conv = MagicMock()
             mock_conv.ask_json = mock_ask_json
             mock_llm.Conversation.return_value = mock_conv
-            result = await enrich_endpoints(ctx)
+            result = enrich_endpoints(ctx)
 
         mock_ask_json.assert_called_once()
         assert result[0].description == "Returns a user"

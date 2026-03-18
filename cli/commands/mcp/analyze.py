@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import asyncio
 from urllib.parse import urljoin
 
 import click
@@ -24,12 +23,12 @@ from cli.helpers.storage import (
 _MAX_ITERATIONS = 200
 
 
-async def build_mcp_tools(bundle: CaptureBundle, app_name: str) -> list[ToolDefinition]:
+def build_mcp_tools(bundle: CaptureBundle, app_name: str) -> list[ToolDefinition]:
     """Build MCP tool definitions from a capture bundle."""
 
     # Step 1: Detect base URLs
     console.print("  Detecting API base URLs (LLM)...")
-    base_urls = await detect_base_urls(bundle, app_name)
+    base_urls = detect_base_urls(bundle, app_name)
     for url in base_urls:
         console.print(f"    API base URL: {url}")
 
@@ -62,7 +61,7 @@ async def build_mcp_tools(bundle: CaptureBundle, app_name: str) -> list[ToolDefi
             target = remaining_bundle.traces[0]
 
             # Lightweight: is this trace useful?
-            candidate = await identify_capabilities(
+            candidate = identify_capabilities(
                 target_trace=target,
                 existing_tools=tools,
                 system_context=system_context,
@@ -79,7 +78,7 @@ async def build_mcp_tools(bundle: CaptureBundle, app_name: str) -> list[ToolDefi
             console.print(
                 f"    Evaluating {target.meta.id}... useful \u2192 building {candidate.name}"
             )
-            build_result = await build_tool(
+            build_result = build_tool(
                 candidate=candidate,
                 bundle=filtered_bundle,
                 existing_tools=tools,
@@ -139,7 +138,7 @@ def analyze_cmd(app_name: str, debug: bool) -> None:
     llm.init_debug(debug=debug)
 
     console.print(f"[bold]Generating MCP tools with LLM ({llm.current_model()})...[/bold]")
-    tools = asyncio.run(build_mcp_tools(bundle, app_name))
+    tools = build_mcp_tools(bundle, app_name)
 
     write_tools(app_name, tools)
     console.print(f"[green]Wrote {len(tools)} tool(s) to storage[/green]")

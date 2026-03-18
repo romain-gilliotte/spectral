@@ -7,7 +7,7 @@ from urllib.parse import urlparse
 from cli.commands.openapi.analyze.types import EndpointGroup
 
 
-async def strip_prefix(groups: list[EndpointGroup], base_url: str) -> list[EndpointGroup]:
+def strip_prefix(groups: list[EndpointGroup], base_url: str) -> list[EndpointGroup]:
     """Remove the base URL path prefix from endpoint patterns.
 
     e.g. base_url="https://app.example.com/api" + pattern="/api/foo" -> pattern="/foo"

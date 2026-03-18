@@ -2,22 +2,19 @@
 
 from __future__ import annotations
 
-import asyncio
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import Any
 
 import click
 import yaml
 
+from cli.commands.capture.types import CaptureBundle
 from cli.commands.openapi.analyze import rest_analyze
 from cli.helpers.console import console
 from cli.helpers.correlator import correlate
 from cli.helpers.detect_base_url import detect_base_urls
 import cli.helpers.llm as llm
 from cli.helpers.storage import list_captures, load_app_bundle
-
-if TYPE_CHECKING:
-    from cli.commands.capture.types import CaptureBundle
 
 
 @click.command()
@@ -54,7 +51,7 @@ def analyze(app_name: str, output: str, debug: bool, skip_enrich: bool) -> None:
     console.print(
         f"[bold]Analyzing with LLM ({llm.current_model()})...[/bold]"
     )
-    openapi_dict = asyncio.run(_run_openapi(bundle, app_name, skip_enrich))
+    openapi_dict = _run_openapi(bundle, app_name, skip_enrich)
 
     output_base = Path(output)
     output_base = output_base.parent / output_base.stem
@@ -75,10 +72,10 @@ def analyze(app_name: str, output: str, debug: bool, skip_enrich: bool) -> None:
     console.print(f"  Found {endpoint_count} REST paths")
 
 
-async def _run_openapi(
+def _run_openapi(
     bundle: CaptureBundle, app_name: str, skip_enrich: bool
 ) -> dict[str, Any]:
-    base_urls = await detect_base_urls(bundle, app_name)
+    base_urls = detect_base_urls(bundle, app_name)
     if len(base_urls) > 1:
         base_url = click.prompt(
             "Multiple API base URLs detected. Pick one to analyze",
@@ -94,7 +91,7 @@ async def _run_openapi(
 
     correlations = correlate(bundle)
 
-    openapi_dict = await rest_analyze(
+    openapi_dict = rest_analyze(
         rest_traces,
         base_url=base_url,
         app_name=(

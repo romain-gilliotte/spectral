@@ -18,7 +18,7 @@ import cli.helpers.llm as llm
 from cli.helpers.prompt import load, render
 
 
-async def identify_capabilities(
+def identify_capabilities(
     target_trace: Trace,
     existing_tools: list[ToolDefinition],
     system_context: str,
@@ -43,7 +43,7 @@ async def identify_capabilities(
         max_tokens=1024,
     )
     try:
-        result = await conv.ask_json(prompt, IdentifyResponse)
+        result = conv.ask_json(prompt, IdentifyResponse)
     except UnexpectedModelBehavior as exc:
         console.print(f"    [yellow]⚠ LLM returned invalid output for {target_trace.meta.id}, skipping ({exc})[/yellow]")
         return None

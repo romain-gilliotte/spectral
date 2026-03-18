@@ -87,6 +87,7 @@ class TestRegistry:
 
 
 class TestListTools:
+    @pytest.mark.asyncio
     async def test_list_tools_returns_mcp_format(
         self, monkeypatch: pytest.MonkeyPatch, tmp_path: pytest.TempPathFactory
     ) -> None:
@@ -106,6 +107,7 @@ class TestListTools:
 
 
 class TestCallTool:
+    @pytest.mark.asyncio
     @patch("requests.request")
     async def test_call_tool_success(
         self,
@@ -136,6 +138,7 @@ class TestCallTool:
         assert call_kwargs.kwargs["url"] == "https://api.example.com/api/search"
         assert call_kwargs.kwargs["json"] == {"query": "hello"}
 
+    @pytest.mark.asyncio
     @patch("requests.request")
     async def test_call_tool_with_auth(
         self,
@@ -176,6 +179,7 @@ class TestCallTool:
         headers = call_kwargs.kwargs["headers"]
         assert headers["Authorization"] == "Bearer tok123"
 
+    @pytest.mark.asyncio
     @patch("requests.request")
     async def test_call_tool_with_auth_body_params(
         self,
@@ -218,6 +222,7 @@ class TestCallTool:
         assert body["userId"] == "u1"
         assert body["query"] == "test"
 
+    @pytest.mark.asyncio
     @patch("requests.request")
     async def test_call_tool_http_error(
         self,
@@ -241,6 +246,7 @@ class TestCallTool:
         assert "Connection refused" in parsed["error"]
 
 
+    @pytest.mark.asyncio
     async def test_call_tool_requires_auth_short_circuits(
         self, monkeypatch: pytest.MonkeyPatch, tmp_path: pytest.TempPathFactory
     ) -> None:
@@ -257,6 +263,7 @@ class TestCallTool:
         assert "error" in parsed
         assert "spectral auth login" in parsed["error"]
 
+    @pytest.mark.asyncio
     @patch("requests.request")
     async def test_call_tool_no_auth_skips_auth(
         self,
@@ -287,6 +294,7 @@ class TestCallTool:
 
 
 class TestServerCallTool:
+    @pytest.mark.asyncio
     async def test_unknown_tool(
         self, monkeypatch: pytest.MonkeyPatch, tmp_path: pytest.TempPathFactory
     ) -> None:
@@ -326,6 +334,7 @@ class TestCatalogToolsInRegistry:
         assert app_name == "romain__planity-com"
         assert tool.name == "search"
 
+    @pytest.mark.asyncio
     @pytest.mark.skip(reason="Stats recording disabled until batched approach is implemented")
     @patch("requests.request")
     async def test_catalog_tool_records_stats(
@@ -356,6 +365,7 @@ class TestCatalogToolsInRegistry:
         assert stats.root["search"].last_status_code == 200
         assert stats.root["search"].avg_latency_ms > 0
 
+    @pytest.mark.asyncio
     @pytest.mark.skip(reason="Stats recording disabled until batched approach is implemented")
     @patch("requests.request")
     async def test_stats_recorded_on_http_error(
@@ -421,6 +431,7 @@ class TestApplyDefaults:
 
 
 class TestCallToolWithDefaults:
+    @pytest.mark.asyncio
     @patch("requests.request")
     async def test_call_tool_applies_defaults(
         self,

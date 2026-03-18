@@ -25,7 +25,7 @@ from cli.helpers.correlator import Correlation
 from cli.helpers.detect_base_url import MethodUrlPair
 
 
-async def rest_analyze(
+def rest_analyze(
     traces: list[Trace],
     base_url: str,
     app_name: str,
@@ -35,13 +35,13 @@ async def rest_analyze(
 ) -> dict[str, Any]:
     """Run the full REST analysis pipeline and return an OpenAPI 3.1 dict."""
     # Phase A: Mechanical extraction (includes map resolution via analyze_schema)
-    endpoints, _ = await _rest_extract(traces, base_url)
+    endpoints, _ = _rest_extract(traces, base_url)
 
     # Phase B: Enrichment (optional)
     enriched: list[EndpointSpec] | None = None
     if not skip_enrich:
         try:
-            enriched = await enrich_endpoints(
+            enriched = enrich_endpoints(
                 EnrichmentContext(
                     endpoints=endpoints,
                     traces=traces,
@@ -68,7 +68,7 @@ async def rest_analyze(
     return openapi
 
 
-async def _rest_extract(
+def _rest_extract(
     rest_traces: list[Trace],
     base_url: str,
 ) -> tuple[list[EndpointSpec], list[EndpointGroup]]:
@@ -78,12 +78,12 @@ async def _rest_extract(
         MethodUrlPair(t.meta.request.method.upper(), t.meta.request.url)
         for t in rest_traces
     ]
-    endpoint_groups = await group_endpoints(filtered_pairs)
+    endpoint_groups = group_endpoints(filtered_pairs)
 
-    endpoint_groups = await strip_prefix(endpoint_groups, base_url)
+    endpoint_groups = strip_prefix(endpoint_groups, base_url)
 
     console.print(f"  Extracting {len(endpoint_groups)} endpoints...")
-    endpoints = await mechanical_extraction(endpoint_groups, rest_traces)
+    endpoints = mechanical_extraction(endpoint_groups, rest_traces)
 
     # Detect rate_limit per endpoint
     for ep, group in zip(endpoints, endpoint_groups):

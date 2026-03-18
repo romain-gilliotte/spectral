@@ -54,15 +54,13 @@ class TestInitDebug:
 
 
 class TestConversationAskText:
-    @pytest.mark.asyncio
-    async def test_returns_text(self):
+    def test_returns_text(self):
         set_test_model(_text_model("the answer"))
         conv = llm.Conversation()
-        result = await conv.ask_text("what is 1+1?")
+        result = conv.ask_text("what is 1+1?")
         assert result == "the answer"
 
-    @pytest.mark.asyncio
-    async def test_uses_configured_model(self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path):
+    def test_uses_configured_model(self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path):
         from cli.formats.config import Config
         from cli.helpers.llm._client import clear_config, set_config
 
@@ -70,61 +68,55 @@ class TestConversationAskText:
         set_config(Config(api_key="sk-ant-test", model="claude-test-123", provider="test"))
         conv = llm.Conversation()
         assert conv._config.model == "claude-test-123"
-        await conv.ask_text("hello")
+        conv.ask_text("hello")
         clear_config()
 
-    @pytest.mark.asyncio
-    async def test_no_system_works(self):
+    def test_no_system_works(self):
         set_test_model(_text_model("ok"))
         conv = llm.Conversation()
-        result = await conv.ask_text("hello")
+        result = conv.ask_text("hello")
         assert result == "ok"
 
-    @pytest.mark.asyncio
-    async def test_system_string(self):
+    def test_system_string(self):
         set_test_model(_text_model("ok"))
         conv = llm.Conversation(system="You are a helpful assistant.")
-        result = await conv.ask_text("hello")
+        result = conv.ask_text("hello")
         assert result == "ok"
 
-    @pytest.mark.asyncio
-    async def test_system_list(self):
+    def test_system_list(self):
         set_test_model(_text_model("ok"))
         conv = llm.Conversation(system=["block1", "block2"])
-        result = await conv.ask_text("hello")
+        result = conv.ask_text("hello")
         assert result == "ok"
 
 
 class TestConversationAskJson:
-    @pytest.mark.asyncio
-    async def test_valid_json_returns_model(self):
+    def test_valid_json_returns_model(self):
         set_test_model(_text_model('{"useful": true, "name": "search"}'))
         conv = llm.Conversation()
-        result = await conv.ask_json("test", _SampleModel)
+        result = conv.ask_json("test", _SampleModel)
         assert isinstance(result, _SampleModel)
         assert result.useful is True
         assert result.name == "search"
 
-    @pytest.mark.asyncio
-    async def test_optional_field(self):
+    def test_optional_field(self):
         set_test_model(_text_model('{"useful": false}'))
         conv = llm.Conversation()
-        result = await conv.ask_json("test", _SampleModel)
+        result = conv.ask_json("test", _SampleModel)
         assert isinstance(result, _SampleModel)
         assert result.useful is False
         assert result.name is None
 
 
 class TestConversationDebug:
-    @pytest.mark.asyncio
-    async def test_writes_debug_file(self, tmp_path: Path):
+    def test_writes_debug_file(self, tmp_path: Path):
         debug_dir = tmp_path / "debug"
         debug_dir.mkdir()
         llm.init_debug(debug=True, debug_dir=debug_dir)
 
         set_test_model(_text_model("debug test"))
         conv = llm.Conversation(label="test_label")
-        await conv.ask_text("hello")
+        conv.ask_text("hello")
 
         files = list(debug_dir.iterdir())
         assert len(files) == 1
@@ -137,11 +129,10 @@ class TestConversationDebug:
 
 
 class TestPrintUsageSummary:
-    @pytest.mark.asyncio
-    async def test_prints_after_calls(self):
+    def test_prints_after_calls(self):
         set_test_model(_text_model("a"))
         conv = llm.Conversation()
-        await conv.ask_text("hello")
+        conv.ask_text("hello")
 
         with patch("cli.helpers.llm._cost.console") as mock_console:
             llm.print_usage_summary()

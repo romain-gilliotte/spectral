@@ -7,7 +7,7 @@ Usage::
     llm.init_debug(debug=True)
 
     conv = llm.Conversation(system="...", label="my_task")
-    text = await conv.ask_text(prompt)
+    text = conv.ask_text(prompt)
 
 For tests, import setup helpers directly from submodules::
 

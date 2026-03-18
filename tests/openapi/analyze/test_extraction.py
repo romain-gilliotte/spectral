@@ -3,8 +3,6 @@
 
 import json
 
-import pytest
-
 from cli.commands.openapi.analyze.extraction import (
     _build_endpoint_mechanical,
     _make_endpoint_id,
@@ -62,8 +60,7 @@ class TestFindTracesForGroup:
 
 
 class TestBuildEndpointMechanical:
-    @pytest.mark.asyncio
-    async def test_basic_endpoint(self):
+    def test_basic_endpoint(self):
         traces = [
             make_trace(
                 "t_0001",
@@ -75,25 +72,23 @@ class TestBuildEndpointMechanical:
                 request_headers=[Header(name="Authorization", value="Bearer tok")],
             ),
         ]
-        endpoint = await _build_endpoint_mechanical("GET", "/api/users", traces)
+        endpoint = _build_endpoint_mechanical("GET", "/api/users", traces)
         assert endpoint.method == "GET"
         assert endpoint.path == "/api/users"
 
-    @pytest.mark.asyncio
-    async def test_endpoint_with_path_params(self):
+    def test_endpoint_with_path_params(self):
         traces = [
             make_trace("t_0001", "GET", "https://api.example.com/users/123", 200, 1000),
             make_trace("t_0002", "GET", "https://api.example.com/users/456", 200, 2000),
         ]
-        endpoint = await _build_endpoint_mechanical("GET", "/users/{user_id}", traces)
+        endpoint = _build_endpoint_mechanical("GET", "/users/{user_id}", traces)
         assert endpoint.request.path_schema is not None
         props = endpoint.request.path_schema["properties"]
         assert "user_id" in props
         assert 123 in props["user_id"]["examples"]
         assert 456 in props["user_id"]["examples"]
 
-    @pytest.mark.asyncio
-    async def test_endpoint_with_query_params(self):
+    def test_endpoint_with_query_params(self):
         traces = [
             make_trace(
                 "t_0001",
@@ -110,14 +105,13 @@ class TestBuildEndpointMechanical:
                 2000,
             ),
         ]
-        endpoint = await _build_endpoint_mechanical("GET", "/items", traces)
+        endpoint = _build_endpoint_mechanical("GET", "/items", traces)
         assert endpoint.request.query_schema is not None
         props = endpoint.request.query_schema["properties"]
         assert "id" in props
         assert props["id"]["format"] == "uuid"
 
-    @pytest.mark.asyncio
-    async def test_endpoint_with_body_schema(self):
+    def test_endpoint_with_body_schema(self):
         traces = [
             make_trace(
                 "t_0001",
@@ -131,7 +125,7 @@ class TestBuildEndpointMechanical:
                 request_headers=[Header(name="Content-Type", value="application/json")],
             ),
         ]
-        endpoint = await _build_endpoint_mechanical("POST", "/api/orders", traces)
+        endpoint = _build_endpoint_mechanical("POST", "/api/orders", traces)
         assert endpoint.request.body_schema is not None
         props = endpoint.request.body_schema["properties"]
         assert "product_id" in props
@@ -143,8 +137,7 @@ class TestBuildEndpointMechanical:
 class TestFormatDetectionInExtraction:
     """Test that detect_format is wired into mechanical extraction for params."""
 
-    @pytest.mark.asyncio
-    async def test_body_param_date_format(self):
+    def test_body_param_date_format(self):
         traces = [
             make_trace(
                 "t_0001",
@@ -169,14 +162,13 @@ class TestFormatDetectionInExtraction:
                 request_headers=[Header(name="Content-Type", value="application/json")],
             ),
         ]
-        endpoint = await _build_endpoint_mechanical("POST", "/api/events", traces)
+        endpoint = _build_endpoint_mechanical("POST", "/api/events", traces)
         assert endpoint.request.body_schema is not None
         props = endpoint.request.body_schema["properties"]
         assert props["date"]["format"] == "date"
         assert "format" not in props["name"]  # not a recognizable format
 
-    @pytest.mark.asyncio
-    async def test_query_param_uuid_format(self):
+    def test_query_param_uuid_format(self):
         traces = [
             make_trace(
                 "t_0001",
@@ -193,12 +185,11 @@ class TestFormatDetectionInExtraction:
                 timestamp=2000,
             ),
         ]
-        endpoint = await _build_endpoint_mechanical("GET", "/items", traces)
+        endpoint = _build_endpoint_mechanical("GET", "/items", traces)
         assert endpoint.request.query_schema is not None
         assert endpoint.request.query_schema["properties"]["id"]["format"] == "uuid"
 
-    @pytest.mark.asyncio
-    async def test_non_string_body_param_no_format(self):
+    def test_non_string_body_param_no_format(self):
         traces = [
             make_trace(
                 "t_0001",
@@ -210,7 +201,7 @@ class TestFormatDetectionInExtraction:
                 request_headers=[Header(name="Content-Type", value="application/json")],
             ),
         ]
-        endpoint = await _build_endpoint_mechanical("POST", "/api/count", traces)
+        endpoint = _build_endpoint_mechanical("POST", "/api/count", traces)
         assert endpoint.request.body_schema is not None
         assert "format" not in endpoint.request.body_schema["properties"]["count"]
 

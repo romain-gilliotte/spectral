@@ -1,8 +1,7 @@
-"""Enrich endpoints with business semantics via parallel per-endpoint LLM calls."""
+"""Enrich endpoints with business semantics via per-endpoint LLM calls."""
 
 from __future__ import annotations
 
-import asyncio
 from typing import Any, TypeGuard
 
 from cli.commands.capture.types import Trace
@@ -24,14 +23,15 @@ _MAX_SUMMARY_CHARS = 40_000
 _MAX_RESPONSE_SCHEMA_CHARS = 5_000
 
 
-async def enrich_endpoints(ctx: EnrichmentContext) -> list[EndpointSpec]:
-    """Parallel per-endpoint LLM calls to enrich each endpoint with business semantics."""
-    await asyncio.gather(*[_enrich_one(ep, ctx) for ep in ctx.endpoints])
+def enrich_endpoints(ctx: EnrichmentContext) -> list[EndpointSpec]:
+    """Per-endpoint LLM calls to enrich each endpoint with business semantics."""
+    for ep in ctx.endpoints:
+        _enrich_one(ep, ctx)
 
     return ctx.endpoints
 
 
-async def _enrich_one(ep: EndpointSpec, ctx: EnrichmentContext) -> None:
+def _enrich_one(ep: EndpointSpec, ctx: EnrichmentContext) -> None:
     summary = _build_endpoint_summary(ep, ctx.traces, ctx.correlations)
     summary_size = len(minified(summary))
     if summary_size > _MAX_SUMMARY_CHARS:
@@ -50,7 +50,7 @@ async def _enrich_one(ep: EndpointSpec, ctx: EnrichmentContext) -> None:
 
     try:
         conv = llm.Conversation(max_tokens=4096, label=f"enrich_{ep.id}")
-        result = await conv.ask_json(prompt, EndpointEnrichmentResponse)
+        result = conv.ask_json(prompt, EndpointEnrichmentResponse)
         _apply_enrichment(ep, result)
     except Exception as exc:
         console.print(
