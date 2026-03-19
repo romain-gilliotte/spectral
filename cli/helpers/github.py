@@ -110,7 +110,7 @@ def download_directory(username: str, app_name: str, repo: str = "spectral-mcp/s
 
     files: list[dict[str, Any]] = []
     for entry in entries:
-        if entry.get("type") != "file" or not entry["name"].endswith(".json"):
+        if entry.get("type") != "file" or not entry["name"].endswith((".json", ".py")):
             continue
         file_resp = requests.get(
             entry["download_url"],

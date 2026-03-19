@@ -192,9 +192,42 @@ class TestDownloadDirectory:
 
         files = download_directory("romain", "planity-com")
 
-        assert len(files) == 2  # only .json files, not dirs or .md
+        assert len(files) == 2  # only .json/.py files, not dirs or .md
         assert files[0]["name"] == "manifest.json"
         assert files[1]["name"] == "search.json"
+
+    @patch("cli.helpers.github.requests")
+    def test_downloads_py_files(self, mock_requests: MagicMock) -> None:
+        contents_resp = MagicMock()
+        contents_resp.json.return_value = [
+            {
+                "name": "manifest.json",
+                "type": "file",
+                "download_url": "https://raw.githubusercontent.com/manifest.json",
+            },
+            {
+                "name": "auth_acquire.py",
+                "type": "file",
+                "download_url": "https://raw.githubusercontent.com/auth_acquire.py",
+            },
+        ]
+        contents_resp.raise_for_status = MagicMock()
+
+        manifest_resp = MagicMock()
+        manifest_resp.text = '{"display_name": "Test"}'
+        manifest_resp.raise_for_status = MagicMock()
+
+        auth_resp = MagicMock()
+        auth_resp.text = "def acquire_token():\n    pass\n"
+        auth_resp.raise_for_status = MagicMock()
+
+        mock_requests.get.side_effect = [contents_resp, manifest_resp, auth_resp]
+
+        files = download_directory("romain", "planity-com")
+
+        assert len(files) == 2
+        assert files[0]["name"] == "manifest.json"
+        assert files[1]["name"] == "auth_acquire.py"
 
     @patch("cli.helpers.github.requests")
     def test_custom_repo(self, mock_requests: MagicMock) -> None:

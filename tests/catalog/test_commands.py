@@ -211,6 +211,51 @@ class TestCatalogPublish:
         assert result.exit_code == 0, result.output
         assert "Pull request created successfully" in result.output
 
+        # No auth script → payload should not include auth_script
+        payload = mock_requests.post.call_args.kwargs["json"]
+        assert "auth_script" not in payload
+
+    @patch("cli.helpers.catalog_api.requests")
+    def test_publish_includes_auth_script(
+        self,
+        mock_requests: MagicMock,
+        monkeypatch: pytest.MonkeyPatch,
+        tmp_path: Path,
+    ) -> None:
+        from cli.helpers.storage import auth_script_path, ensure_app, write_tools
+
+        monkeypatch.setenv("SPECTRAL_HOME", str(tmp_path))
+        ensure_app("myapp", "My App")
+        write_tools("myapp", [_make_tool("t1")])
+
+        # Write an auth script
+        script_content = "def acquire_token():\n    pass\n"
+        auth_script_path("myapp").write_text(script_content)
+
+        token_path = tmp_path / "catalog_token.json"
+        token_path.write_text(
+            CatalogToken(access_token="tok", username="user").model_dump_json()
+        )
+
+        resp_mock = MagicMock()
+        resp_mock.ok = True
+        resp_mock.status_code = 200
+        resp_mock.json.return_value = {
+            "pr_url": "https://github.com/org/spectral-tools/pull/1",
+            "branch": "submissions/user/myapp",
+            "pr_created": True,
+        }
+        mock_requests.post.return_value = resp_mock
+
+        runner = CliRunner()
+        result = runner.invoke(cli, ["community", "publish", "myapp"])
+
+        assert result.exit_code == 0, result.output
+        assert "with auth script" in result.output
+
+        payload = mock_requests.post.call_args.kwargs["json"]
+        assert payload["auth_script"] == script_content
+
     def test_publish_nonexistent_app(
         self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
     ) -> None:
@@ -434,7 +479,7 @@ class TestCatalogInstall:
         assert "romain__test-app" in result.output
 
         # Verify tools were written
-        from cli.helpers.storage import list_tools, load_app_meta
+        from cli.helpers.storage import auth_script_path, list_tools, load_app_meta
 
         tools = list_tools("romain__test-app")
         assert len(tools) == 1
@@ -446,6 +491,80 @@ class TestCatalogInstall:
         assert meta.catalog_source.username == "romain"
         assert meta.catalog_source.app_name == "test-app"
         assert meta.display_name == "Test App"
+
+        # No auth script in this install
+        assert not auth_script_path("romain__test-app").is_file()
+
+    @patch("cli.helpers.github.requests")
+    def test_install_with_auth_script(
+        self,
+        mock_requests: MagicMock,
+        monkeypatch: pytest.MonkeyPatch,
+        tmp_path: Path,
+    ) -> None:
+        monkeypatch.setenv("SPECTRAL_HOME", str(tmp_path))
+
+        tool = _make_tool("search")
+        manifest: dict[str, Any] = {
+            "display_name": "Test App",
+            "description": "Test tools",
+            "base_urls": ["https://example.com"],
+            "tool_count": 1,
+            "published_at": "2026-03-12T10:00:00Z",
+            "spectral_version": "0.3.1",
+        }
+        auth_code = "def acquire_token():\n    pass\n"
+
+        contents_resp = MagicMock()
+        contents_resp.status_code = 200
+        contents_resp.raise_for_status = MagicMock()
+        contents_resp.json.return_value = [
+            {
+                "name": "manifest.json",
+                "type": "file",
+                "download_url": "https://raw.githubusercontent.com/manifest.json",
+            },
+            {
+                "name": "search.json",
+                "type": "file",
+                "download_url": "https://raw.githubusercontent.com/search.json",
+            },
+            {
+                "name": "auth_acquire.py",
+                "type": "file",
+                "download_url": "https://raw.githubusercontent.com/auth_acquire.py",
+            },
+        ]
+
+        manifest_resp = MagicMock()
+        manifest_resp.status_code = 200
+        manifest_resp.raise_for_status = MagicMock()
+        manifest_resp.text = json.dumps(manifest)
+
+        tool_resp = MagicMock()
+        tool_resp.status_code = 200
+        tool_resp.raise_for_status = MagicMock()
+        tool_resp.text = tool.model_dump_json()
+
+        auth_resp = MagicMock()
+        auth_resp.status_code = 200
+        auth_resp.raise_for_status = MagicMock()
+        auth_resp.text = auth_code
+
+        mock_requests.get.side_effect = [contents_resp, manifest_resp, tool_resp, auth_resp]
+
+        runner = CliRunner()
+        result = runner.invoke(cli, ["community", "install", "romain/test-app"])
+
+        assert result.exit_code == 0, result.output
+        assert "Installed 1 tools" in result.output
+        assert "spectral auth login" in result.output
+
+        from cli.helpers.storage import auth_script_path
+
+        script_path = auth_script_path("romain__test-app")
+        assert script_path.is_file()
+        assert script_path.read_text() == auth_code
 
     @patch("cli.helpers.github.requests")
     def test_install_no_files(

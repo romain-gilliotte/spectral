@@ -44,6 +44,7 @@ auth, POST-based APIs)
 
 ## Rules
 
+- **No hardcoded personal data**: the generated script may be shared publicly. NEVER hardcode usernames, emails, API keys, passwords, personal URLs, account IDs, or any user-specific values. Always use `prompt_text()` or `prompt_secret()` to collect credentials at runtime. Only hardcode values that are the same for ALL users of the API (endpoint URLs, public client IDs, content types, static headers).
 - **Stdlib only**: only use `base64`, `json`, `re`, `time`, `urllib.parse`, `urllib.request` — zero pip dependencies
 - **No caching**: do not cache tokens, do not read/write files
 - **Use injected helpers**: use `prompt_text`/`prompt_secret` for user input, `tell_user`/`wait_user_confirmation` for

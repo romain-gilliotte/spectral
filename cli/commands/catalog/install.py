@@ -20,7 +20,12 @@ def install(collection_ref: str) -> None:
     from cli.formats.catalog import CatalogManifest, CatalogSource
     from cli.formats.mcp_tool import ToolDefinition
     from cli.helpers.github import download_directory
-    from cli.helpers.storage import ensure_app, update_app_meta, write_tools
+    from cli.helpers.storage import (
+        auth_script_path,
+        ensure_app,
+        update_app_meta,
+        write_tools,
+    )
 
     if not re.match(r"^[a-zA-Z0-9_-]+/[a-zA-Z0-9_.-]+$", collection_ref):
         raise click.ClickException(
@@ -46,12 +51,15 @@ def install(collection_ref: str) -> None:
     # Parse manifest
     manifest: CatalogManifest | None = None
     tools: list[ToolDefinition] = []
+    auth_script: str | None = None
 
     for entry in files:
         name = entry["name"]
         content = entry["content"]
         if name == "manifest.json":
             manifest = CatalogManifest.model_validate_json(content)
+        elif name == "auth_acquire.py":
+            auth_script = content
         else:
             try:
                 tools.append(ToolDefinition.model_validate_json(content))
@@ -73,8 +81,13 @@ def install(collection_ref: str) -> None:
 
     write_tools(local_name, tools)
 
+    if auth_script is not None:
+        auth_script_path(local_name).write_text(auth_script)
+
     result = CatalogInstallResult.from_tools(local_name, tools)
-    console.print(
-        f"[green]Installed {result.tool_count} tools as '{result.local_name}'.[/green]\n"
-        f"Use them via the MCP server: spectral mcp stdio"
-    )
+    msg = f"[green]Installed {result.tool_count} tools as '{result.local_name}'.[/green]"
+    if auth_script is not None:
+        msg += f"\nRun [bold]spectral auth login {result.local_name}[/bold] to authenticate."
+    else:
+        msg += "\nUse them via the MCP server: spectral mcp stdio"
+    console.print(msg)

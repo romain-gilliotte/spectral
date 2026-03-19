@@ -24,19 +24,23 @@ def publish(
     app_name: str,
     manifest: dict[str, Any],
     tools: list[dict[str, Any]],
+    auth_script: str | None = None,
 ) -> dict[str, Any]:
     """Publish a tool collection to the catalog backend.
 
     Returns ``{"pr_url": "...", "branch": "..."}``.
     """
+    payload: dict[str, Any] = {
+        "github_token": github_token,
+        "app_name": app_name,
+        "manifest": manifest,
+        "tools": tools,
+    }
+    if auth_script is not None:
+        payload["auth_script"] = auth_script
     resp = requests.post(
         f"{CATALOG_BACKEND_URL}/publish",
-        json={
-            "github_token": github_token,
-            "app_name": app_name,
-            "manifest": manifest,
-            "tools": tools,
-        },
+        json=payload,
         timeout=30,
     )
     if resp.status_code == 409:

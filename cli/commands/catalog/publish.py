@@ -16,6 +16,7 @@ def publish(app_name: str) -> None:
     from cli.formats.catalog import CatalogManifest
     from cli.helpers.catalog_api import CatalogAPIError, publish as api_publish
     from cli.helpers.storage import (
+        auth_script_path,
         list_tools,
         load_app_meta,
         load_catalog_token,
@@ -50,7 +51,14 @@ def publish(app_name: str) -> None:
         spectral_version=importlib.metadata.version("spectral-mcp"),
     )
 
-    console.print(f"Publishing [bold]{app_name}[/bold] ({len(tools)} tools)...")
+    script_path = auth_script_path(app_name)
+    auth_script = script_path.read_text() if script_path.is_file() else None
+
+    label = f"Publishing [bold]{app_name}[/bold] ({len(tools)} tools"
+    if auth_script is not None:
+        label += ", with auth script"
+    label += ")..."
+    console.print(label)
 
     try:
         result = api_publish(
@@ -58,6 +66,7 @@ def publish(app_name: str) -> None:
             app_name=app_name,
             manifest=manifest.model_dump(),
             tools=[t.model_dump() for t in tools],
+            auth_script=auth_script,
         )
     except CatalogAPIError as exc:
         raise click.ClickException(f"Publish failed: {exc.message}") from exc
