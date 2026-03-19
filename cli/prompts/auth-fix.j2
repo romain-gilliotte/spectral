@@ -1,0 +1,27 @@
+{% if attempt == 0 %}
+The auth script failed. Here is the current script and the error:
+
+### Current script
+
+```python
+{{ current_script }}
+```
+{% else %}
+The fixed script still fails. Here is the new error:
+{% endif %}
+
+### Traceback
+{{ traceback }}
+
+### Script stdout
+
+{% if script_stdout %}
+{{ script_stdout }}
+{% else %}
+No debug() output was captured.
+{% endif %}
+
+Fix the script so it works. You may add `debug()` calls to log intermediate values
+Their output will be shown to you if the script fails again.
+
+Return ONLY the corrected Python code in a ```python block.

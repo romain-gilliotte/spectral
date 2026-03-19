@@ -2,15 +2,23 @@
 
 from __future__ import annotations
 
+import time
+
 import click
 
+from cli.formats.mcp_tool import TokenState
 from cli.helpers.console import console
+from cli.helpers.storage import resolve_app, write_token
 
 
 @click.command("set")
 @click.argument("app_name")
-@click.option("--header", "-H", multiple=True, help='Header as "Name: Value" (repeatable)')
-@click.option("--cookie", "-c", multiple=True, help='Cookie as "name=value" (repeatable)')
+@click.option(
+    "--header", "-H", multiple=True, help='Header as "Name: Value" (repeatable)'
+)
+@click.option(
+    "--cookie", "-c", multiple=True, help='Cookie as "name=value" (repeatable)'
+)
 @click.option(
     "--body-param",
     "-b",
@@ -27,10 +35,6 @@ def set_token(
 
     Fallback when the generated auth script doesn't work.
     """
-    import time
-
-    from cli.formats.mcp_tool import TokenState
-    from cli.helpers.storage import resolve_app, write_token
 
     resolve_app(app_name)
 
@@ -59,7 +63,7 @@ def set_token(
     if not headers and not body_params:
         token = click.prompt("Token")
         if token.startswith("Bearer "):
-            token = token[len("Bearer "):]
+            token = token[len("Bearer ") :]
         headers["Authorization"] = f"Bearer {token}"
 
     token_state = TokenState(

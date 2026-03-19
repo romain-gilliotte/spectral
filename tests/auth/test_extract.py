@@ -1,230 +1,303 @@
-"""Tests for the auth extract command."""
+# pyright: reportPrivateUsage=false
+"""Tests for private extraction helpers in cli.commands.auth.extract."""
 
 from __future__ import annotations
 
-from pathlib import Path
-from typing import Any
+from unittest.mock import MagicMock, patch
 
 from click.testing import CliRunner
-from pydantic_ai.messages import ModelResponse, TextPart, ToolCallPart
-from pydantic_ai.models.function import AgentInfo, FunctionModel
-import pytest
 
-from cli.commands.capture.types import CaptureBundle
+from cli.commands.auth.extract import (
+    _extract_auth_from_traces,
+    _extract_headers_by_name,
+    _filter_traces_by_base_url,
+    _find_authorization_header,
+    extract,
+)
+from cli.commands.capture.types import CaptureBundle, Trace
 from cli.formats.capture_bundle import Header
-from cli.helpers.llm.providers.testing import set_test_model
-from cli.main import cli
 from tests.conftest import make_trace
 
-
-def _setup_extract_llm(*responses: str) -> None:
-    """Set up a FunctionModel that returns given responses in order."""
-    call_count = {"n": 0}
-    response_list = list(responses)
-
-    def model_fn(messages: list[Any], info: AgentInfo) -> ModelResponse:
-        idx = min(call_count["n"], len(response_list) - 1)
-        call_count["n"] += 1
-        text = response_list[idx]
-        if info.output_tools:
-            return ModelResponse(parts=[
-                ToolCallPart(
-                    tool_name=info.output_tools[0].name,
-                    args=text,
-                    tool_call_id=f"tc_{idx}",
-                ),
-            ])
-        return ModelResponse(parts=[TextPart(content=text)])
-
-    set_test_model(FunctionModel(model_fn))
+BASE_URL = "https://api.example.com"
+MODULE = "cli.commands.auth.extract"
 
 
-class TestExtractAuthorizationHeader:
-    """Fast path: Authorization header found directly."""
+def _bearer_trace(trace_id: str, timestamp: int, token: str = "tok") -> Trace:
+    return make_trace(
+        trace_id,
+        "GET",
+        f"{BASE_URL}/data",
+        200,
+        timestamp=timestamp,
+        request_headers=[Header(name="Authorization", value=f"Bearer {token}")],
+    )
 
-    def test_extract_authorization_header(
-        self, sample_bundle: CaptureBundle, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
-    ) -> None:
-        """Traces with Authorization header -> token.json written (no LLM needed for auth)."""
-        from cli.helpers.storage import load_token, store_capture
 
-        monkeypatch.setenv("SPECTRAL_HOME", str(tmp_path / "store"))
-        store_capture(sample_bundle, "testapp")
+def _plain_trace(trace_id: str, url: str, timestamp: int) -> Trace:
+    return make_trace(
+        trace_id,
+        "GET",
+        url,
+        200,
+        timestamp=timestamp,
+        request_headers=[Header(name="Accept", value="application/json")],
+    )
 
-        # LLM only needed for base_url detection (sample_bundle has no cached base_url)
-        _setup_extract_llm('{"base_urls": ["https://api.example.com"]}')
 
-        runner = CliRunner()
-        result = runner.invoke(cli, ["auth", "extract", "testapp"])
+# ------------------------------------------------------------------
+# _filter_traces_by_base_url
+# ------------------------------------------------------------------
 
-        assert result.exit_code == 0, result.output
-        assert "Token saved" in result.output
-        assert "Authorization" in result.output
 
-        token = load_token("testapp")
-        assert token is not None
-        assert "Authorization" in token.headers
-        assert token.headers["Authorization"] == "Bearer token123"
+class TestFilterTracesByBaseUrl:
+    def test_filters_matching_traces(self) -> None:
+        matching = _plain_trace("t1", f"{BASE_URL}/users", 100)
+        other = _plain_trace("t2", "https://cdn.other.com/img.png", 200)
+        also_matching = _plain_trace("t3", f"{BASE_URL}/orders", 300)
 
-    def test_extract_most_recent_trace(
-        self, sample_bundle: CaptureBundle, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
-    ) -> None:
-        """Multiple traces with different tokens -> picks most recent."""
-        from cli.helpers.storage import load_token, store_capture
+        result = _filter_traces_by_base_url([matching, other, also_matching], BASE_URL)
 
-        monkeypatch.setenv("SPECTRAL_HOME", str(tmp_path / "store"))
+        ids = [t.meta.id for t in result]
+        assert ids == ["t3", "t1"]
+        assert "t2" not in ids
 
-        # Add a newer trace with a different token
-        newer_trace = make_trace(
-            "t_0005",
+    def test_sorts_by_timestamp_descending(self) -> None:
+        t_early = _plain_trace("t1", f"{BASE_URL}/a", 100)
+        t_mid = _plain_trace("t2", f"{BASE_URL}/b", 200)
+        t_late = _plain_trace("t3", f"{BASE_URL}/c", 300)
+
+        result = _filter_traces_by_base_url([t_mid, t_early, t_late], BASE_URL)
+
+        timestamps = [t.meta.timestamp for t in result]
+        assert timestamps == [300, 200, 100]
+
+
+# ------------------------------------------------------------------
+# _find_authorization_header
+# ------------------------------------------------------------------
+
+
+class TestFindAuthorizationHeader:
+    def test_found_in_first_trace(self) -> None:
+        traces = [_bearer_trace("t1", 100, "secret")]
+
+        result = _find_authorization_header(traces)
+
+        assert result == {"Authorization": "Bearer secret"}
+
+    def test_not_found(self) -> None:
+        traces = [
+            _plain_trace("t1", f"{BASE_URL}/a", 100),
+            _plain_trace("t2", f"{BASE_URL}/b", 200),
+        ]
+
+        result = _find_authorization_header(traces)
+
+        assert result is None
+
+    def test_picks_most_recent(self) -> None:
+        """First trace in the (already sorted) list wins."""
+        recent = _bearer_trace("t1", 300, "new-token")
+        older = _bearer_trace("t2", 100, "old-token")
+
+        result = _find_authorization_header([recent, older])
+
+        assert result == {"Authorization": "Bearer new-token"}
+
+
+# ------------------------------------------------------------------
+# _extract_headers_by_name
+# ------------------------------------------------------------------
+
+
+class TestExtractHeadersByName:
+    def test_extracts_named_headers(self) -> None:
+        trace = make_trace(
+            "t1",
             "GET",
-            "https://api.example.com/api/profile",
+            f"{BASE_URL}/resource",
             200,
-            timestamp=2000000,
-            request_headers=[Header(name="Authorization", value="Bearer newer-token")],
+            timestamp=100,
+            request_headers=[
+                Header(name="X-Api-Key", value="key-abc"),
+                Header(name="Accept", value="application/json"),
+            ],
         )
-        sample_bundle.traces.append(newer_trace)
-        store_capture(sample_bundle, "testapp")
 
-        _setup_extract_llm('{"base_urls": ["https://api.example.com"]}')
+        result = _extract_headers_by_name([trace], BASE_URL, ["X-Api-Key"])
 
-        runner = CliRunner()
-        result = runner.invoke(cli, ["auth", "extract", "testapp"])
+        assert result == {"X-Api-Key": "key-abc"}
 
-        assert result.exit_code == 0, result.output
-        token = load_token("testapp")
-        assert token is not None
-        assert token.headers["Authorization"] == "Bearer newer-token"
+    def test_case_insensitive(self) -> None:
+        trace = make_trace(
+            "t1",
+            "GET",
+            f"{BASE_URL}/resource",
+            200,
+            timestamp=100,
+            request_headers=[
+                Header(name="Authorization", value="Bearer xyz"),
+            ],
+        )
+
+        result = _extract_headers_by_name([trace], BASE_URL, ["authorization"])
+
+        assert result == {"Authorization": "Bearer xyz"}
+
+    def test_returns_none_when_absent(self) -> None:
+        trace = make_trace(
+            "t1",
+            "GET",
+            f"{BASE_URL}/resource",
+            200,
+            timestamp=100,
+            request_headers=[Header(name="Accept", value="text/html")],
+        )
+
+        result = _extract_headers_by_name([trace], BASE_URL, ["X-Secret"])
+
+        assert result is None
 
 
-class TestExtractCookieViaLlm:
-    """LLM fallback: no Authorization header, LLM identifies Cookie."""
+# ------------------------------------------------------------------
+# _extract_auth_from_traces
+# ------------------------------------------------------------------
 
-    def test_extract_cookie_via_llm(
-        self, sample_bundle: CaptureBundle, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
-    ) -> None:
-        from cli.helpers.storage import load_token, store_capture
 
-        monkeypatch.setenv("SPECTRAL_HOME", str(tmp_path / "store"))
+def _bundle_with_traces(traces: list[Trace]) -> CaptureBundle:
+    bundle = MagicMock(spec=CaptureBundle)
+    bundle.traces = traces
 
-        # Replace all traces with cookie-only traces (no Authorization header)
-        sample_bundle.traces = [
-            make_trace(
-                "t_0001",
-                "GET",
-                "https://api.example.com/api/data",
-                200,
-                timestamp=1000000,
-                request_headers=[
-                    Header(name="Cookie", value="session=abc123; csrf=xyz"),
-                    Header(name="Content-Type", value="application/json"),
-                ],
-            ),
+    def _filter(pred: object) -> MagicMock:
+        return MagicMock(
+            spec=CaptureBundle, traces=[t for t in traces if pred(t)]  # type: ignore[operator]
+        )
+
+    bundle.filter_traces = _filter
+    return bundle
+
+
+class TestExtractAuthFromTraces:
+    @patch("cli.helpers.detect_base_url.detect_base_urls", return_value=[BASE_URL])
+    def test_fast_path_authorization_header(self, _mock_detect: object) -> None:
+        traces = [_bearer_trace("t1", 200, "my-secret")]
+        bundle = _bundle_with_traces(traces)
+
+        result = _extract_auth_from_traces(bundle, "myapp")
+
+        assert result is not None
+        assert result.headers == {"Authorization": "Bearer my-secret"}
+
+    @patch("cli.helpers.detect_base_url.detect_base_urls", return_value=[BASE_URL])
+    def test_fast_path_picks_most_recent(self, _mock_detect: object) -> None:
+        traces = [
+            _bearer_trace("t1", 100, "old"),
+            _bearer_trace("t2", 300, "new"),
         ]
-        store_capture(sample_bundle, "testapp")
+        bundle = _bundle_with_traces(traces)
 
-        _setup_extract_llm(
-            '{"base_urls": ["https://api.example.com"]}',
-            '{"header_names": ["Cookie"]}',
+        result = _extract_auth_from_traces(bundle, "myapp")
+
+        assert result is not None
+        assert result.headers == {"Authorization": "Bearer new"}
+
+    @patch("cli.helpers.detect_base_url.detect_base_urls", return_value=[BASE_URL])
+    def test_no_matching_traces_returns_none(self, _mock_detect: object) -> None:
+        traces = [_plain_trace("t1", "https://other.com/x", 100)]
+        bundle = _bundle_with_traces(traces)
+
+        result = _extract_auth_from_traces(bundle, "myapp")
+
+        assert result is None
+
+    @patch(f"{MODULE}._llm_identify_auth_headers", return_value=["X-Api-Key"])
+    @patch("cli.helpers.detect_base_url.detect_base_urls", return_value=[BASE_URL])
+    def test_llm_fallback_identifies_custom_header(
+        self, _mock_detect: object, _mock_llm: object
+    ) -> None:
+        trace = make_trace(
+            "t1",
+            "GET",
+            f"{BASE_URL}/data",
+            200,
+            timestamp=100,
+            request_headers=[
+                Header(name="X-Api-Key", value="key-123"),
+                Header(name="Accept", value="application/json"),
+            ],
         )
+        bundle = _bundle_with_traces([trace])
 
-        runner = CliRunner()
-        result = runner.invoke(cli, ["auth", "extract", "testapp"])
+        result = _extract_auth_from_traces(bundle, "myapp")
 
-        assert result.exit_code == 0, result.output
+        assert result is not None
+        assert result.headers == {"X-Api-Key": "key-123"}
+
+    @patch(f"{MODULE}._llm_identify_auth_headers", return_value=[])
+    @patch("cli.helpers.detect_base_url.detect_base_urls", return_value=[BASE_URL])
+    def test_llm_finds_no_auth_headers(
+        self, _mock_detect: object, _mock_llm: object
+    ) -> None:
+        traces = [_plain_trace("t1", f"{BASE_URL}/public", 100)]
+        bundle = _bundle_with_traces(traces)
+
+        result = _extract_auth_from_traces(bundle, "myapp")
+
+        assert result is None
+
+    @patch(f"{MODULE}._llm_identify_auth_headers", return_value=["X-Secret"])
+    @patch("cli.helpers.detect_base_url.detect_base_urls", return_value=[BASE_URL])
+    def test_llm_identifies_header_absent_from_traces(
+        self, _mock_detect: object, _mock_llm: object
+    ) -> None:
+        """LLM says X-Secret, but no trace in base_url has it."""
+        traces = [_plain_trace("t1", f"{BASE_URL}/data", 100)]
+        bundle = _bundle_with_traces(traces)
+
+        result = _extract_auth_from_traces(bundle, "myapp")
+
+        assert result is None
+
+
+# ------------------------------------------------------------------
+# extract command
+# ------------------------------------------------------------------
+
+
+_DETECT_PATCH = "cli.helpers.detect_base_url.detect_base_urls"
+
+
+class TestExtractCommand:
+    def test_token_saved(self) -> None:
+        bundle = _bundle_with_traces([_bearer_trace("t1", 100, "tok")])
+
+        with (
+            patch(f"{MODULE}.resolve_app"),
+            patch(f"{MODULE}.load_app_bundle", return_value=bundle),
+            patch(_DETECT_PATCH, return_value=[BASE_URL]),
+            patch(f"{MODULE}.write_token") as mock_write,
+        ):
+            result = CliRunner().invoke(extract, ["myapp"], catch_exceptions=False)
+
+        assert result.exit_code == 0
         assert "Token saved" in result.output
+        mock_write.assert_called_once()
+        token = mock_write.call_args[0][1]
+        assert token.headers == {"Authorization": "Bearer tok"}
 
-        token = load_token("testapp")
-        assert token is not None
-        assert "Cookie" in token.headers
-        assert token.headers["Cookie"] == "session=abc123; csrf=xyz"
-
-
-class TestExtractNoAuth:
-    """No auth headers found at all."""
-
-    def test_extract_no_auth_headers(
-        self, sample_bundle: CaptureBundle, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
-    ) -> None:
-        from cli.helpers.storage import load_token, store_capture
-
-        monkeypatch.setenv("SPECTRAL_HOME", str(tmp_path / "store"))
-
-        # Traces with no auth-related headers
-        sample_bundle.traces = [
-            make_trace(
-                "t_0001",
-                "GET",
-                "https://api.example.com/api/public",
-                200,
-                timestamp=1000000,
-                request_headers=[
-                    Header(name="Content-Type", value="application/json"),
-                    Header(name="Accept", value="*/*"),
-                ],
-            ),
-        ]
-        store_capture(sample_bundle, "testapp")
-
-        # base_url detection, then LLM says no auth headers
-        _setup_extract_llm(
-            '{"base_urls": ["https://api.example.com"]}',
-            '{"header_names": []}',
+    def test_no_auth_found(self) -> None:
+        bundle = _bundle_with_traces(
+            [_plain_trace("t1", "https://other.com/x", 100)]
         )
 
-        runner = CliRunner()
-        result = runner.invoke(cli, ["auth", "extract", "testapp"])
+        with (
+            patch(f"{MODULE}.resolve_app"),
+            patch(f"{MODULE}.load_app_bundle", return_value=bundle),
+            patch(_DETECT_PATCH, return_value=[BASE_URL]),
+            patch(f"{MODULE}.write_token") as mock_write,
+        ):
+            result = CliRunner().invoke(extract, ["myapp"], catch_exceptions=False)
 
-        assert result.exit_code == 0, result.output
+        assert result.exit_code == 0
         assert "No auth headers found" in result.output
-
-        token = load_token("testapp")
-        assert token is None
-
-
-class TestExtractNoMatchingTraces:
-    """No traces match base_url."""
-
-    def test_extract_no_matching_traces(
-        self, sample_bundle: CaptureBundle, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
-    ) -> None:
-        from cli.helpers.storage import load_token, store_capture
-
-        monkeypatch.setenv("SPECTRAL_HOME", str(tmp_path / "store"))
-
-        # All traces go to a different domain
-        sample_bundle.traces = [
-            make_trace(
-                "t_0001",
-                "GET",
-                "https://other-api.example.com/data",
-                200,
-                timestamp=1000000,
-                request_headers=[Header(name="Authorization", value="Bearer tok")],
-            ),
-        ]
-        store_capture(sample_bundle, "testapp")
-
-        # base_url is different from the traces' URLs
-        _setup_extract_llm('{"base_urls": ["https://api.example.com"]}')
-
-        runner = CliRunner()
-        result = runner.invoke(cli, ["auth", "extract", "testapp"])
-
-        assert result.exit_code == 0, result.output
-        assert "No auth headers found" in result.output
-
-        token = load_token("testapp")
-        assert token is None
-
-
-class TestExtractNonexistentApp:
-    def test_extract_nonexistent_app(
-        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
-    ) -> None:
-        monkeypatch.setenv("SPECTRAL_HOME", str(tmp_path / "store"))
-        runner = CliRunner()
-        result = runner.invoke(cli, ["auth", "extract", "nope"])
-
-        assert result.exit_code != 0
-        assert "not found" in result.output
+        mock_write.assert_not_called()

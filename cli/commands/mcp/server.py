@@ -9,7 +9,7 @@ import click
 
 from cli.commands.mcp.request import build_request
 from cli.formats.mcp_tool import ToolDefinition
-from cli.helpers.auth_runtime import AuthError, get_auth
+from cli.helpers.auth.usage import AuthError, get_auth
 from cli.helpers.storage import list_apps, list_tools
 
 # Registry: MCP tool name -> (app_name, ToolDefinition)
@@ -95,7 +95,9 @@ async def _handle_call(
     return "\n\n".join(result_parts)
 
 
-def _apply_defaults(arguments: dict[str, Any], schema: dict[str, Any]) -> dict[str, Any]:
+def _apply_defaults(
+    arguments: dict[str, Any], schema: dict[str, Any]
+) -> dict[str, Any]:
     """Insert default values for optional parameters absent from *arguments*."""
     properties = schema.get("properties", {})
     result = dict(arguments)

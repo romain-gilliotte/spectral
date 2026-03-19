@@ -4,7 +4,9 @@ from __future__ import annotations
 
 import click
 
+from cli.helpers.auth.usage import AuthError, refresh_auth
 from cli.helpers.console import console
+from cli.helpers.storage import load_token, resolve_app
 
 
 @click.command()
@@ -14,8 +16,6 @@ def refresh(app_name: str) -> None:
 
     Loads token.json, calls refresh_token(), and updates token.json.
     """
-    from cli.helpers.auth_runtime import AuthError, refresh_auth
-    from cli.helpers.storage import load_token, resolve_app, write_token
 
     resolve_app(app_name)
 
@@ -26,9 +26,8 @@ def refresh(app_name: str) -> None:
         )
 
     try:
-        new_token = refresh_auth(app_name, token)
+        refresh_auth(app_name, token)
     except AuthError as exc:
         raise click.ClickException(str(exc)) from exc
 
-    write_token(app_name, new_token)
     console.print("[green]Token refreshed successfully.[/green]")

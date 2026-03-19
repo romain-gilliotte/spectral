@@ -5,13 +5,13 @@ from __future__ import annotations
 import click
 
 from cli.helpers.console import console
+from cli.helpers.storage import delete_token, resolve_app
 
 
 @click.command()
 @click.argument("app_name")
 def logout(app_name: str) -> None:
     """Remove stored token for an app."""
-    from cli.helpers.storage import delete_token, resolve_app
 
     resolve_app(app_name)
 

@@ -11,7 +11,7 @@ from cli.commands.mcp.build_tool import build_tool
 from cli.commands.mcp.identify import identify_capabilities
 from cli.formats.mcp_tool import ToolDefinition
 from cli.helpers.console import console
-from cli.helpers.context import build_shared_context
+from cli.helpers.context import build_timeline
 from cli.helpers.detect_base_url import detect_base_urls
 import cli.helpers.llm as llm
 from cli.helpers.storage import (
@@ -48,7 +48,7 @@ def build_mcp_tools(bundle: CaptureBundle, app_name: str) -> list[ToolDefinition
             continue
 
         # Build system context (shared across identify + build_tool for prompt caching)
-        system_context = build_shared_context(bundle, base_url)
+        system_context = build_timeline(bundle)
 
         # Step 3: Greedy per-trace identification + build loop
         console.print("  Identifying capabilities and building tools...")

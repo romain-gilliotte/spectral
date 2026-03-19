@@ -1,18 +1,25 @@
 """CLI command: spectral auth login."""
-# pyright: reportPrivateUsage=false
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+import traceback
 
 import click
 
+from cli.helpers.auth.errors import (
+    AuthScriptError,
+    AuthScriptInvalid,
+    AuthScriptNotFound,
+)
+from cli.helpers.auth.generation import extract_script, get_auth_instructions
+from cli.helpers.auth.usage import acquire_auth
 from cli.helpers.console import console
+from cli.helpers.context import build_timeline
+from cli.helpers.llm import Conversation, init_debug
+from cli.helpers.prompt import render
+from cli.helpers.storage import auth_script_path, load_app_bundle, resolve_app
 
-if TYPE_CHECKING:
-    from cli.commands.capture.types import CaptureBundle
-    from cli.formats.mcp_tool import TokenState
-    from cli.helpers.llm import Conversation
+_MAX_FIX_ATTEMPTS = 5
 
 
 @click.command()
@@ -26,127 +33,96 @@ def login(app_name: str, debug: bool) -> None:
     Loads auth_acquire.py, calls acquire_token(), and writes token.json.
     If the script fails, offers to fix it with the LLM.
     """
-    from cli.helpers.auth_runtime import acquire_auth
-    from cli.helpers.storage import resolve_app, write_token
-
-    resolve_app(app_name)
 
     console.print(f"[bold]Logging in to {app_name}...[/bold]")
+
+    resolve_app(app_name)
+    init_debug(debug=debug)
+    _attempt_login(app_name)
+
+
+def _attempt_login(app_name: str) -> None:
+    output: list[str] = []
     try:
-        token = acquire_auth(app_name)
-    except Exception:
-        error_str = _format_error()
+        acquire_auth(app_name, output=output)
+        console.print("[green]Login successful. Token saved.[/green]")
+
+    except AuthScriptNotFound:
+        raise click.ClickException(
+            f"Auth script not found for '{app_name}'. "
+            f"Run 'spectral auth analyze {app_name}' to generate one."
+        )
+
+    except AuthScriptError:
         console.print("[red]Login failed:[/red]")
-        console.print(error_str)
+        error_trace = traceback.format_exc()
+        console.print(error_trace)
 
         if not click.confirm(
             "Would you like the LLM to fix the auth script?", default=True
         ):
-            raise SystemExit(1)
+            raise click.ClickException(
+                f"Auth script failed for '{app_name}'. "
+                f"Run 'spectral auth analyze {app_name}' to generate another one."
+            )
 
-        token = _fix_loop(app_name, debug, error_str)
-
-    write_token(app_name, token)
-    console.print("[green]Login successful. Token saved.[/green]")
-
-
-def _format_error() -> str:
-    """Format the current exception + captured script output into an error string."""
-    import traceback
-
-    from cli.helpers.auth_runtime import captured_script_output
-
-    traceback_str = traceback.format_exc()
-    stdout_output = "".join(captured_script_output)
-    if stdout_output:
-        traceback_str = f"## Script stdout\n\n{stdout_output}\n## Traceback\n\n{traceback_str}"
-    return traceback_str
+        _attempt_fix_and_retry(app_name, error_trace, output)
 
 
-def _fix_loop(
-    app_name: str, debug: bool, initial_error: str
-) -> TokenState:
-    """Initialize LLM context once, then loop: fix script → retry login."""
-    from cli.helpers.auth_runtime import acquire_auth
-    from cli.helpers.context import build_shared_context
-    from cli.helpers.detect_base_url import detect_base_urls
-    import cli.helpers.llm as llm_mod
-    from cli.helpers.storage import auth_script_path, load_app_bundle
-
-    llm_mod.init_debug(debug=debug)
-
+def _attempt_fix_and_retry(app_name: str, error_trace: str, output: list[str]) -> None:
     bundle = load_app_bundle(app_name)
-    base_url = detect_base_urls(bundle, app_name)[0]
-    system_context = build_shared_context(bundle, base_url)
-
-    conv = _create_fix_conversation(bundle, system_context)
-
-    script_path = auth_script_path(app_name)
-    current_script = script_path.read_text()
-
-    # First fix attempt
-    fixed_script = _request_fix(conv, bundle, app_name, current_script, initial_error, is_first=True)
-
-    while True:
-        script_path.parent.mkdir(parents=True, exist_ok=True)
-        script_path.write_text(fixed_script)
-        console.print("[green]Script updated. Retrying login...[/green]")
-
-        console.print(f"[bold]Logging in to {app_name}...[/bold]")
-        try:
-            return acquire_auth(app_name)
-        except Exception:
-            error_str = _format_error()
-            console.print("[red]Login failed:[/red]")
-            console.print(error_str)
-
-            fixed_script = _request_fix(conv, bundle, app_name, fixed_script, error_str, is_first=False)
-
-
-def _create_fix_conversation(
-    bundle: CaptureBundle, system_context: str
-) -> Conversation:
-    """Create the LLM conversation for auth script fixing."""
-    from cli.commands.auth.analyze import _get_auth_instructions
-    import cli.helpers.llm as llm_mod
-
-    return llm_mod.Conversation(
-        system=[system_context, _get_auth_instructions()],
+    conversation = Conversation(
+        system=[build_timeline(bundle), get_auth_instructions()],
         max_tokens=8192,
         label="fix_auth_script",
         tool_names=["decode_base64", "decode_url", "decode_jwt", "inspect_trace"],
         bundle=bundle,
     )
+    script_path = auth_script_path(app_name)
 
-
-def _request_fix(
-    conv: Conversation,
-    bundle: CaptureBundle,
-    api_name: str,
-    current_script: str,
-    error_trace: str,
-    *,
-    is_first: bool,
-) -> str:
-    """Send a fix prompt to the conversation and return the fixed script."""
-    from cli.commands.auth.analyze import (
-        _extract_script,
-        _validate_script,
-    )
-    from cli.helpers.prompt import render
-
-    if is_first:
+    for attempt in range(_MAX_FIX_ATTEMPTS):
+        current_script = script_path.read_text()
         prompt = render(
-            "auth-fix-initial.j2",
-            api_name=api_name,
-            traces=bundle.traces,
+            "auth-fix.j2",
+            attempt=attempt,
             current_script=current_script,
-            error_trace=error_trace,
+            traceback=error_trace,
+            script_stdout="".join(output),
         )
-    else:
-        prompt = render("auth-fix-followup.j2", error_trace=error_trace)
+        text = conversation.ask_text(prompt)
 
-    text = conv.ask_text(prompt)
-    script = _extract_script(text)
-    _validate_script(script)
-    return script
+        try:
+            fixed_script = extract_script(text)
+        except AuthScriptInvalid as e:
+            console.print(f"[red]LLM produced invalid code:[/red] {e}")
+            error_trace = str(e)
+            output = []
+            continue
+
+        if fixed_script is None:
+            raise click.ClickException(
+                f"No auth mechanism found for '{app_name}'. "
+                f"Run 'spectral auth analyze {app_name}' to regenerate."
+            )
+
+        script_path.parent.mkdir(parents=True, exist_ok=True)
+        script_path.write_text(fixed_script)
+        console.print("[green]Script updated. Retrying login...[/green]")
+
+        output = []
+        try:
+            acquire_auth(app_name, output=output)
+            console.print("[green]Login successful. Token saved.[/green]")
+            return
+        except AuthScriptError:
+            error_trace = traceback.format_exc()
+            console.print("[red]Login still failing:[/red]")
+            console.print(error_trace)
+
+    console.print(
+        f"[red]Exhausted {_MAX_FIX_ATTEMPTS} fix attempts. "
+        f"The LLM was unable to produce a working auth script.[/red]"
+    )
+    raise click.ClickException(
+        f"Run 'spectral auth analyze {app_name}' to regenerate from scratch."
+    )
