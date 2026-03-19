@@ -25,7 +25,7 @@ from cli.formats.capture_bundle import (
     WsConnectionMeta,
     WsMessageMeta,
 )
-from cli.helpers.storage import DuplicateCaptureError, store_capture
+from cli.helpers.storage import DuplicateCaptureError, store_capture, validate_app_name
 
 
 def read_message(stream: IO[bytes]) -> dict[str, Any]:
@@ -60,6 +60,7 @@ def deserialize_bundle(msg: dict[str, Any]) -> tuple[str, CaptureBundle]:
     Base64-encoded ``*_b64`` fields are decoded back to bytes.
     """
     app_name: str = msg["app_name"]
+    validate_app_name(app_name)
 
     manifest = CaptureManifest.model_validate(msg["manifest"])
 

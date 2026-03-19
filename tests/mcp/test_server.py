@@ -74,16 +74,16 @@ class TestRegistry:
         from cli.helpers.storage import ensure_app, write_tools
 
         monkeypatch.setenv("SPECTRAL_HOME", str(tmp_path))
-        ensure_app("app_a")
-        ensure_app("app_b")
+        ensure_app("app-a")
+        ensure_app("app-b")
 
-        write_tools("app_a", [_make_tool("search")])
-        write_tools("app_b", [_make_tool("search")])
+        write_tools("app-a", [_make_tool("search")])
+        write_tools("app-b", [_make_tool("search")])
 
         _build_registry()
 
-        assert "app_a_search" in _registry
-        assert "app_b_search" in _registry
+        assert "app-a_search" in _registry
+        assert "app-b_search" in _registry
 
 
 class TestListTools:

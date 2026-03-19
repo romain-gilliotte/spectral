@@ -33,6 +33,42 @@ from cli.formats.catalog import CatalogToken, ToolExecStats, ToolStats
 from cli.formats.config import Config
 from cli.formats.mcp_tool import TokenState, ToolDefinition
 
+APP_NAME_RE = re.compile(r"^[a-z0-9]+(-[a-z0-9]+)*$")
+
+
+def validate_app_name(name: str) -> None:
+    """Validate an app name (local or catalog).
+
+    Local names must match ``[a-z0-9]+(-[a-z0-9]+)*``.
+    Catalog names use ``owner__app`` where both segments match the same pattern.
+
+    Raises ``click.ClickException`` on invalid names.
+    """
+    if not name:
+        raise click.ClickException("App name cannot be empty.")
+
+    if "__" in name:
+        parts = name.split("__", 1)
+        if not all(APP_NAME_RE.match(p) for p in parts):
+            raise click.ClickException(
+                f"Invalid catalog app name '{name}'. "
+                "Both segments around '__' must be lowercase alphanumeric with single hyphens "
+                "(e.g. 'owner__my-app')."
+            )
+    else:
+        if not APP_NAME_RE.match(name):
+            raise click.ClickException(
+                f"Invalid app name '{name}'. "
+                "Use lowercase letters, digits, and single hyphens "
+                "(e.g. 'my-app'). No leading/trailing hyphens."
+            )
+
+    # Safety net: ensure the resolved path stays inside the apps directory
+    apps_root = store_root() / "apps"
+    resolved = (apps_root / name).resolve()
+    if not resolved.is_relative_to(apps_root.resolve()):
+        raise click.ClickException(f"Invalid app name '{name}': path traversal detected.")
+
 
 class DuplicateCaptureError(Exception):
     """Raised when a capture with the same ID already exists in storage."""
@@ -53,6 +89,7 @@ def store_root() -> Path:
 
 def app_dir(name: str) -> Path:
     """Return the directory for an app."""
+    validate_app_name(name)
     return store_root() / "apps" / name
 
 
@@ -91,6 +128,7 @@ def ensure_app(name: str, display_name: str | None = None) -> Path:
 
     Updates ``updated_at`` on every call.
     """
+    validate_app_name(name)
     d = app_dir(name)
     d.mkdir(parents=True, exist_ok=True)
     (d / "captures").mkdir(exist_ok=True)

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import click
 import pytest
 
 from cli.commands.capture.loader import load_bundle_dir, write_bundle_dir
@@ -17,6 +18,7 @@ from cli.formats.capture_bundle import (
 )
 from cli.formats.mcp_tool import TokenState, ToolDefinition, ToolRequest
 from cli.helpers.storage import (
+    APP_NAME_RE,
     DuplicateCaptureError,
     auth_script_path,
     capture_dirname,
@@ -35,6 +37,7 @@ from cli.helpers.storage import (
     store_root,
     tools_dir,
     update_app_meta,
+    validate_app_name,
     write_config,
     write_token,
     write_tools,
@@ -177,6 +180,53 @@ class TestCaptureDirname:
             stats=CaptureStats(),
         )
         assert capture_dirname(m) == "2026-02-13T15-30-00_ext_a1b2c3d4"
+
+
+# ---------------------------------------------------------------------------
+# App name validation
+# ---------------------------------------------------------------------------
+
+
+class TestValidateAppName:
+    @pytest.mark.parametrize(
+        "name",
+        ["my-app", "a", "app2", "romain__planity-com", "foo__bar-baz", "abc123"],
+    )
+    def test_valid_names(self, name: str, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+        monkeypatch.setenv("SPECTRAL_HOME", str(tmp_path))
+        validate_app_name(name)  # should not raise
+
+    @pytest.mark.parametrize(
+        "name",
+        [
+            "../etc",
+            "MY-APP",
+            "my_app",
+            "toto__",
+            "__app",
+            "-app",
+            "app-",
+            "my--app",
+            "",
+            "a/b",
+            "..",
+            "App",
+            "foo__BAR",
+        ],
+    )
+    def test_invalid_names(self, name: str, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+        monkeypatch.setenv("SPECTRAL_HOME", str(tmp_path))
+        with pytest.raises(click.ClickException):
+            validate_app_name(name)
+
+    def test_regex_no_double_hyphens(self) -> None:
+        assert APP_NAME_RE.match("my--app") is None
+
+    def test_regex_no_leading_hyphen(self) -> None:
+        assert APP_NAME_RE.match("-app") is None
+
+    def test_regex_no_trailing_hyphen(self) -> None:
+        assert APP_NAME_RE.match("app-") is None
 
 
 # ---------------------------------------------------------------------------

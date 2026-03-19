@@ -226,11 +226,19 @@ def proxy_cmd(app_name: str | None, port: int, domains: tuple[str, ...]) -> None
     """
     from cli.helpers.console import console
 
-    if app_name is None:
-        app_name = click.prompt("App name")
-
-    if not app_name:
-        raise click.ClickException("App name is required.")
+    if app_name is not None:
+        storage.validate_app_name(app_name)
+    else:
+        while True:
+            app_name = click.prompt("App name")
+            if not app_name:
+                click.echo("App name is required.")
+                continue
+            try:
+                storage.validate_app_name(app_name)
+                break
+            except click.ClickException as exc:
+                click.echo(exc.format_message())
 
     allow_hosts = list(domains) if domains else None
 
