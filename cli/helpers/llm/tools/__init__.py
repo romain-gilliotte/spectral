@@ -50,3 +50,16 @@ def make_tools(
         tools.append(Tool(fn, takes_ctx=takes_ctx))
 
     return tools
+
+
+def describe_tools(names: Sequence[str]) -> dict[str, str]:
+    """Return ``{name: first_docstring_line}`` for the given tool names."""
+    result: dict[str, str] = {}
+    for name in names:
+        entry = _REGISTRY.get(name)
+        if entry is None:
+            raise ValueError(f"Unknown tool: {name!r}. Available: {sorted(_REGISTRY)}")
+        fn = entry[0]
+        doc = (fn.__doc__ or "").strip().split("\n")[0]
+        result[name] = doc
+    return result

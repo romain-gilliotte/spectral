@@ -12,7 +12,7 @@ from cli.commands.capture.types import CaptureBundle
 from cli.helpers.llm._client import get_or_create_config
 from cli.helpers.llm._cost import record_usage
 from cli.helpers.llm._debug import DebugSession
-from cli.helpers.llm.tools import ToolDeps, make_tools
+from cli.helpers.llm.tools import ToolDeps, describe_tools, make_tools
 
 T = TypeVar("T", bound=BaseModel)
 
@@ -44,6 +44,7 @@ class Conversation:
 
         if tool_names is not None:
             self._tools = make_tools(tool_names)
+            self._dbg.record_tools(describe_tools(tool_names))
         else:
             self._tools = None
 
@@ -77,7 +78,6 @@ class Conversation:
     async def _run_async(self, prompt: str, *, output_type: Any) -> Any:
         """Run the agent and record results."""
         from pydantic_ai import Agent
-        from pydantic_ai.agent import CallToolsNode
         from pydantic_ai.usage import UsageLimits
 
         from cli.helpers.llm.providers import build_model
@@ -110,9 +110,9 @@ class Conversation:
             message_history=self._messages,
             usage_limits=UsageLimits(request_limit=self._max_iterations),
         ) as agent_run:
-            async for node in agent_run:
-                if isinstance(node, CallToolsNode):
-                    messages = agent_run.all_messages()
+            async for _node in agent_run:
+                messages = agent_run.all_messages()
+                if len(messages) > flushed_len:
                     self._dbg.record_messages(messages, flushed_len)
                     flushed_len = len(messages)
 

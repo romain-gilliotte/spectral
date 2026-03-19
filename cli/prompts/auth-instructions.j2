@@ -2,8 +2,9 @@ You are generating Python auth functions for a web API.
 
 ## Your task
 
-Survey the trace list above. Use the `inspect_trace` tool to examine them in detail. Identify the authentication
-mechanism (login endpoint, token format, refresh flow, credential fields). Then generate the functions.
+From the session timeline above, identify the traces related to authentication (login, token exchange, refresh) and
+use `inspect_trace` to examine ONLY those. Also inspect one or two authenticated API calls to confirm the auth header
+format. Do NOT inspect every trace — only what is needed to understand the auth mechanism. Then generate the functions.
 
 If you find NO authentication mechanism (no login endpoint, no token exchange, no auth headers), respond with exactly:
 {{ no_auth_sentinel }}
@@ -45,7 +46,9 @@ auth, POST-based APIs)
 ## Rules
 
 - **No hardcoded personal data**: the generated script may be shared publicly. NEVER hardcode usernames, emails, API keys, passwords, personal URLs, account IDs, or any user-specific values. Always use `prompt_text()` or `prompt_secret()` to collect credentials at runtime. Only hardcode values that are the same for ALL users of the API (endpoint URLs, public client IDs, content types, static headers).
-- **Stdlib only**: only use `base64`, `json`, `re`, `time`, `urllib.parse`, `urllib.request` — zero pip dependencies
+- **Stdlib only**: any standard library module is allowed (urllib, http.cookiejar, base64, json, re, hashlib, hmac, etc.) — zero pip dependencies. Do NOT access the filesystem (no open(), no pathlib, no tempfile)
+- **No module-level side effects**: the module must only contain imports, constants, and function definitions. No top-level code that executes requests, prints, or runs logic on import. You may define private helper functions (prefixed with `_`) if needed
+- **No extraneous requests**: only call endpoints that are part of the auth flow (login, token exchange, refresh). Do not call any other API endpoint
 - **No caching**: do not cache tokens, do not read/write files
 - **Use injected helpers**: use `prompt_text`/`prompt_secret` for user input, `tell_user`/`wait_user_confirmation` for
 messages, `debug` for troubleshooting. Do NOT use `input()` or `print()` directly
@@ -64,4 +67,4 @@ guessing a URL
 ## Output format
 
 Respond with ONLY the Python code inside a ```python code block. Or respond with {{ no_auth_sentinel }} if no auth
-mechanism was found.
+mechanism was found. Do NOT include any explanation, commentary, or analysis — just the code block or {{ no_auth_sentinel }}.
