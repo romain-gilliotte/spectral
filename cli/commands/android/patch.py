@@ -50,6 +50,7 @@ async def _run_apk_mitm(
             "apktool": Apktool(ApktoolOptions(framework_path=f"{tmp_dir}/framework")),
             "uber_apk_signer": UberApkSigner(),
             "tmp_dir": tmp_dir,
+            "is_app_bundle": is_bundle,
             "skip_patches": False,
             "skip_decode": False,
             "debuggable": False,
