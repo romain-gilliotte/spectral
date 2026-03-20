@@ -50,7 +50,7 @@ _spectral() {
             case "$cmd2" in
                 show) _spectral_apps ;;
                 inspect) [[ "$cur" == -* ]] && COMPREPLY=($(compgen -W "--trace --help" -- "$cur")) || _spectral_apps ;;
-                proxy) [[ "$cur" == -* ]] && COMPREPLY=($(compgen -W "-a --app -p --port -d --domain --help" -- "$cur")) ;;
+                proxy) [[ "$cur" == -* ]] && COMPREPLY=($(compgen -W "-a --app -p --port -d --domain --wireguard --wg --help" -- "$cur")) ;;
                 discover) COMPREPLY=($(compgen -W "-p --port --help" -- "$cur")) ;;
             esac ;;
         config)

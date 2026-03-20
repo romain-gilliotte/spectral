@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone
+import json
 from pathlib import Path
+import socket
 from typing import TYPE_CHECKING
 import uuid
 
@@ -189,6 +191,7 @@ def _run_proxy_to_storage(
     port: int,
     app_name: str,
     allow_hosts: list[str] | None = None,
+    mode: str = "regular",
 ) -> tuple[CaptureStats, Path]:
     """Start a MITM proxy, capture traffic, and store in managed storage.
 
@@ -196,12 +199,16 @@ def _run_proxy_to_storage(
         port: Proxy listen port.
         app_name: App name for managed storage.
         allow_hosts: Only intercept these host patterns (regex).
+        mode: mitmproxy mode string (e.g. "regular", "wireguard:/path/to/conf").
 
     Returns:
         (CaptureStats, capture_dir) on success.
     """
     addon = CaptureAddon()
-    start_time, end_time = run_mitmproxy(port, [addon], allow_hosts=allow_hosts)
+    block_quic = mode != "regular"
+    start_time, end_time = run_mitmproxy(
+        port, [addon], allow_hosts=allow_hosts, mode=mode, block_quic=block_quic
+    )
 
     bundle = addon.build_bundle(app_name, start_time, end_time)
     cap_dir = storage.store_capture(bundle, app_name)
@@ -219,10 +226,22 @@ def _run_proxy_to_storage(
     multiple=True,
     help="Only intercept these domains (e.g. '*.example.com'). Can be repeated.",
 )
-def proxy_cmd(app_name: str | None, port: int, domains: tuple[str, ...]) -> None:
+@click.option(
+    "--wireguard",
+    "--wg",
+    "wireguard",
+    is_flag=True,
+    default=False,
+    help="Use WireGuard VPN mode (captures traffic from apps that ignore system proxy).",
+)
+def proxy_cmd(
+    app_name: str | None, port: int, domains: tuple[str, ...], wireguard: bool
+) -> None:
     """Start a MITM proxy to capture traffic into managed storage.
 
     Without -d, intercepts all domains. With -d, only matching domains.
+
+    Use --wireguard for apps that bypass the system proxy (e.g. Flutter).
     """
     from cli.helpers.console import console
 
@@ -241,8 +260,21 @@ def proxy_cmd(app_name: str | None, port: int, domains: tuple[str, ...]) -> None
                 click.echo(exc.format_message())
 
     allow_hosts = list(domains) if domains else None
+    mode = "regular"
+
+    if wireguard:
+        config_text, mode = _build_wireguard_config(port)
+        _display_wireguard_config(config_text)
+        console.print(
+            "\n[bold yellow]Instructions:[/bold yellow]\n"
+            "  1. Install the WireGuard app on your device\n"
+            "  2. Scan the QR code or import the config above\n"
+            "  3. Activate the WireGuard tunnel\n"
+        )
 
     console.print(f"[bold]Starting MITM proxy on port {port}[/bold]")
+    if wireguard:
+        console.print("  Mode: WireGuard VPN")
     console.print(f"  App: {app_name}")
     if allow_hosts:
         console.print(f"  Domains: {', '.join(allow_hosts)}")
@@ -251,7 +283,9 @@ def proxy_cmd(app_name: str | None, port: int, domains: tuple[str, ...]) -> None
 
     click.echo("\n  Capturing... press Ctrl+C to stop.\n")
 
-    stats, cap_dir = _run_proxy_to_storage(port, app_name, allow_hosts=allow_hosts)
+    stats, cap_dir = _run_proxy_to_storage(
+        port, app_name, allow_hosts=allow_hosts, mode=mode
+    )
     console.print()
     console.print(f"[green]Capture stored in {cap_dir}[/green]")
     console.print(
@@ -259,3 +293,79 @@ def proxy_cmd(app_name: str | None, port: int, domains: tuple[str, ...]) -> None
         f"{stats.ws_connection_count} WS connections, "
         f"{stats.ws_message_count} WS messages"
     )
+
+
+def _get_local_ip() -> str:
+    """Get the local IP address by connecting a UDP socket to an external host."""
+    try:
+        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        s.connect(("8.8.8.8", 80))
+        ip = s.getsockname()[0]
+        s.close()
+        return str(ip)
+    except OSError:
+        return "127.0.0.1"
+
+
+def _build_wireguard_config(port: int) -> tuple[str, str]:
+    """Generate or reuse WireGuard keys, return (client_config, mode_spec).
+
+    On first run, generates key pairs and writes them to
+    ``$SPECTRAL_HOME/wireguard.conf``.  On subsequent runs the existing
+    keys are reused so the client tunnel config stays stable (no need to
+    re-scan the QR code on the device).
+    """
+    from mitmproxy_rs.wireguard import genkey, pubkey
+
+    conf_path = storage.store_root() / "wireguard.conf"
+    conf_path.parent.mkdir(parents=True, exist_ok=True)
+
+    if conf_path.exists():
+        server_conf = json.loads(conf_path.read_text())
+        server_private = server_conf["server_key"]
+        client_private = server_conf["client_key"]
+    else:
+        server_private = genkey()
+        client_private = genkey()
+        server_conf = {
+            "server_key": server_private,
+            "client_key": client_private,
+        }
+        conf_path.write_text(json.dumps(server_conf, indent=4) + "\n")
+
+    server_public = pubkey(server_private)
+    local_ip = _get_local_ip()
+
+    client_config = (
+        "[Interface]\n"
+        f"PrivateKey = {client_private}\n"
+        "Address = 10.0.0.1/32\n"
+        "DNS = 10.0.0.53\n"
+        "\n"
+        "[Peer]\n"
+        f"PublicKey = {server_public}\n"
+        f"Endpoint = {local_ip}:{port}\n"
+        "AllowedIPs = 0.0.0.0/0\n"
+    )
+
+    mode_spec = f"wireguard:{conf_path}"
+    return client_config, mode_spec
+
+
+def _display_wireguard_config(config_text: str) -> None:
+    """Display the WireGuard client config, with an optional QR code."""
+    from cli.helpers.console import console
+
+    console.print("\n[bold]WireGuard client configuration:[/bold]\n")
+    console.print(config_text)
+
+    try:
+        import segno
+
+        qr = segno.make(config_text)
+        console.print("[bold]Scan this QR code with the WireGuard app:[/bold]\n")
+        qr.terminal(compact=True)  # pyright: ignore[reportUnknownMemberType]
+    except ImportError:
+        console.print(
+            "[dim]Install segno (`uv add segno`) to display a scannable QR code.[/dim]"
+        )

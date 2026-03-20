@@ -102,6 +102,7 @@ _spectral() {
                             '(-a --app)'{-a,--app}'[App name for storage]' \
                             '(-p --port)'{-p,--port}'[Proxy listen port]' \
                             '(-d --domain)'{-d,--domain}'[Domain pattern]' \
+                            '--wireguard[Use WireGuard VPN mode]' \
                             '--help[Show help]' && ret=0 ;;
                     discover)
                         _arguments \

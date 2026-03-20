@@ -7,7 +7,6 @@ from typing import TYPE_CHECKING
 import click
 
 if TYPE_CHECKING:
-    from mitmproxy.http import HTTPFlow
     from mitmproxy.tls import ClientHelloData
 
 from cli.commands.capture._mitmproxy import run_mitmproxy
@@ -24,21 +23,17 @@ class DiscoveryAddon:
         """Skip MITM — just log the SNI and pass through."""
         sni = data.context.client.sni
         if sni:
+            if sni not in self.domains:
+                console.print(f"  {sni}")
             self.domains[sni] = self.domains.get(sni, 0) + 1
         data.ignore_connection = True
-
-    def request(self, flow: HTTPFlow) -> None:
-        """Log plain HTTP requests (non-TLS)."""
-        host = flow.request.host
-        if host:
-            self.domains[host] = self.domains.get(host, 0) + 1
 
 
 def _run_discover(port: int) -> dict[str, int]:
     """Start a proxy in discovery mode: log domains without MITM.
 
     All TLS connections pass through untouched. The addon records
-    SNI hostnames (and plain HTTP hosts) with request counts.
+    SNI hostnames with request counts.
 
     Args:
         port: Proxy listen port.
