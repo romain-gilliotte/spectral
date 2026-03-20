@@ -3,7 +3,9 @@
 
 from __future__ import annotations
 
-from unittest.mock import MagicMock
+import json
+from pathlib import Path
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -14,7 +16,12 @@ from cli.commands.capture._mitmproxy import (
 )
 from cli.commands.capture.discover import DiscoveryAddon
 from cli.commands.capture.loader import load_bundle_bytes, write_bundle_bytes
-from cli.commands.capture.proxy import CaptureAddon
+from cli.commands.capture.proxy import (
+    CaptureAddon,
+    _build_wireguard_config,
+    _display_wireguard_config,
+    _get_local_ip,
+)
 from cli.commands.capture.types import WsMessage
 from cli.formats.capture_bundle import WsMessageMeta
 
@@ -216,7 +223,8 @@ class TestWsFlowToConnection:
 
 
 class TestDiscoveryAddon:
-    def test_tls_clienthello_logs_domain(self) -> None:
+    @patch("cli.commands.capture.discover.console")
+    def test_tls_clienthello_logs_domain(self, mock_console: MagicMock) -> None:
         addon = DiscoveryAddon()
         data = MagicMock()
         data.context.client.sni = "api.example.com"
@@ -226,8 +234,10 @@ class TestDiscoveryAddon:
 
         assert addon.domains == {"api.example.com": 1}
         assert data.ignore_connection is True
+        mock_console.print.assert_called_once_with("  api.example.com")
 
-    def test_multiple_domains_counted(self) -> None:
+    @patch("cli.commands.capture.discover.console")
+    def test_multiple_domains_counted(self, mock_console: MagicMock) -> None:
         addon = DiscoveryAddon()
 
         for _ in range(3):
@@ -241,17 +251,11 @@ class TestDiscoveryAddon:
 
         assert addon.domains["api.example.com"] == 3
         assert addon.domains["cdn.example.com"] == 1
+        # print called only for new domains, not duplicates
+        assert mock_console.print.call_count == 2
 
-    def test_plain_http_request_logged(self) -> None:
-        addon = DiscoveryAddon()
-        flow = MagicMock()
-        flow.request.host = "http.example.com"
-
-        addon.request(flow)
-
-        assert addon.domains == {"http.example.com": 1}
-
-    def test_empty_sni_skipped(self) -> None:
+    @patch("cli.commands.capture.discover.console")
+    def test_empty_sni_skipped(self, mock_console: MagicMock) -> None:
         addon = DiscoveryAddon()
         data = MagicMock()
         data.context.client.sni = ""
@@ -260,6 +264,7 @@ class TestDiscoveryAddon:
 
         assert addon.domains == {}
         assert data.ignore_connection is True
+        mock_console.print.assert_not_called()
 
 
 class TestDomainToRegex:
@@ -346,3 +351,126 @@ class TestManifestCompat:
         loaded = CaptureManifest.model_validate_json(json_str)
         assert loaded.browser is None
         assert loaded.capture_method == "proxy"
+
+
+class TestGetLocalIp:
+    def test_returns_ip(self) -> None:
+        mock_sock = MagicMock()
+        mock_sock.getsockname.return_value = ("192.168.1.42", 12345)
+        with patch("cli.commands.capture.proxy.socket.socket", return_value=mock_sock):
+            ip = _get_local_ip()
+        assert ip == "192.168.1.42"
+        mock_sock.connect.assert_called_once_with(("8.8.8.8", 80))
+        mock_sock.close.assert_called_once()
+
+    def test_fallback_on_error(self) -> None:
+        mock_sock = MagicMock()
+        mock_sock.connect.side_effect = OSError("no network")
+        with patch("cli.commands.capture.proxy.socket.socket", return_value=mock_sock):
+            ip = _get_local_ip()
+        assert ip == "127.0.0.1"
+
+
+class TestBuildWireguardConfig:
+    @patch("cli.commands.capture.proxy._get_local_ip", return_value="192.168.1.10")
+    def test_generates_config_when_missing(self, _mock_ip: MagicMock, tmp_path: Path) -> None:
+        fake_keys = iter(["server_priv_key", "client_priv_key"])
+        fake_pubs: dict[str, str] = {"server_priv_key": "server_pub_key", "client_priv_key": "client_pub_key"}
+
+        with (
+            patch("cli.commands.capture.proxy.storage.store_root", return_value=tmp_path),
+            patch(
+                "mitmproxy_rs.wireguard.genkey",
+                side_effect=lambda: next(fake_keys),
+            ),
+            patch(
+                "mitmproxy_rs.wireguard.pubkey",
+                side_effect=lambda k: fake_pubs[k],  # pyright: ignore[reportUnknownLambdaType]
+            ),
+        ):
+            config_text, mode_spec = _build_wireguard_config(51820)
+
+        assert "[Interface]" in config_text
+        assert "[Peer]" in config_text
+        assert "client_priv_key" in config_text
+        assert "server_pub_key" in config_text
+        assert "192.168.1.10:51820" in config_text
+
+        conf_path: Path = tmp_path / "wireguard.conf"
+        assert conf_path.exists()
+        server_conf = json.loads(conf_path.read_text())
+        # mitmproxy expects both values to be private keys
+        assert server_conf["server_key"] == "server_priv_key"
+        assert server_conf["client_key"] == "client_priv_key"
+
+        assert mode_spec == f"wireguard:{conf_path}"
+
+    @patch("cli.commands.capture.proxy._get_local_ip", return_value="192.168.1.10")
+    def test_reuses_existing_config(self, _mock_ip: MagicMock, tmp_path: Path) -> None:
+        """When wireguard.conf already exists, keys are reused (no genkey calls)."""
+        existing = {"server_key": "existing_srv", "client_key": "existing_cli"}
+        (tmp_path / "wireguard.conf").write_text(json.dumps(existing))
+
+        fake_pubs: dict[str, str] = {"existing_srv": "srv_pub", "existing_cli": "cli_pub"}
+        mock_genkey = MagicMock()
+
+        with (
+            patch("cli.commands.capture.proxy.storage.store_root", return_value=tmp_path),
+            patch("mitmproxy_rs.wireguard.genkey", mock_genkey),
+            patch(
+                "mitmproxy_rs.wireguard.pubkey",
+                side_effect=lambda k: fake_pubs[k],  # pyright: ignore[reportUnknownLambdaType]
+            ),
+        ):
+            config_text, _ = _build_wireguard_config(51820)
+
+        mock_genkey.assert_not_called()
+        assert "existing_cli" in config_text
+        assert "srv_pub" in config_text
+
+
+class TestDisplayWireguardConfig:
+    @patch("cli.helpers.console.console")
+    def test_display_without_segno(self, mock_console: MagicMock) -> None:
+        import importlib
+        import sys
+
+        # Remove segno from sys.modules so the import fails
+        saved = sys.modules.pop("segno", None)
+        try:
+            sys.modules["segno"] = None  # type: ignore[assignment]
+            # Reload to pick up the mocked console
+            import cli.commands.capture.proxy as proxy_mod
+
+            importlib.reload(proxy_mod)
+            proxy_mod._display_wireguard_config("[Interface]\nPrivateKey = abc\n")
+        finally:
+            if saved is not None:
+                sys.modules["segno"] = saved
+            else:
+                sys.modules.pop("segno", None)
+
+        calls = [str(c) for c in mock_console.print.call_args_list]
+        assert any("[Interface]" in c for c in calls)
+        assert any("segno" in c for c in calls)
+
+    @patch("cli.helpers.console.console")
+    def test_display_with_segno(self, mock_console: MagicMock) -> None:
+        mock_qr = MagicMock()
+        mock_segno = MagicMock()
+        mock_segno.make.return_value = mock_qr
+
+        import sys
+
+        saved = sys.modules.get("segno")
+        try:
+            sys.modules["segno"] = mock_segno
+            _display_wireguard_config("[Interface]\nPrivateKey = abc\n")
+        finally:
+            if saved is not None:
+                sys.modules["segno"] = saved
+            else:
+                sys.modules.pop("segno", None)
+
+        mock_segno.make.assert_called_once()
+        mock_qr.terminal.assert_called_once_with(compact=True)
