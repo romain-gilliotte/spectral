@@ -83,6 +83,7 @@ class TraceMeta(BaseModel):
     timing: TimingInfo = Field(default_factory=TimingInfo)
     initiator: Initiator = Field(default_factory=Initiator)
     context_refs: list[str] = []
+    app_package: str | None = None
 
 
 class WsConnectionMeta(BaseModel):

@@ -29,7 +29,7 @@ class DiscoveryAddon:
         data.ignore_connection = True
 
 
-def _run_discover(port: int) -> dict[str, int]:
+def _run_discover(port: int, mode: str = "regular") -> dict[str, int]:
     """Start a proxy in discovery mode: log domains without MITM.
 
     All TLS connections pass through untouched. The addon records
@@ -37,29 +37,60 @@ def _run_discover(port: int) -> dict[str, int]:
 
     Args:
         port: Proxy listen port.
+        mode: mitmproxy mode string (e.g. ``"regular"`` or ``"wireguard:…"``).
 
     Returns:
         Dict of domain → request count.
     """
     addon = DiscoveryAddon()
-    run_mitmproxy(port, [addon])
+    block_quic = mode != "regular"
+    run_mitmproxy(port, [addon], mode=mode, block_quic=block_quic)
 
     return addon.domains
 
 
 @click.command()
 @click.option("-p", "--port", default=8080, help="Proxy listen port")
-def discover(port: int) -> None:
+@click.option(
+    "--wireguard",
+    "--wg",
+    "wireguard",
+    is_flag=True,
+    default=False,
+    help="Use WireGuard VPN mode (captures traffic from apps that ignore system proxy).",
+)
+def discover(port: int, wireguard: bool) -> None:
     """Discover domains without intercepting traffic.
 
     Runs a passthrough proxy that logs TLS SNI hostnames and plain
     HTTP hosts. No MITM — all connections pass through untouched.
+
+    Use --wireguard for apps that bypass the system proxy (e.g. Flutter).
     """
+    from cli.commands.capture._wireguard import (
+        build_wireguard_config,
+        display_wireguard_config,
+    )
+
+    mode = "regular"
+
+    if wireguard:
+        config_text, mode = build_wireguard_config(port)
+        display_wireguard_config(config_text)
+        console.print(
+            "\n[bold yellow]Instructions:[/bold yellow]\n"
+            "  1. Install the WireGuard app on your device\n"
+            "  2. Scan the QR code or import the config above\n"
+            "  3. Activate the WireGuard tunnel\n"
+        )
+
     console.print(f"[bold]Starting domain discovery on port {port}[/bold]")
+    if wireguard:
+        console.print("  Mode: WireGuard VPN")
     console.print("  No MITM — logging domains only.")
     click.echo("\n  Listening... press Ctrl+C to stop.\n")
 
-    domains = _run_discover(port)
+    domains = _run_discover(port, mode=mode)
 
     if domains:
         console.print(f"\n  Discovered {len(domains)} domain(s):\n")

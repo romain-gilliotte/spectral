@@ -213,6 +213,33 @@ def clear_proxy() -> None:
     )
 
 
+def get_foreground_package() -> str | None:
+    """Get the package name of the app currently in the foreground.
+
+    Parses the ``mResumedActivity`` line from ``dumpsys activity activities``.
+    Returns ``None`` when the foreground app cannot be determined (e.g. lock
+    screen, no device connected).
+    """
+    import re
+
+    try:
+        result = run_cmd(
+            ["adb", "shell", "dumpsys", "activity", "activities"],
+            "Failed to query foreground activity",
+            timeout=5,
+        )
+    except Exception:
+        return None
+
+    for line in result.stdout.splitlines():
+        if "mResumedActivity" in line:
+            # Format: mResumedActivity: ActivityRecord{hash u0 com.pkg/.Activity t123}
+            m = re.search(r"(\S+)/\S+", line.split("mResumedActivity")[1])
+            if m:
+                return m.group(1)
+    return None
+
+
 def launch_app(package: str) -> None:
     """Launch the main activity of a package on the connected device.
 

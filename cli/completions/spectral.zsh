@@ -104,10 +104,12 @@ _spectral() {
                             '(-d --domain)'{-d,--domain}'[Domain pattern]' \
                             '(-e --exclude)'{-e,--exclude}'[Exclude domain from MITM]' \
                             '--wireguard[Use WireGuard VPN mode]' \
+                            '--autodetect-app[Auto-detect foreground Android app via ADB]' \
                             '--help[Show help]' && ret=0 ;;
                     discover)
                         _arguments \
                             '(-p --port)'{-p,--port}'[Proxy listen port]' \
+                            '--wireguard[Use WireGuard VPN mode]' \
                             '--help[Show help]' && ret=0 ;;
                 esac
             fi ;;

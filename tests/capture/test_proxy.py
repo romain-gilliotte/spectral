@@ -14,14 +14,14 @@ from cli.commands.capture._mitmproxy import (
     flow_to_trace,
     ws_flow_to_connection,
 )
+from cli.commands.capture._wireguard import (
+    build_wireguard_config,
+    display_wireguard_config,
+    get_local_ip,
+)
 from cli.commands.capture.discover import DiscoveryAddon
 from cli.commands.capture.loader import load_bundle_bytes, write_bundle_bytes
-from cli.commands.capture.proxy import (
-    CaptureAddon,
-    _build_wireguard_config,
-    _display_wireguard_config,
-    _get_local_ip,
-)
+from cli.commands.capture.proxy import CaptureAddon, FixedAppProvider
 from cli.commands.capture.types import WsMessage
 from cli.formats.capture_bundle import WsMessageMeta
 
@@ -118,16 +118,17 @@ class TestFlowToTrace:
 
 class TestCaptureAddon:
     def test_response_adds_trace(self) -> None:
-        addon = CaptureAddon()
+        addon = CaptureAddon(FixedAppProvider("test-app"))
         flow = _make_mock_flow()
         addon.response(flow)
 
         assert len(addon.traces) == 1
         assert addon.traces[0].meta.id == "t_0001"
+        assert addon.traces[0].meta.app_package == "test-app"
         assert "api.example.com" in addon.domains_seen
 
     def test_multiple_responses_increment_counter(self) -> None:
-        addon = CaptureAddon()
+        addon = CaptureAddon(FixedAppProvider("test-app"))
         for _ in range(3):
             addon.response(_make_mock_flow())
 
@@ -135,7 +136,7 @@ class TestCaptureAddon:
         assert [t.meta.id for t in addon.traces] == ["t_0001", "t_0002", "t_0003"]
 
     def test_websocket_flow_skipped_in_response(self) -> None:
-        addon = CaptureAddon()
+        addon = CaptureAddon(FixedAppProvider("test-app"))
         flow = _make_mock_flow()
         flow.websocket = MagicMock()  # Mark as WS flow
         addon.response(flow)
@@ -143,23 +144,25 @@ class TestCaptureAddon:
         assert len(addon.traces) == 0
 
     def test_options_flow_skipped(self) -> None:
-        addon = CaptureAddon()
+        addon = CaptureAddon(FixedAppProvider("test-app"))
         flow = _make_mock_flow(method="OPTIONS")
         addon.response(flow)
 
         assert len(addon.traces) == 0
 
-    def test_build_bundle(self) -> None:
-        addon = CaptureAddon()
+    def test_build_bundles_by_app(self) -> None:
+        addon = CaptureAddon(FixedAppProvider("test-app"))
         addon.response(_make_mock_flow())
         addon.response(_make_mock_flow(url="https://api.example.com/users"))
 
-        bundle = addon.build_bundle("Test App", 1700000000.0, 1700000010.0)
+        bundles = addon.build_bundles_by_app(1700000000.0, 1700000010.0)
 
+        assert len(bundles) == 1
+        bundle = bundles["test-app"]
         assert bundle.manifest.capture_method == "proxy"
         assert bundle.manifest.browser is None
         assert bundle.manifest.extension_version is None
-        assert bundle.manifest.app.name == "Test App"
+        assert bundle.manifest.app.name == "test-app"
         assert bundle.manifest.stats.trace_count == 2
         assert bundle.manifest.stats.context_count == 0
         assert bundle.manifest.duration_ms == 10000
@@ -169,10 +172,11 @@ class TestCaptureAddon:
 
     def test_build_bundle_roundtrip(self) -> None:
         """Verify that the bundle produced by the addon can be written and loaded."""
-        addon = CaptureAddon()
+        addon = CaptureAddon(FixedAppProvider("test-app"))
         addon.response(_make_mock_flow())
 
-        bundle = addon.build_bundle("Test App", 1700000000.0, 1700000005.0)
+        bundles = addon.build_bundles_by_app(1700000000.0, 1700000005.0)
+        bundle = bundles["test-app"]
 
         data = write_bundle_bytes(bundle)
         loaded = load_bundle_bytes(data)
@@ -389,8 +393,8 @@ class TestGetLocalIp:
     def test_returns_ip(self) -> None:
         mock_sock = MagicMock()
         mock_sock.getsockname.return_value = ("192.168.1.42", 12345)
-        with patch("cli.commands.capture.proxy.socket.socket", return_value=mock_sock):
-            ip = _get_local_ip()
+        with patch("cli.commands.capture._wireguard.socket.socket", return_value=mock_sock):
+            ip = get_local_ip()
         assert ip == "192.168.1.42"
         mock_sock.connect.assert_called_once_with(("8.8.8.8", 80))
         mock_sock.close.assert_called_once()
@@ -398,19 +402,19 @@ class TestGetLocalIp:
     def test_fallback_on_error(self) -> None:
         mock_sock = MagicMock()
         mock_sock.connect.side_effect = OSError("no network")
-        with patch("cli.commands.capture.proxy.socket.socket", return_value=mock_sock):
-            ip = _get_local_ip()
+        with patch("cli.commands.capture._wireguard.socket.socket", return_value=mock_sock):
+            ip = get_local_ip()
         assert ip == "127.0.0.1"
 
 
 class TestBuildWireguardConfig:
-    @patch("cli.commands.capture.proxy._get_local_ip", return_value="192.168.1.10")
+    @patch("cli.commands.capture._wireguard.get_local_ip", return_value="192.168.1.10")
     def test_generates_config_when_missing(self, _mock_ip: MagicMock, tmp_path: Path) -> None:
         fake_keys = iter(["server_priv_key", "client_priv_key"])
         fake_pubs: dict[str, str] = {"server_priv_key": "server_pub_key", "client_priv_key": "client_pub_key"}
 
         with (
-            patch("cli.commands.capture.proxy.storage.store_root", return_value=tmp_path),
+            patch("cli.commands.capture._wireguard.storage.store_root", return_value=tmp_path),
             patch(
                 "mitmproxy_rs.wireguard.genkey",
                 side_effect=lambda: next(fake_keys),
@@ -420,7 +424,7 @@ class TestBuildWireguardConfig:
                 side_effect=lambda k: fake_pubs[k],  # pyright: ignore[reportUnknownLambdaType]
             ),
         ):
-            config_text, mode_spec = _build_wireguard_config(51820)
+            config_text, mode_spec = build_wireguard_config(51820)
 
         assert "[Interface]" in config_text
         assert "[Peer]" in config_text
@@ -437,7 +441,7 @@ class TestBuildWireguardConfig:
 
         assert mode_spec == f"wireguard:{conf_path}"
 
-    @patch("cli.commands.capture.proxy._get_local_ip", return_value="192.168.1.10")
+    @patch("cli.commands.capture._wireguard.get_local_ip", return_value="192.168.1.10")
     def test_reuses_existing_config(self, _mock_ip: MagicMock, tmp_path: Path) -> None:
         """When wireguard.conf already exists, keys are reused (no genkey calls)."""
         existing = {"server_key": "existing_srv", "client_key": "existing_cli"}
@@ -447,14 +451,14 @@ class TestBuildWireguardConfig:
         mock_genkey = MagicMock()
 
         with (
-            patch("cli.commands.capture.proxy.storage.store_root", return_value=tmp_path),
+            patch("cli.commands.capture._wireguard.storage.store_root", return_value=tmp_path),
             patch("mitmproxy_rs.wireguard.genkey", mock_genkey),
             patch(
                 "mitmproxy_rs.wireguard.pubkey",
                 side_effect=lambda k: fake_pubs[k],  # pyright: ignore[reportUnknownLambdaType]
             ),
         ):
-            config_text, _ = _build_wireguard_config(51820)
+            config_text, _ = build_wireguard_config(51820)
 
         mock_genkey.assert_not_called()
         assert "existing_cli" in config_text
@@ -472,10 +476,10 @@ class TestDisplayWireguardConfig:
         try:
             sys.modules["segno"] = None  # type: ignore[assignment]
             # Reload to pick up the mocked console
-            import cli.commands.capture.proxy as proxy_mod
+            import cli.commands.capture._wireguard as wg_mod
 
-            importlib.reload(proxy_mod)
-            proxy_mod._display_wireguard_config("[Interface]\nPrivateKey = abc\n")
+            importlib.reload(wg_mod)
+            wg_mod.display_wireguard_config("[Interface]\nPrivateKey = abc\n")
         finally:
             if saved is not None:
                 sys.modules["segno"] = saved
@@ -497,7 +501,7 @@ class TestDisplayWireguardConfig:
         saved = sys.modules.get("segno")
         try:
             sys.modules["segno"] = mock_segno
-            _display_wireguard_config("[Interface]\nPrivateKey = abc\n")
+            display_wireguard_config("[Interface]\nPrivateKey = abc\n")
         finally:
             if saved is not None:
                 sys.modules["segno"] = saved

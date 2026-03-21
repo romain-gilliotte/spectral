@@ -127,20 +127,6 @@ def _domain_to_regex(pattern: str) -> str:
     return re.escape(pattern)
 
 
-class _BlockQuicAddon:
-    """Kill UDP flows to port 443 to force apps to fall back to HTTP/2 over TCP."""
-
-    def udp_start(self, flow: object) -> None:
-        from mitmproxy.udp import UDPFlow
-
-        if (
-            isinstance(flow, UDPFlow)
-            and flow.server_conn.address is not None
-            and flow.server_conn.address[1] == 443
-        ):
-            flow.kill()
-
-
 def run_mitmproxy(
     port: int,
     addons: list[object],
@@ -157,7 +143,12 @@ def run_mitmproxy(
     from mitmproxy.tools.dump import DumpMaster
 
     loop = asyncio.new_event_loop()
-    opts = Options(listen_port=port, mode=[mode], ssl_insecure=True)
+    opts = Options(
+        listen_port=port,
+        mode=[mode],
+        ssl_insecure=True,
+        http3=not block_quic,
+    )
     if allow_hosts:
         regex_hosts = [_domain_to_regex(h) for h in allow_hosts]
         opts.update(allow_hosts=regex_hosts)  # pyright: ignore[reportUnknownMemberType]
@@ -165,8 +156,6 @@ def run_mitmproxy(
         regex_hosts = [_domain_to_regex(h) for h in ignore_hosts]
         opts.update(ignore_hosts=regex_hosts)  # pyright: ignore[reportUnknownMemberType]
     master = DumpMaster(opts, loop=loop)
-    if block_quic:
-        master.addons.add(_BlockQuicAddon())  # pyright: ignore[reportUnknownMemberType]
     for addon in addons:
         master.addons.add(addon)  # pyright: ignore[reportUnknownMemberType]
 

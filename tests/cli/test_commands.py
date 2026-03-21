@@ -269,15 +269,17 @@ class TestInspectCommand:
 
 
 class TestProxyCommand:
-    @patch("cli.commands.capture.proxy._run_proxy_to_storage")
+    @patch("cli.commands.capture.proxy._run_proxy_and_store")
     def test_proxy_default_intercepts_all(
         self, mock_run: MagicMock, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
     ) -> None:
         monkeypatch.setenv("SPECTRAL_HOME", str(tmp_path / "store"))
-        mock_run.return_value = (
-            CaptureStats(trace_count=5, ws_connection_count=1, ws_message_count=10),
-            tmp_path / "store" / "apps" / "myapp" / "captures" / "test",
-        )
+        mock_run.return_value = {
+            "myapp": (
+                CaptureStats(trace_count=5),
+                tmp_path / "store" / "apps" / "myapp" / "captures" / "test",
+            )
+        }
         runner = CliRunner()
         result = runner.invoke(cli, ["capture", "proxy", "-a", "myapp"])
 
@@ -287,15 +289,17 @@ class TestProxyCommand:
         _, kwargs = mock_run.call_args
         assert kwargs.get("allow_hosts") is None
 
-    @patch("cli.commands.capture.proxy._run_proxy_to_storage")
+    @patch("cli.commands.capture.proxy._run_proxy_and_store")
     def test_proxy_with_domains(
         self, mock_run: MagicMock, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
     ) -> None:
         monkeypatch.setenv("SPECTRAL_HOME", str(tmp_path / "store"))
-        mock_run.return_value = (
-            CaptureStats(trace_count=3),
-            tmp_path / "store" / "apps" / "myapp" / "captures" / "test",
-        )
+        mock_run.return_value = {
+            "myapp": (
+                CaptureStats(trace_count=3),
+                tmp_path / "store" / "apps" / "myapp" / "captures" / "test",
+            )
+        }
         runner = CliRunner()
         result = runner.invoke(
             cli, ["capture", "proxy", "-a", "myapp", "-d", "api\\.example\\.com"]
@@ -319,7 +323,7 @@ class TestDiscoverCommand:
         assert "api.example.com" in result.output
         assert "cdn.example.com" in result.output
         assert "Discovered 2 domain(s)" in result.output
-        mock_discover.assert_called_once_with(8080)
+        mock_discover.assert_called_once_with(8080, mode="regular")
 
     @patch("cli.commands.capture.discover._run_discover")
     def test_discover_empty(self, mock_discover: MagicMock) -> None:
@@ -337,7 +341,7 @@ class TestDiscoverCommand:
         result = runner.invoke(cli, ["capture", "discover", "-p", "9090"])
 
         assert result.exit_code == 0
-        mock_discover.assert_called_once_with(9090)
+        mock_discover.assert_called_once_with(9090, mode="regular")
 
 
 def _setup_mcp_llm() -> None:
