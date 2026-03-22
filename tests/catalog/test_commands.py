@@ -20,7 +20,7 @@ def _make_tool(name: str) -> ToolDefinition:
         name=name,
         description=f"Tool {name}",
         parameters={"type": "object", "properties": {}},
-        request=ToolRequest(method="GET", url=f"/api/{name}"),
+        request=ToolRequest(method="GET", url=f"https://api.example.com/api/{name}"),
     )
 
 

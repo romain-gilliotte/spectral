@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-from urllib.parse import urljoin
-
 import click
 
 from cli.commands.capture.types import CaptureBundle
@@ -93,10 +91,6 @@ def build_mcp_tools(bundle: CaptureBundle, app_name: str) -> list[ToolDefinition
             removed = before_count - len(remaining_bundle.traces)
 
             if build_result.tool is not None:
-                # Convert relative URL to absolute
-                build_result.tool.request.url = urljoin(
-                    base_url + "/", build_result.tool.request.url.lstrip("/")
-                )
                 tools.append(build_result.tool)
                 console.print(
                     f"      \u2192 {build_result.tool.name}: {build_result.tool.request.method} "

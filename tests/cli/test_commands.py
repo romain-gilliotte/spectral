@@ -372,7 +372,7 @@ def _setup_mcp_llm() -> None:
                     "name": "list_users",
                     "description": "List users",
                     "parameters": {"type": "object", "properties": {}},
-                    "request": {"method": "GET", "url": "/api/users"},
+                    "request": {"method": "GET", "url": "https://api.example.com/api/users"},
                 },
                 "consumed_trace_ids": ["t_0001"],
             })

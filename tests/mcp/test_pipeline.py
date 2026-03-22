@@ -123,7 +123,7 @@ def _setup_pipeline_llm() -> None:
                     },
                     "request": {
                         "method": "POST",
-                        "url": "/api/search",
+                        "url": "https://api.example.com/api/search",
                         "body": {
                             "origin": {"$param": "origin"},
                             "destination": {"$param": "destination"},
@@ -145,7 +145,7 @@ def _setup_pipeline_llm() -> None:
                     "name": "get_account",
                     "description": "Get account info",
                     "parameters": {"type": "object", "properties": {}},
-                    "request": {"method": "GET", "url": "/api/account"},
+                    "request": {"method": "GET", "url": "https://api.example.com/api/account"},
                 },
                 "consumed_trace_ids": ["t_0003"],
             })

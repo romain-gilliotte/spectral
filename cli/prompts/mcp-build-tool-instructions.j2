@@ -21,7 +21,7 @@ The tool definition must be a JSON object with these fields:
 - `parameters`: JSON Schema object describing the tool's input parameters
 - `request`: HTTP request template with:
   - `method`: HTTP method
-  - `url`: relative URL from base URL, may contain {param} segments (e.g. "/api/users/{user_id}")
+  - `url`: absolute URL copied from the captured traces, with variable segments replaced by {param} placeholders (e.g. `https://example.com/api/users/{user_id}`)
   - `headers`: fixed headers (optional, object)
   - `query`: query parameters (optional, object — values can be literals or {"$param": "name"})
   - `body`: request body template (optional, object — values can be literals or {"$param": "name"})
@@ -39,7 +39,7 @@ The tool definition must be a JSON object with these fields:
 ## Rules
 
 - **No personal data**: tool definitions may be shared publicly. Do NOT include any user-specific information in tool names, descriptions, parameter defaults, or fixed values: no personal names, email addresses, phone numbers, account IDs, personal URLs, organization names, or any data that could identify the user who captured the traffic. Keep names and descriptions generic and reusable by anyone.
-- Use a relative URL from the base URL (the pipeline will convert it to an absolute URL)
+- Use the full absolute URL from the captured traces — do not strip any prefix
 - Include only parameters the LLM should provide — omit fixed API version headers, client IDs, etc.
 - Spectral handles authentication injection at runtime — both in headers and in the request body. Do NOT include any authentication-related field in the tool definition: not in `parameters`, not in `request.headers`, not in `request.body`. This includes tokens (userToken, sessionId, authToken, apiKey, idToken…) AND identity fields derived from the auth session (userId, localId, user_id…). These fields are injected automatically by Spectral and must not appear anywhere in the tool.
 - Give each parameter a clear description so the LLM knows what to provide

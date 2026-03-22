@@ -6,7 +6,7 @@ from cli.formats.mcp_tool import TokenState, ToolDefinition, ToolRequest
 
 class TestToolRequest:
     def test_defaults(self) -> None:
-        req = ToolRequest(method="GET", url="/api/users")
+        req = ToolRequest(method="GET", url="https://api.example.com/api/users")
         assert req.headers == {}
         assert req.query == {}
         assert req.body is None
@@ -15,7 +15,7 @@ class TestToolRequest:
     def test_roundtrip(self) -> None:
         req = ToolRequest(
             method="POST",
-            url="/api/v1/search",
+            url="https://api.example.com/api/v1/search",
             headers={"X-Client-Version": "3.2.1"},
             query={"format": "json"},
             body={"origin": {"$param": "origin"}, "currency": "EUR"},
@@ -39,7 +39,7 @@ class TestValidateParamRefs:
                     "type": "object",
                     "properties": {"category": {"type": "string"}},
                 },
-                request=ToolRequest(method="GET", url="/search"),
+                request=ToolRequest(method="GET", url="https://api.example.com/search"),
             )
 
     def test_all_params_referenced_in_body(self) -> None:
@@ -50,7 +50,7 @@ class TestValidateParamRefs:
                 "type": "object",
                 "properties": {"q": {"type": "string"}},
             },
-            request=ToolRequest(method="POST", url="/search", body={"query": {"$param": "q"}}),
+            request=ToolRequest(method="POST", url="https://api.example.com/search", body={"query": {"$param": "q"}}),
         )
 
     def test_all_params_referenced_in_url(self) -> None:
@@ -61,7 +61,7 @@ class TestValidateParamRefs:
                 "type": "object",
                 "properties": {"user_id": {"type": "string"}},
             },
-            request=ToolRequest(method="GET", url="/users/{user_id}"),
+            request=ToolRequest(method="GET", url="https://api.example.com/users/{user_id}"),
         )
 
     def test_all_params_referenced_in_query(self) -> None:
@@ -72,7 +72,7 @@ class TestValidateParamRefs:
                 "type": "object",
                 "properties": {"q": {"type": "string"}},
             },
-            request=ToolRequest(method="GET", url="/search", query={"q": {"$param": "q"}}),
+            request=ToolRequest(method="GET", url="https://api.example.com/search", query={"q": {"$param": "q"}}),
         )
 
 
@@ -91,7 +91,7 @@ class TestToolDefinition:
             },
             request=ToolRequest(
                 method="POST",
-                url="/api/v1/search",
+                url="https://api.example.com/api/v1/search",
                 body={"origin": {"$param": "origin"}, "destination": {"$param": "destination"}},
             ),
         )
@@ -108,7 +108,7 @@ class TestToolDefinition:
             name="get_status",
             description="Get system status",
             parameters={"type": "object", "properties": {}},
-            request=ToolRequest(method="GET", url="/status"),
+            request=ToolRequest(method="GET", url="https://api.example.com/status"),
         )
         assert tool.request.body is None
         assert tool.request.headers == {}
@@ -118,7 +118,7 @@ class TestToolDefinition:
             name="get_status",
             description="Get system status",
             parameters={"type": "object", "properties": {}},
-            request=ToolRequest(method="GET", url="/status"),
+            request=ToolRequest(method="GET", url="https://api.example.com/status"),
         )
         assert tool.requires_auth is True
 
@@ -127,7 +127,7 @@ class TestToolDefinition:
             name="get_public_info",
             description="Get public info",
             parameters={"type": "object", "properties": {}},
-            request=ToolRequest(method="GET", url="/public/info"),
+            request=ToolRequest(method="GET", url="https://api.example.com/public/info"),
             requires_auth=False,
         )
         loaded = ToolDefinition.model_validate_json(tool.model_dump_json())
@@ -138,7 +138,7 @@ class TestToolDefinition:
         old_json = (
             '{"name":"x","description":"d",'
             '"parameters":{"type":"object","properties":{}},'
-            '"request":{"method":"GET","url":"/x"}}'
+            '"request":{"method":"GET","url":"https://api.example.com/x"}}'
         )
         loaded = ToolDefinition.model_validate_json(old_json)
         assert loaded.requires_auth is True

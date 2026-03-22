@@ -47,7 +47,7 @@ def test_render_conditional_sections():
             name="tool_a",
             description="A tool",
             parameters={"type": "object", "properties": {}},
-            request=ToolRequest(method="GET", url="/api/a"),
+            request=ToolRequest(method="GET", url="https://api.example.com/api/a"),
         ),
     ]
     target = make_trace("t_0001", "GET", "https://api.example.com/foo", 200, 1000)

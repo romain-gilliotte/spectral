@@ -5,14 +5,14 @@ from __future__ import annotations
 import re
 from typing import Any, cast
 
-from pydantic import BaseModel, model_validator
+from pydantic import BaseModel, Field, model_validator
 
 
 class ToolRequest(BaseModel):
     """HTTP request template for an MCP tool."""
 
     method: str
-    url: str
+    url: str = Field(pattern=r"^https?://")
     headers: dict[str, str] = {}
     query: dict[str, Any] = {}
     body: dict[str, Any] | None = None

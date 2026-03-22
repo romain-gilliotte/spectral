@@ -68,7 +68,7 @@ def test_build_valid_tool() -> None:
             },
             "request": {
                 "method": "POST",
-                "url": "/api/search",
+                "url": "https://api.example.com/api/search",
                 "body": {
                     "origin": {"$param": "origin"},
                     "destination": {"$param": "destination"},
@@ -116,7 +116,7 @@ def test_build_tool_minimal_params() -> None:
             },
             "request": {
                 "method": "POST",
-                "url": "/api/search",
+                "url": "https://api.example.com/api/search",
                 "body": {"origin": {"$param": "origin"}},
             },
         },
@@ -153,7 +153,7 @@ def test_build_tool_with_path_params() -> None:
             },
             "request": {
                 "method": "GET",
-                "url": "/api/users/{user_id}",
+                "url": "https://api.example.com/api/users/{user_id}",
             },
         },
         "consumed_trace_ids": ["t_0001"],
@@ -182,7 +182,7 @@ def test_build_tool_validation_missing_param_returns_fallback() -> None:
             "name": "get_user",
             "description": "Get a user",
             "parameters": {"type": "object", "properties": {}},
-            "request": {"method": "GET", "url": "/api/users/{user_id}"},
+            "request": {"method": "GET", "url": "https://api.example.com/api/users/{user_id}"},
         },
         "consumed_trace_ids": ["t_0001"],
     }))
@@ -207,7 +207,7 @@ class TestToolRequestHeaderValidation:
         with pytest.raises(Exception):
             ToolRequest.model_validate({
                 "method": "GET",
-                "url": "/api/cars",
+                "url": "https://api.example.com/api/cars",
                 "headers": {"x-authorization": {"$param": "auth_token"}},
             })
 
@@ -216,7 +216,7 @@ class TestToolRequestHeaderValidation:
 
         req = ToolRequest.model_validate({
             "method": "GET",
-            "url": "/api/cars",
+            "url": "https://api.example.com/api/cars",
             "headers": {"Accept": "application/json"},
         })
         assert req.headers == {"Accept": "application/json"}

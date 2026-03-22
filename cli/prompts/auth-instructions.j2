@@ -31,12 +31,12 @@ etc.
 - Takes NO arguments — use `prompt_text(label)` and `prompt_secret(label)` to get user credentials
 - Must perform the FULL authentication flow (all steps: request OTP, then verify, etc.)
 - Returns a dict with:
-- "headers": dict of HTTP headers to inject (e.g., {"Authorization": "Bearer ey..."})
+- "headers": dict of HTTP headers to inject (e.g., {"Authorization": "Bearer ey..."} or {"Cookie": "sessionid=abc; csrftoken=xyz", "x-csrftoken": "xyz"} for cookie-based auth)
 - "body_params": optional, dict of fields to merge into the body of every authenticated request (e.g., {"userToken":
 "...", "userId": "..."}). Use this when the API passes credentials in the POST body instead of HTTP headers (Firebase
 auth, POST-based APIs)
 - "refresh_token": optional, for later use with refresh_token()
-- "expires_in": optional, token lifetime in seconds
+- "expires_in": optional, token lifetime in seconds. For cookie-based auth, use the shortest `Max-Age` from the session cookies
 
 ### refresh_token(current_refresh_token) — optional
 - Receives the current refresh token string
@@ -52,7 +52,7 @@ auth, POST-based APIs)
 - **No caching**: do not cache tokens, do not read/write files
 - **Use injected helpers**: use `prompt_text`/`prompt_secret` for user input, `tell_user`/`wait_user_confirmation` for
 messages, `debug` for troubleshooting. Do NOT use `input()` or `print()` directly
-- **Return headers**: return the actual HTTP headers to inject, not raw tokens
+- **Return headers**: return the actual HTTP headers to inject, not raw tokens. For cookie-based auth, build a `Cookie` header string from the session cookies (e.g., `"Cookie": "sessionid=abc; csrftoken=xyz"`). Spectral injects headers, not a cookie jar — cookies MUST be returned as a `Cookie` header in the dict
 - **Include necessary imports** at the top of your code
 - **Handle the FULL auth flow**: if auth requires multiple steps, acquire_token must handle ALL steps
 - **Error handling**: raise clear exceptions on failure

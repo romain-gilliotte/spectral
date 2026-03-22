@@ -152,7 +152,7 @@ def test_identify_shows_existing_tools() -> None:
             name="search_routes",
             description="Search for routes",
             parameters={"type": "object", "properties": {}},
-            request=ToolRequest(method="POST", url="/api/search"),
+            request=ToolRequest(method="POST", url="https://api.example.com/api/search"),
         ),
     ]
 
