@@ -25,7 +25,7 @@ class BuildToolResponse(BaseModel):
     """
 
     tool: ToolDefinition | None = None
-    consumed_trace_ids: list[str]
+    useless_traces_found: list[str] | None = None
 
 
 @dataclass

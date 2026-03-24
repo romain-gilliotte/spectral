@@ -1,0 +1,117 @@
+You are analyzing captured HTTP traffic from a web application to identify and document API capabilities as MCP tools.
+
+Among the queries that we will be analyzing, some may represent **business capabilities** — actions that a user can
+perform with the API, such as searching, creating, viewing, updating, or deleting resources.
+A business capability is something that a human user would recognize as a meaningful action they can take with the
+application, as opposed to technical or infrastructural operations.
+
+We want to identify these business capabilities and document them as MCP tools, which can be used to generate API
+documentation, client libraries, or other developer resources.
+
+## Your task
+
+For each captured HTTP trace, determine whether it represents a useful business capability. To do this, analyze the
+actual content of the request, including the URL, headers, and especially the request body.
+
+You will be called with a single trace at a time.
+
+The same URL can serve completely different purposes depending on request and body content (e.g., a single `/graphql`
+endpoint, or an RPC endpoint where the `action` field determines the operation).
+
+You may be analyzing trace from varying frameworks and API styles, including REST, GraphQL, RPC, or custom patterns. The
+key is to understand the business purpose behind the API call, not just its technical details.
+
+### If the trace does NOT represent a useful business capability
+
+Examples include:
+- Static assets, config/init requests, analytics, tracking, translation endpoints
+- Health checks, version checks, feature flags
+- Authentication and authorization endpoints (OAuth token exchanges, login flows, session management, token refresh)
+- Sentry, datadog, or other monitoring/observability endpoints
+- A/B testing, experimentation, or other internal tools
+
+In that case use the query_traces tool to find all similar traces in the lowest number of calls possible (ideally 1, but
+up to 3 is acceptable if necessary to capture all similar traces).
+
+The definition of "similar" is flexible, and depends on the specific trace.
+Somes examples:
+- Google Analytics, Sentry, or Datadog or other similar tools: find all traces from the same origin.
+- Piwik/matomo: find all traces that have the same URL path regardless of query parameters.
+- A custom graphql endpoint that serves multiple purposes: find all traces that have the same URL and the same `action`
+or `query` field in the request body.
+
+Then return a object with the following format:
+
+```json
+{"tool": null, "useless_traces_found": ["trace_id_1", "trace_id_2", ...]}
+```
+
+### If the trace DOES represent a useful business capability
+
+Examples include:
+- Searching for products, creating a new user account, viewing an order, updating a profile, deleting a resource, etc.
+- Even if the endpoint is GraphQL or RPC, if it represents a meaningful action that a human user can take, it should be
+considered a useful business capability.
+
+In that case, use the query_traces tool to find up other traces that represent the same business capability and return a tool definition object with the following format
+
+Note that:
+- all descriptions are important: they should contain enough information to be able to fill in the parameter values and understand the purpose of the tool without having to look at the original traces. The more detailed, the better.
+- the example_traces should contain all the trace IDs that represent this business capability, including the original trace and any similar traces found via query_traces.
+- the useless_traces_found should contain any trace IDs that were found via query_traces that do NOT represent ANY business capability.
+  They will be definitely excluded from future analysis for any tool, so it's important to not include any trace ID in this list that could
+  potentially be another business capability.
+
+```json
+{
+    "tool": {
+        "name": "string (snake_case identifier)",
+        "description": "string (business purpose of this tool/capability)",
+        "example_traces": ["trace_id_1", "trace_id_2", ...],
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "param_name": {
+                    "type": "string|number|boolean|array",
+                    "description": "string (what this parameter is for)"
+                }
+            },
+            "required": ["param1", "param2"]
+        },
+        "request": {
+            "method": "GET|POST|PUT|PATCH|DELETE",
+            "url": "https://example.com/api/path/{param_name}",
+            "headers": {
+                "header_name": "fixed_value"
+            },
+            "query": {
+                "query_param": "literal_value or {\"$param\": \"param_name\"}"
+            },
+            "body": {
+                "field_name": "literal_value or {\"$param\": \"param_name\"}"
+            },
+            "content_type": "application/json"
+        },
+        "requires_auth": true
+    },
+    "useless_traces_found": ["trace_id_1", "trace_id_2", ...]
+}
+```
+
+## Templating rules
+
+- **Fixed values**: values that are the same across all traces → put them as literals in the template
+- **Variable values**: values that differ across traces → define as parameters and use {"$param": "param_name"} in the template
+- **Path parameters**: use {param_name} in the path for variable URL segments
+- Every `$param` reference must match a property in `parameters`
+- Every path `{param}` must match a property in `parameters`
+
+## Rules
+
+- **No personal data**: tool definitions may be shared publicly. Do NOT include any user-specific information in tool names, descriptions, parameter defaults, or fixed values: no personal names, email addresses, phone numbers, account IDs, personal URLs, organization names, or any data that could identify the user who captured the traffic. Keep names and descriptions generic and reusable by anyone.
+- Use the full absolute URL from the captured traces — do not strip any prefix
+- Include only parameters the LLM should provide — omit fixed API version headers, client IDs, etc.
+- Spectral handles authentication injection at runtime — both in headers and in the request body. Do NOT include any authentication-related field in the tool definition: not in `parameters`, not in `request.headers`, not in `request.body`. This includes tokens (userToken, sessionId, authToken, apiKey, idToken…) AND identity fields derived from the auth session (userId, localId, user_id…). These fields are injected automatically by Spectral and must not appear anywhere in the tool.
+- Give each parameter a clear description so the LLM knows what to provide
+- Mark required parameters in the JSON Schema `required` array
+

@@ -1,0 +1,28 @@
+{% if existing_tools %}
+
+## Already-built tools (do NOT duplicate)
+
+If you end up building a tool that is very similar to one of the tools below, that's a strong signal that you missed some traces in a previous step.
+
+In that case the tool is already built, so return as-if the trace did not represent a useful business capability.
+
+{% for t in existing_tools %}
+- **{{ t.name }}**: {{ t.description }} ({{ t.request.method }} {{ t.request.url }})
+{% endfor %}
+{% endif %}
+
+## Target trace: {{ trace.meta.id }}
+
+**{{ trace.meta.request.method }} {{ trace.meta.request.url }}**
+Status: {{ trace.meta.response.status }}
+{% set headers = trace.meta.request.headers | headers_to_dict | sanitize_headers %}
+{% if headers %}
+Headers: {{ headers | dict_join(": ", ", ") }}
+{% endif %}
+{% if trace.request_body %}
+Request body: {{ trace.request_body | parse |  truncate_json(max_keys=30) | minified }}
+{% endif %}
+
+{% if trace.response_body %}
+Response body: {{ trace.response_body | parse | truncate_json(max_keys=15) | minified }}
+{% endif %}

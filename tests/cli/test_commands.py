@@ -11,7 +11,6 @@ from click.testing import CliRunner
 from pydantic_ai.messages import (
     ModelRequest,
     ModelResponse,
-    SystemPromptPart,
     TextPart,
     ToolCallPart,
     UserPromptPart,
@@ -34,15 +33,6 @@ def _extract_user_prompt(messages: list[Any]) -> str:
                     return str(part.content)
     return ""
 
-
-def _extract_system_text(messages: list[Any]) -> str:
-    parts: list[str] = []
-    for msg in messages:
-        if isinstance(msg, ModelRequest):
-            for part in msg.parts:
-                if isinstance(part, SystemPromptPart):
-                    parts.append(part.content)
-    return " ".join(parts)
 
 
 def _setup_openapi_llm() -> None:
@@ -345,39 +335,28 @@ class TestDiscoverCommand:
 
 
 def _setup_mcp_llm() -> None:
-    """Set up a FunctionModel for MCP pipeline tests."""
-    identify_call_count = {"n": 0}
+    """Set up a FunctionModel for the single-pass MCP pipeline."""
+    build_call_count = {"n": 0}
 
     def model_fn(messages: list[Any], info: AgentInfo) -> ModelResponse:
         prompt = _extract_user_prompt(messages)
-        system_text = _extract_system_text(messages)
         prompt_lower = prompt.lower()
-        full_text_lower = (prompt + " " + system_text).lower()
 
-        if "base url" in prompt_lower and "business api" in prompt_lower:
-            text = json.dumps({"base_urls": ["https://api.example.com"]})
-        elif "target trace:" in prompt_lower and "business capability" in full_text_lower:
-            identify_call_count["n"] += 1
-            if identify_call_count["n"] == 1:
+        if "target trace:" in prompt_lower:
+            build_call_count["n"] += 1
+            if build_call_count["n"] == 1:
                 text = json.dumps({
-                    "useful": True,
-                    "name": "list_users",
-                    "description": "List users",
+                    "tool": {
+                        "name": "list_users",
+                        "description": "List users",
+                        "parameters": {"type": "object", "properties": {}},
+                        "request": {"method": "GET", "url": "https://api.example.com/api/users"},
+                    },
                 })
             else:
-                text = json.dumps({"useful": False})
-        elif "candidate:" in prompt_lower and "tool definition" in full_text_lower:
-            text = json.dumps({
-                "tool": {
-                    "name": "list_users",
-                    "description": "List users",
-                    "parameters": {"type": "object", "properties": {}},
-                    "request": {"method": "GET", "url": "https://api.example.com/api/users"},
-                },
-                "consumed_trace_ids": ["t_0001"],
-            })
+                text = json.dumps({"tool": None})
         else:
-            text = json.dumps({"useful": False})
+            text = json.dumps({"tool": None})
 
         if info.output_tools:
             return ModelResponse(parts=[
@@ -419,26 +398,6 @@ class TestAnalyzeMcpCommand:
         tools = list_tools("testapp")
         assert len(tools) >= 1
 
-    def test_analyze_mcp_updates_app_meta(
-        self, sample_bundle: CaptureBundle, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
-    ) -> None:
-        from cli.formats.config import Config
-        from cli.helpers.storage import load_app_meta, store_capture, write_config
-
-        monkeypatch.setenv("SPECTRAL_HOME", str(tmp_path / "store"))
-        write_config(Config(api_key="sk-ant-test-key"))
-        store_capture(sample_bundle, "testapp")
-
-        runner = CliRunner()
-        _setup_mcp_llm()
-        result = runner.invoke(
-            cli,
-            ["mcp", "analyze", "testapp"],
-        )
-
-        assert result.exit_code == 0, result.output
-        meta = load_app_meta("testapp")
-        assert meta.base_urls == ["https://api.example.com"]
 
 
 class TestAuthLoginCommand:

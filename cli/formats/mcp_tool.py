@@ -27,6 +27,7 @@ class ToolDefinition(BaseModel):
     parameters: dict[str, Any]
     request: ToolRequest
     requires_auth: bool = True
+    example_traces: list[str] = Field(default_factory=list)
 
     @model_validator(mode="after")
     def validate_param_refs(self) -> ToolDefinition:
@@ -40,8 +41,8 @@ class ToolDefinition(BaseModel):
                 f"URL {{param}} placeholders not in parameters: {missing_url}",
             )
 
-        body_refs = collect_param_refs(self.request.body)
-        query_refs = collect_param_refs(self.request.query)
+        body_refs = self._collect_param_refs(self.request.body)
+        query_refs = self._collect_param_refs(self.request.query)
         all_refs = body_refs | query_refs | url_params
 
         missing = all_refs - properties
@@ -57,22 +58,21 @@ class ToolDefinition(BaseModel):
             )
         return self
 
-
-def collect_param_refs(obj: object) -> set[str]:
-    """Collect all ``$param`` reference names from a template object."""
-    refs: set[str] = set()
-    if isinstance(obj, dict):
-        d = cast(dict[str, Any], obj)
-        if len(d) == 1 and "$param" in d:
-            refs.add(str(d["$param"]))
-        else:
-            for v in d.values():
-                refs.update(collect_param_refs(v))
-    elif isinstance(obj, list):
-        items = cast(list[Any], obj)
-        for item in items:
-            refs.update(collect_param_refs(item))
-    return refs
+    def _collect_param_refs(self, obj: object) -> set[str]:
+        """Collect all ``$param`` reference names from a template object."""
+        refs: set[str] = set()
+        if isinstance(obj, dict):
+            d = cast(dict[str, Any], obj)
+            if len(d) == 1 and "$param" in d:
+                refs.add(str(d["$param"]))
+            else:
+                for v in d.values():
+                    refs.update(self._collect_param_refs(v))
+        elif isinstance(obj, list):
+            items = cast(list[Any], obj)
+            for item in items:
+                refs.update(self._collect_param_refs(item))
+        return refs
 
 
 class TokenState(BaseModel):

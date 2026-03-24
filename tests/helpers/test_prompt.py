@@ -50,23 +50,21 @@ def test_render_conditional_sections():
             request=ToolRequest(method="GET", url="https://api.example.com/api/a"),
         ),
     ]
-    target = make_trace("t_0001", "GET", "https://api.example.com/foo", 200, 1000)
+    trace = make_trace("t_0001", "GET", "https://api.example.com/foo", 200, 1000)
 
     result_with = render(
-        "mcp-identify-user.j2",
+        "mcp-build-tool-user.md.j2",
         existing_tools=existing,
-        target=target,
-        request_body=None,
+        trace=trace,
     )
     assert "tool_a" in result_with
     assert "do NOT duplicate" in result_with
     assert "t_0001" in result_with
 
     result_without = render(
-        "mcp-identify-user.j2",
+        "mcp-build-tool-user.md.j2",
         existing_tools=[],
-        target=target,
-        request_body=None,
+        trace=trace,
     )
     assert "tool_a" not in result_without
     assert "t_0001" in result_without

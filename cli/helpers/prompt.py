@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import importlib.resources
+import json
 from typing import Any
 
 from jinja2 import Environment, StrictUndefined
@@ -28,11 +29,23 @@ def _dict_join(d: dict[str, str], kv_sep: str, pair_sep: str) -> str:
     return pair_sep.join(f"{k}{kv_sep}{v}" for k, v in d.items())
 
 
-_AUTH_KEYWORDS: frozenset[str] = frozenset({
-    "auth", "login", "token", "oauth", "session", "signin",
-    "verification", "otp", "verify", "password", "credential",
-    "callback", "refresh",
-})
+_AUTH_KEYWORDS: frozenset[str] = frozenset(
+    {
+        "auth",
+        "login",
+        "token",
+        "oauth",
+        "session",
+        "signin",
+        "verification",
+        "otp",
+        "verify",
+        "password",
+        "credential",
+        "callback",
+        "refresh",
+    }
+)
 
 
 def _is_auth_trace(trace: Any) -> bool:
@@ -46,6 +59,17 @@ def _is_auth_trace(trace: Any) -> bool:
     )
 
 
+def _parse(blob: str) -> Any | None:
+    """Parse the request body as JSON, returning None on failure."""
+    if not blob:
+        return None
+    try:
+        return json.loads(blob)
+    except (json.JSONDecodeError, UnicodeDecodeError):
+        return None
+
+
+_env.filters["parse"] = _parse  # pyright: ignore[reportArgumentType]
 _env.filters["minified"] = minified  # pyright: ignore[reportArgumentType]
 _env.filters["truncate_json"] = truncate_json  # pyright: ignore[reportArgumentType]
 _env.filters["sanitize_headers"] = sanitize_headers  # pyright: ignore[reportArgumentType]
