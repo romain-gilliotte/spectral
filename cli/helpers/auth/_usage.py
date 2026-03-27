@@ -6,9 +6,14 @@ from typing import Any
 import click
 
 from cli.formats.mcp_tool import TokenState
-from cli.helpers.auth._errors import AuthError, AuthScriptError, AuthScriptNotFound
+from cli.helpers.auth._errors import AuthError, AuthScriptError
 from cli.helpers.auth._runtime import call_auth_module
-from cli.helpers.storage import load_token, write_token
+from cli.helpers.storage import (
+    auth_script_path,
+    load_token,
+    refresh_script_path,
+    write_token,
+)
 
 
 def get_auth(app_name: str) -> TokenState:
@@ -22,24 +27,39 @@ def get_auth(app_name: str) -> TokenState:
     if token is not None and _is_token_valid(token):
         return token
 
-    # Step 2: Auto-refresh
-    if token is not None and token.refresh_token is not None:
+    # Step 2: Auto-refresh (only if we have both a refresh token and a script)
+    has_refresh_script = refresh_script_path(app_name).is_file()
+    if token is not None and token.refresh_token is not None and has_refresh_script:
         try:
             return refresh_auth(app_name, token)
-        except (AuthScriptError, AuthScriptNotFound) as exc:
+        except AuthScriptError as exc:
             click.echo(f"Warning: token refresh failed: {exc}", err=True)
 
-    # Step 3: Auth required
-    raise AuthError(
-        f"No valid token for app '{app_name}'. "
-        f"Run 'spectral auth login {app_name}' to authenticate."
+    # Step 3: Auth required — adapt hint based on what's missing
+    hint = _build_auth_hint(app_name, token, has_refresh_script)
+    raise AuthError(f"No valid token for app '{app_name}'. {hint}")
+
+
+def _build_auth_hint(
+    app_name: str, token: TokenState | None, has_refresh_script: bool
+) -> str:
+    has_acquire_script = auth_script_path(app_name).is_file()
+    has_refresh_token = token is not None and token.refresh_token is not None
+
+    if has_acquire_script:
+        return f"Run 'spectral auth login {app_name}' to authenticate."
+    if has_refresh_token and not has_refresh_script:
+        return f"Run 'spectral auth analyze-refresh {app_name}' to generate a refresh script."
+    return (
+        f"Run 'spectral auth extract {app_name}' to extract tokens from captures, "
+        f"or 'spectral auth set {app_name}' to provide credentials manually."
     )
 
 
 def refresh_auth(
     app_name: str, token: TokenState, output: list[str] | None = None
 ) -> TokenState:
-    """Load auth_acquire.py and call ``refresh_token()``."""
+    """Load auth_refresh.py and call ``refresh_token()``."""
 
     result = call_auth_module(app_name, "refresh_token", output, token.refresh_token)
     new_token = _result_to_token_state(result)

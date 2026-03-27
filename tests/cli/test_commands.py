@@ -490,7 +490,7 @@ class TestAuthRefreshCommand:
         import time
 
         from cli.formats.mcp_tool import TokenState
-        from cli.helpers.storage import auth_script_path, ensure_app, write_token
+        from cli.helpers.storage import ensure_app, refresh_script_path, write_token
 
         monkeypatch.setenv("SPECTRAL_HOME", str(tmp_path / "store"))
         ensure_app("testapp")
@@ -503,12 +503,10 @@ class TestAuthRefreshCommand:
             obtained_at=time.time() - 7200,
         ))
 
-        # Write mock auth script with refresh_token function
-        script_path = auth_script_path("testapp")
+        # Write mock auth refresh script
+        script_path = refresh_script_path("testapp")
         script_path.parent.mkdir(parents=True, exist_ok=True)
         script_path.write_text(
-            'def acquire_token():\n'
-            '    return {"headers": {"Authorization": "Bearer new"}}\n'
             'def refresh_token(current_refresh_token):\n'
             '    return {"headers": {"Authorization": "Bearer refreshed"}, "expires_in": 3600}\n'
         )
