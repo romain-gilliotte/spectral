@@ -85,7 +85,7 @@ spectral auth analyze <app>                         # detect auth, generate scri
 spectral auth set <app> -H "Authorization: ..."     # manually set auth headers
 spectral auth set <app> -c "session=abc"            # set cookies
 spectral auth set <app> -b "userToken=eyJ..."       # set body params (POST-based auth)
-spectral auth login/logout/refresh <app>            # interactive auth operations
+spectral auth login/logout <app>                    # interactive auth operations
 
 # Configuration
 spectral config                                     # configure API key and model

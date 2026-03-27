@@ -1,4 +1,4 @@
-"""Tests for cli.commands.auth.{analyze,logout,refresh}."""
+"""Tests for cli.commands.auth.{analyze,logout}."""
 
 from __future__ import annotations
 
@@ -9,9 +9,7 @@ from click.testing import CliRunner
 
 from cli.commands.auth.analyze import analyze
 from cli.commands.auth.logout import logout
-from cli.commands.auth.refresh import refresh
-from cli.helpers.auth._errors import AuthError, AuthScriptInvalid
-from tests.auth.conftest import make_token
+from cli.helpers.auth._errors import AuthScriptInvalid
 
 # ---------------------------------------------------------------------------
 # Constants
@@ -20,7 +18,6 @@ from tests.auth.conftest import make_token
 APP = "testapp"
 ANALYZE_MODULE = "cli.commands.auth.analyze"
 LOGOUT_MODULE = "cli.commands.auth.logout"
-REFRESH_MODULE = "cli.commands.auth.refresh"
 FAKE_SCRIPT = "def acquire_token():\n    return {}\n"
 
 # ---------------------------------------------------------------------------
@@ -141,45 +138,3 @@ class TestLogout:
         assert "No token found" in result.output
 
 
-# ---------------------------------------------------------------------------
-# TestRefresh
-# ---------------------------------------------------------------------------
-
-
-class TestRefresh:
-    def test_success(self) -> None:
-        token = make_token()
-
-        with (
-            patch(f"{REFRESH_MODULE}.resolve_app"),
-            patch(f"{REFRESH_MODULE}.load_token", return_value=token),
-            patch(f"{REFRESH_MODULE}.refresh_auth") as mock_refresh,
-        ):
-            result = CliRunner().invoke(refresh, [APP], catch_exceptions=False)
-
-        assert result.exit_code == 0
-        assert "Token refreshed" in result.output
-        mock_refresh.assert_called_once_with(APP, token)
-
-    def test_no_token(self) -> None:
-        with (
-            patch(f"{REFRESH_MODULE}.resolve_app"),
-            patch(f"{REFRESH_MODULE}.load_token", return_value=None),
-        ):
-            result = CliRunner().invoke(refresh, [APP])
-
-        assert result.exit_code == 1
-        assert "No token found" in result.output
-
-    def test_refresh_error(self) -> None:
-        token = make_token()
-
-        with (
-            patch(f"{REFRESH_MODULE}.resolve_app"),
-            patch(f"{REFRESH_MODULE}.load_token", return_value=token),
-            patch(f"{REFRESH_MODULE}.refresh_auth", side_effect=AuthError("refresh failed")),
-        ):
-            result = CliRunner().invoke(refresh, [APP])
-
-        assert result.exit_code == 1
-        assert "refresh failed" in result.output

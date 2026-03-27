@@ -54,7 +54,6 @@ _spectral() {
                     'extract:Extract auth tokens from traces'
                     'login:Interactive auth login'
                     'logout:Remove stored token'
-                    'refresh:Refresh auth token'
                     'set:Manually set auth headers/cookies'
                 )
                 _describe 'auth command' subcmds && ret=0
@@ -65,7 +64,7 @@ _spectral() {
                             '--debug[Save LLM prompts/responses]' \
                             '--help[Show help]' \
                             '*:app name:_spectral_apps' && ret=0 ;;
-                    login|logout|refresh)
+                    login|logout)
                         _arguments \
                             '--help[Show help]' \
                             '*:app name:_spectral_apps' && ret=0 ;;

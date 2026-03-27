@@ -278,17 +278,7 @@ Runs the interactive authentication flow for an app:
 
 This is the only command that requires user interaction. It must be run before the MCP server can make authenticated requests for the app.
 
-### 5.3 `spectral auth refresh <app>`
-
-Manually triggers a token refresh:
-
-1. Loads `token.json` to get the current `refresh_token`
-2. Loads `auth_acquire.py` and calls `refresh_token(current_refresh_token)`
-3. Updates `token.json` with the new auth state
-
-The MCP server auto-refreshes on demand, so this command isn't needed during normal use. But it's useful for keeping tokens warm in a crontab (e.g. `*/30 * * * * spectral auth refresh sncf`) or for debugging auth issues when the server isn't running.
-
-### 5.4 `spectral mcp analyze <app>`
+### 5.3 `spectral mcp analyze <app>`
 
 Runs the tool generation pipeline on an app's captures:
 
