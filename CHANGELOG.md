@@ -1,6 +1,27 @@
 # CHANGELOG
 
 
+## v0.11.0 (2026-03-27)
+
+### Features
+
+- **auth**: Overhaul auth script generation and validation pipeline
+  ([`b6deb4a`](https://github.com/spectral-mcp/spectral/commit/b6deb4aca27a0cf4a0a6da3fd50884294f3bc36f))
+
+- Move fix loop from login into analyze: scripts are validated at generation time with a unified
+  generate+extract+test retry loop. Login now simply runs the script or directs to re-run analyze. -
+  Rename helpers/auth modules to private with curated __init__.py public API, matching helpers/json
+  and helpers/llm patterns. - Persist token obtained during analyze (no separate login needed). -
+  Cache credential prompts (email/password) across fix iterations; OTP codes are never cached. -
+  Switch to questionary for auth prompts (asterisk feedback). - Replace inspect_trace with
+  query_traces (jq) for auth analysis. Add response_headers field and non-JSON body fallback to
+  query_traces tool. Improve tool docstring with usage examples. - Stop redacting auth headers so
+  LLM sees full token structure. - Filter script tracebacks to exclude spectral internals while
+  keeping stdlib frames. Move formatting to Jinja filter. - Improve prompts: require trace
+  inspection, enforce headless scripts, encourage CookieJar, directive debug() guidance in fix loop.
+  - Update shell completions (remove --debug from auth login).
+
+
 ## v0.10.1 (2026-03-27)
 
 ### Bug Fixes
