@@ -1,6 +1,31 @@
 # CHANGELOG
 
 
+## v0.10.0 (2026-03-27)
+
+### Chores
+
+- **deps**: Move apk-mitm-python to spectral-mcp org
+  ([`def605f`](https://github.com/spectral-mcp/spectral/commit/def605fda31079a82e218a200d6f16e5a8111c11))
+
+### Features
+
+- **mcp**: Filter out non-JSON traces before analysis
+  ([`b3de557`](https://github.com/spectral-mcp/spectral/commit/b3de557f82c5fbee9e8926e60c00c3e892e45525))
+
+Skip traces that don't have a JSON content-type in either request or response headers, reducing
+  noise and LLM token usage on binary/HTML traffic.
+
+### Refactoring
+
+- **mcp**: Simplify analysis pipeline into single-pass tool generation
+  ([`e57b6c2`](https://github.com/spectral-mcp/spectral/commit/e57b6c22df9d38fe542c77e650b603a2aececfe6))
+
+Remove the separate identify and build-tool steps in favor of a unified analysis pass. Drop
+  migrate.py, build_tool.py and identify.py modules, consolidate logic in analyze.py, and update
+  prompts to markdown templates. Clean up corresponding tests and mocks.
+
+
 ## v0.9.0 (2026-03-22)
 
 ### Bug Fixes
