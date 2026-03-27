@@ -5,7 +5,7 @@ from __future__ import annotations
 import pytest
 
 from cli.helpers.auth._errors import AuthScriptInvalid
-from cli.helpers.auth._generation import extract_script, get_auth_instructions
+from cli.helpers.auth._generation import extract_script, get_acquire_instructions
 
 # ---------------------------------------------------------------------------
 # Constants
@@ -119,6 +119,6 @@ class TestExtractScript:
 
 class TestGetAuthInstructions:
     def test_returns_non_empty_string(self) -> None:
-        result = get_auth_instructions()
+        result = get_acquire_instructions()
         assert isinstance(result, str)
         assert len(result) > 0

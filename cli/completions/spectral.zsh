@@ -50,7 +50,8 @@ _spectral() {
         auth)
             if (( CURRENT == 3 )); then
                 local -a subcmds=(
-                    'analyze:Detect auth and generate script'
+                    'analyze-acquire:Detect auth and generate acquire script'
+                    'analyze-refresh:Detect auth and generate refresh script'
                     'extract:Extract auth tokens from traces'
                     'login:Interactive auth login'
                     'logout:Remove stored token'
@@ -59,7 +60,7 @@ _spectral() {
                 _describe 'auth command' subcmds && ret=0
             else
                 case "${words[3]}" in
-                    analyze|extract)
+                    analyze-acquire|analyze-refresh|extract)
                         _arguments \
                             '--debug[Save LLM prompts/responses]' \
                             '--help[Show help]' \

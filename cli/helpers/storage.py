@@ -307,6 +307,11 @@ def auth_script_path(app_name: str) -> Path:
     return app_dir(app_name) / "auth_acquire.py"
 
 
+def refresh_script_path(app_name: str) -> Path:
+    """Return the path to the auth_refresh.py script for an app."""
+    return app_dir(app_name) / "auth_refresh.py"
+
+
 def config_path() -> Path:
     """Return the path to config.json."""
     return store_root() / "config.json"

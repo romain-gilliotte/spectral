@@ -11,14 +11,14 @@ from tests.conftest import make_trace
 
 
 def test_render_basic():
-    result = render("auth-instructions.j2", no_auth_sentinel="NO_AUTH")
+    result = render("auth-rules.j2", no_auth_sentinel="NO_AUTH")
     assert "NO_AUTH" in result
-    assert "acquire_token" in result
+    assert "Return format" in result
 
 
 def test_render_strict_undefined():
     with pytest.raises(UndefinedError):
-        render("auth-instructions.j2")
+        render("auth-rules.j2")
 
 
 def test_load_static():
