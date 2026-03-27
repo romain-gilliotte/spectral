@@ -62,9 +62,11 @@ testpaths = ["tests"]
 python_files = ["test_*.py"]
 python_classes = ["Test*"]
 python_functions = ["test_*"]
+markers = ["e2e: End-to-end tests (need --run-e2e and real LLM config)"]
 
 [dependency-groups]
 dev = [
+    "flask>=3.1.0",
     "pyright>=1.1.408",
     "pytest>=9.0.2",
     "pytest-asyncio>=1.3.0",
