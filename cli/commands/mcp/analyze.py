@@ -9,6 +9,7 @@ import click
 from cli.commands.mcp.types import BuildToolResponse
 from cli.formats.mcp_tool import ToolDefinition
 from cli.helpers.console import console
+from cli.helpers.http import get_header
 from cli.helpers.llm import Conversation, current_model, init_debug
 from cli.helpers.prompt import render
 from cli.helpers.storage import list_captures, load_app_bundle, write_tools
@@ -17,6 +18,15 @@ if TYPE_CHECKING:
     from cli.commands.capture.types import CaptureBundle, Trace
 
 _MAX_ITERATIONS = 200
+
+
+def _is_json_trace(trace: Trace) -> bool:
+    """Return True if the trace sends or receives JSON content."""
+    for headers in (trace.meta.request.headers, trace.meta.response.headers):
+        ct = get_header(headers, "content-type")
+        if ct and "json" in ct.lower():
+            return True
+    return False
 
 
 @click.command()
@@ -30,9 +40,13 @@ def analyze_cmd(app_name: str, debug: bool) -> None:
     cap_count = len(list_captures(app_name))
     console.print(f"[bold]Loading captures for app:[/bold] {app_name}")
     bundle = load_app_bundle(app_name)
+    total_traces = len(bundle.traces)
+    bundle = bundle.filter_traces(_is_json_trace)
+    skipped = total_traces - len(bundle.traces)
     console.print(
         f"  Loaded {cap_count} capture(s): "
-        f"{len(bundle.traces)} traces, "
+        f"{len(bundle.traces)} JSON traces kept, "
+        f"{skipped} non-JSON skipped, "
         f"{len(bundle.contexts)} contexts"
     )
 
