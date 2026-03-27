@@ -1,6 +1,6 @@
 import re
 
-from cli.helpers.auth.errors import AuthScriptInvalid
+from cli.helpers.auth._errors import AuthScriptInvalid
 from cli.helpers.prompt import render
 
 _NO_AUTH_SENTINEL = "NO_AUTH"
@@ -40,3 +40,13 @@ def extract_script(text: str) -> str | None:
         raise AuthScriptInvalid("Generated script must define an acquire_token() function")
 
     return script
+
+
+def script_has_refresh(script: str) -> bool:
+    """Check whether a validated script defines a callable ``refresh_token``."""
+    ns: dict[str, object] = {}
+    try:
+        exec(compile(script, "<auth-acquire>", "exec"), ns)
+    except Exception:
+        return False
+    return callable(ns.get("refresh_token"))

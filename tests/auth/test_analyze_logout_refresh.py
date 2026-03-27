@@ -10,8 +10,7 @@ from click.testing import CliRunner
 from cli.commands.auth.analyze import analyze
 from cli.commands.auth.logout import logout
 from cli.commands.auth.refresh import refresh
-from cli.helpers.auth.errors import AuthScriptInvalid
-from cli.helpers.auth.usage import AuthError
+from cli.helpers.auth._errors import AuthError, AuthScriptInvalid
 from tests.auth.conftest import make_token
 
 # ---------------------------------------------------------------------------
@@ -111,7 +110,7 @@ class TestAnalyze:
         ):
             result = CliRunner().invoke(analyze, [APP], catch_exceptions=False)
 
-        assert "Failed to generate auth script" in result.output
+        assert "No working auth script produced" in result.output
 
 
 # ---------------------------------------------------------------------------

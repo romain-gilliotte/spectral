@@ -8,8 +8,8 @@ from unittest.mock import patch
 
 import pytest
 
-from cli.helpers.auth.errors import AuthError, AuthScriptError
-from cli.helpers.auth.usage import (
+from cli.helpers.auth._errors import AuthError, AuthScriptError
+from cli.helpers.auth._usage import (
     _is_token_valid,
     _result_to_token_state,
     acquire_auth,
@@ -19,7 +19,7 @@ from cli.helpers.auth.usage import (
 from tests.auth.conftest import make_token
 
 FIXED_NOW = 1_700_000_000.0
-MODULE = "cli.helpers.auth.usage"
+MODULE = "cli.helpers.auth._usage"
 
 
 # ---------------------------------------------------------------------------

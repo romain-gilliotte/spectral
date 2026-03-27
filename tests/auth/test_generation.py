@@ -4,8 +4,8 @@ from __future__ import annotations
 
 import pytest
 
-from cli.helpers.auth.errors import AuthScriptInvalid
-from cli.helpers.auth.generation import extract_script, get_auth_instructions
+from cli.helpers.auth._errors import AuthScriptInvalid
+from cli.helpers.auth._generation import extract_script, get_auth_instructions
 
 # ---------------------------------------------------------------------------
 # Constants

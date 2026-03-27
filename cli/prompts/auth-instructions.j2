@@ -2,19 +2,23 @@ You are generating Python auth functions for a web API.
 
 ## Your task
 
-From the session timeline above, identify the traces related to authentication (login, token exchange, refresh) and
-use `inspect_trace` to examine ONLY those. Also inspect one or two authenticated API calls to confirm the auth header
-format. Do NOT inspect every trace — only what is needed to understand the auth mechanism. Then generate the functions.
+From the session timeline above, identify the traces related to authentication (login, token exchange, refresh).
+Use `query_traces` with jq expressions to examine auth-related traces — request/response headers, cookies, redirect
+locations, and response bodies. The timeline only shows URLs and status codes — you need the actual headers and bodies
+to reproduce the auth flow correctly. Also inspect one or two authenticated API calls to confirm the auth header
+format. Do NOT query every trace — only what is needed to understand the auth mechanism. Then generate the functions.
 
 If you find NO authentication mechanism (no login endpoint, no token exchange, no auth headers), respond with exactly:
 {{ no_auth_sentinel }}
 
 ## Function contracts
 
-You must produce ONLY two functions (the second is optional):
+Your script must export up to two public functions:
 
 1. `acquire_token()` — **required**, takes NO arguments
-2. `refresh_token(current_refresh_token)` — only if a refresh endpoint was detected
+2. `refresh_token(current_refresh_token)` — optional (see below)
+
+You may define as many private helper functions (prefixed with `_`) as needed to keep the code clean.
 
 These functions are loaded dynamically by spectral. Helper functions are injected into the module's namespace at load
 time:
@@ -42,11 +46,15 @@ auth, POST-based APIs)
 - Receives the current refresh token string
 - Returns the same dict format as acquire_token
 - Raises Exception on failure
+- Include this function if a refresh endpoint was captured, or if the auth flow returns a refresh token and you can
+confidently infer the refresh mechanism (e.g., standard OAuth2 token refresh). This is important for APIs with
+short-lived access tokens. If you cannot determine how refresh works, omit the function entirely
 
 ## Rules
 
 - **No hardcoded personal data**: the generated script may be shared publicly. NEVER hardcode usernames, emails, API keys, passwords, personal URLs, account IDs, or any user-specific values. Always use `prompt_text()` or `prompt_secret()` to collect credentials at runtime. Only hardcode values that are the same for ALL users of the API (endpoint URLs, public client IDs, content types, static headers).
 - **Stdlib only**: any standard library module is allowed (urllib, http.cookiejar, base64, json, re, hashlib, hmac, etc.) — zero pip dependencies. Do NOT access the filesystem (no open(), no pathlib, no tempfile)
+- **Use `http.cookiejar.CookieJar` with `urllib.request.HTTPCookieProcessor`** to handle cookies automatically across redirects and multi-step flows. Do NOT parse `Set-Cookie` headers manually
 - **No module-level side effects**: the module must only contain imports, constants, and function definitions. No top-level code that executes requests, prints, or runs logic on import. You may define private helper functions (prefixed with `_`) if needed
 - **No extraneous requests**: only call endpoints that are part of the auth flow (login, token exchange, refresh). Do not call any other API endpoint
 - **No caching**: do not cache tokens, do not read/write files
@@ -54,15 +62,14 @@ auth, POST-based APIs)
 messages, `debug` for troubleshooting. Do NOT use `input()` or `print()` directly
 - **Return headers**: return the actual HTTP headers to inject, not raw tokens. For cookie-based auth, build a `Cookie` header string from the session cookies (e.g., `"Cookie": "sessionid=abc; csrftoken=xyz"`). Spectral injects headers, not a cookie jar — cookies MUST be returned as a `Cookie` header in the dict
 - **Include necessary imports** at the top of your code
+- **Fully headless**: the script runs in a terminal with no browser. `acquire_token()` must perform the entire auth flow programmatically using HTTP requests — never ask the user to open a browser, paste a URL, or copy a token manually. Even for OAuth2 flows, reproduce the login POST + token exchange from the captured traces instead of delegating to a browser
 - **Handle the FULL auth flow**: if auth requires multiple steps, acquire_token must handle ALL steps
 - **Error handling**: raise clear exceptions on failure
 - **Reproduce all request headers**: the captured traffic may come from a mobile app, browser, or other client. APIs
 often validate the client identity via custom headers (User-Agent, app version, device info, API keys, etc.) and reject
 requests missing them with 403. Copy ALL non-standard request headers from the captured traces into your HTTP requests.
 Only omit headers managed automatically by urllib (`Host`, `Content-Length`, `Accept-Encoding`)
-- **Only use observed endpoints**: only call endpoints you can see in the captured traces. If a flow (e.g., token
-refresh) was not captured, make `refresh_token` raise an exception explaining the endpoint was not observed instead of
-guessing a URL
+- **Only use observed endpoints**: only call endpoints you can see in the captured traces. The exception is `refresh_token()`, where you may infer a standard token refresh endpoint (e.g., OAuth2 token endpoint) if the auth flow returns a refresh token
 
 ## Output format
 

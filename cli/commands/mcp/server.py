@@ -9,7 +9,7 @@ import click
 
 from cli.commands.mcp.request import build_request
 from cli.formats.mcp_tool import ToolDefinition
-from cli.helpers.auth.usage import AuthError, get_auth
+from cli.helpers.auth import AuthError, get_auth
 from cli.helpers.storage import list_apps, list_tools
 
 # Registry: MCP tool name -> (app_name, ToolDefinition)

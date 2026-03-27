@@ -2,12 +2,12 @@
 """Tests for cli.helpers.auth.runtime — auth cascade for MCP tool execution."""
 from __future__ import annotations
 
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 
-from cli.helpers.auth.errors import AuthScriptError, AuthScriptNotFound
-from cli.helpers.auth.runtime import call_auth_module
+from cli.helpers.auth._errors import AuthScriptError, AuthScriptNotFound
+from cli.helpers.auth._runtime import call_auth_module
 from cli.helpers.storage import auth_script_path
 
 # ---------------------------------------------------------------------------
@@ -118,15 +118,17 @@ class TestHelperInjection:
         call_auth_module(app_home, "acquire_token", output)
         assert any("hello" in line for line in output)
 
-    @patch("cli.helpers.auth.runtime.click.echo")
+    @patch("cli.helpers.auth._runtime.click.echo")
     def test_tell_user_captures_output(self, mock_echo: object, app_home: str) -> None:
         _write_script(app_home, TELL_USER_SCRIPT)
         output: list[str] = []
         call_auth_module(app_home, "acquire_token", output)
         assert any("msg" in line for line in output)
 
-    @patch("cli.helpers.auth.runtime.click.prompt", return_value="user-input")
-    def test_prompt_text_injected(self, mock_prompt: object, app_home: str) -> None:
+    def test_prompt_text_injected(self, app_home: str) -> None:
         _write_script(app_home, PROMPT_TEXT_SCRIPT)
-        result = call_auth_module(app_home, "acquire_token")
+        mock_question = MagicMock()
+        mock_question.unsafe_ask.return_value = "user-input"
+        with patch("questionary.text", return_value=mock_question):
+            result = call_auth_module(app_home, "acquire_token")
         assert result["headers"]["X-Value"] == "user-input"

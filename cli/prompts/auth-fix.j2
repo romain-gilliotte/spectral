@@ -1,27 +1,16 @@
-{% if attempt == 0 %}
-The auth script failed. Here is the current script and the error:
-
-### Current script
-
-```python
-{{ current_script }}
-```
-{% else %}
-The fixed script still fails. Here is the new error:
-{% endif %}
+The script failed with the following error:
 
 ### Traceback
-{{ traceback }}
+{{ exception | format_script_traceback }}
 
 ### Script stdout
 
 {% if script_stdout %}
 {{ script_stdout }}
 {% else %}
-No debug() output was captured.
+No debug() output was captured. Add `debug()` calls to log HTTP response status codes, headers, and body excerpts so you can diagnose the issue.
 {% endif %}
 
-Fix the script so it works. You may add `debug()` calls to log intermediate values
-Their output will be shown to you if the script fails again.
+Fix the script so it works. You can use `query_traces` to re-examine the captured traffic and verify the exact auth flow (URLs, headers, redirect chains, response bodies). Add `debug()` calls at every HTTP call to log the status code, relevant headers (especially `Location`), and the first 500 characters of the response body. Their output will be shown to you if the script fails again.
 
 Return ONLY the corrected Python code in a ```python block.

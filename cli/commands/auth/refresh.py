@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import click
 
-from cli.helpers.auth.usage import AuthError, refresh_auth
+from cli.helpers.auth import AuthError, refresh_auth
 from cli.helpers.console import console
 from cli.helpers.storage import load_token, resolve_app
 

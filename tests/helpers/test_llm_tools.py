@@ -289,8 +289,7 @@ class TestSanitizeHeaders:
         assert result["user-agent"] == "Mozilla/5.0 ..."
         assert "content-type" in result
         assert result["content-type"] == "application/json"
-        assert "authorization" in result
-        assert "...[redacted]" in result["authorization"]
+        assert result["authorization"] == "Bearer eyJhbGciOiJSUzI1NiJ9.long-token-value"
 
     def test_keeps_all_non_noise_headers(self) -> None:
         headers = {

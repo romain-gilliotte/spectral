@@ -35,9 +35,9 @@ _spectral() {
                 return
             fi
             case "$cmd2" in
-                analyze|extract|login)
+                analyze|extract)
                     [[ "$cur" == -* ]] && COMPREPLY=($(compgen -W "--debug --help" -- "$cur")) || _spectral_apps ;;
-                logout|refresh)
+                login|logout|refresh)
                     [[ "$cur" == -* ]] && COMPREPLY=($(compgen -W "--help" -- "$cur")) || _spectral_apps ;;
                 set)
                     [[ "$cur" == -* ]] && COMPREPLY=($(compgen -W "-H --header -c --cookie -b --body-param --help" -- "$cur")) || _spectral_apps ;;

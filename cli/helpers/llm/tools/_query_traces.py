@@ -29,6 +29,9 @@ def _build_trace_record(trace: Trace) -> dict[str, Any]:
         "request_headers": sanitize_headers(
             {h.name: h.value for h in trace.meta.request.headers}
         ),
+        "response_headers": sanitize_headers(
+            {h.name: h.value for h in trace.meta.response.headers}
+        ),
         "request_body": None,
         "response_body": None,
     }
@@ -36,12 +39,12 @@ def _build_trace_record(trace: Trace) -> dict[str, Any]:
         try:
             record["request_body"] = json.loads(trace.request_body)
         except (json.JSONDecodeError, UnicodeDecodeError):
-            pass
+            record["request_body"] = trace.request_body.decode(errors="replace")[:2000]
     if trace.response_body:
         try:
             record["response_body"] = json.loads(trace.response_body)
         except (json.JSONDecodeError, UnicodeDecodeError):
-            pass
+            record["response_body"] = trace.response_body.decode(errors="replace")[:2000]
     return record
 
 
@@ -77,9 +80,18 @@ def query_traces(ctx: RunContext[ToolDeps], expression: str) -> str:
     """Run a jq expression against all traces.
 
     Each trace is an object with fields: id, method, url, path,
-    status, request_headers, request_body, response_body.
-    The input is the full array of traces. Use select() to filter,
-    .field to extract, etc.
+    status, request_headers, response_headers, request_body,
+    response_body.  The input is the full array of traces.
+
+    IMPORTANT: always use select() to filter traces and pick only
+    the fields you need.  Dumping all traces or including
+    response_body without filtering will exceed the output limit.
+
+    Good examples:
+      [.[] | select(.url | contains("login")) | {id, method, url, status}]
+      [.[] | select(.url | contains("oauth")) | {id, url, status, request_headers}]
+      [.[] | select(.id == "t_0042") | {request_headers, request_body, response_body}]
+      [.[] | select(.status == 302) | {id, url, response_headers}]
 
     Args:
         expression: A jq expression to run against the trace array.

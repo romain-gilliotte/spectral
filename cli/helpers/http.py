@@ -39,16 +39,8 @@ _NOISE_HEADERS: frozenset[str] = frozenset(
 
 
 def sanitize_headers(headers: dict[str, str]) -> dict[str, str]:
-    """Redact long token values and strip noise headers."""
-    sanitized: dict[str, str] = {}
-    for k, v in headers.items():
-        if k.lower() in _NOISE_HEADERS:
-            continue
-        if k.lower() in ("authorization", "cookie", "set-cookie") and len(v) > 30:
-            sanitized[k] = v[:30] + "...[redacted]"
-        else:
-            sanitized[k] = v
-    return sanitized
+    """Strip noise headers (HTTP/2 pseudo-headers, browser fingerprint)."""
+    return {k: v for k, v in headers.items() if k.lower() not in _NOISE_HEADERS}
 
 
 def compact_url(url: str) -> str:

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import importlib.resources
 import json
+import traceback as _tb
 from typing import Any
 
 from jinja2 import Environment, StrictUndefined
@@ -69,6 +70,51 @@ def _parse(blob: str) -> Any | None:
         return None
 
 
+def _format_script_traceback(exc: BaseException) -> str:
+    """Format an exception chain, excluding spectral-internal frames.
+
+    Keeps stdlib frames (urllib, http, json...) and ``<auth-acquire>``
+    frames so the LLM sees the full context of HTTP errors.  Only
+    strips frames from ``cli/`` (spectral internals).
+    """
+
+    chain: list[tuple[BaseException, bool]] = []  # (exc, is_explicit_cause)
+    seen: set[int] = set()
+    current: BaseException | None = exc
+    while current is not None and id(current) not in seen:
+        seen.add(id(current))
+        parent = current.__cause__ or current.__context__
+        chain.append((current, current.__cause__ is not None))
+        current = parent
+
+    # Reverse: root cause first (Python's display order)
+    chain.reverse()
+
+    parts: list[str] = []
+    for i, (exc_item, is_explicit) in enumerate(chain):
+        if i > 0:
+            if is_explicit:
+                parts.append(
+                    "\nThe above exception was the direct cause "
+                    "of the following exception:\n\n"
+                )
+            else:
+                parts.append(
+                    "\nDuring handling of the above exception, "
+                    "another exception occurred:\n\n"
+                )
+
+        tb = _tb.extract_tb(exc_item.__traceback__)
+        kept = [f for f in tb if "/cli/" not in f.filename]
+        if kept:
+            parts.append("Traceback (most recent call last):\n")
+            parts.extend(_tb.format_list(kept))
+        parts.extend(_tb.format_exception_only(exc_item))
+
+    return "".join(parts)
+
+
+_env.filters["format_script_traceback"] = _format_script_traceback  # pyright: ignore[reportArgumentType]
 _env.filters["parse"] = _parse  # pyright: ignore[reportArgumentType]
 _env.filters["minified"] = minified  # pyright: ignore[reportArgumentType]
 _env.filters["truncate_json"] = truncate_json  # pyright: ignore[reportArgumentType]

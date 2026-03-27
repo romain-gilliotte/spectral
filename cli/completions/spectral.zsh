@@ -60,12 +60,12 @@ _spectral() {
                 _describe 'auth command' subcmds && ret=0
             else
                 case "${words[3]}" in
-                    analyze|extract|login)
+                    analyze|extract)
                         _arguments \
                             '--debug[Save LLM prompts/responses]' \
                             '--help[Show help]' \
                             '*:app name:_spectral_apps' && ret=0 ;;
-                    logout|refresh)
+                    login|logout|refresh)
                         _arguments \
                             '--help[Show help]' \
                             '*:app name:_spectral_apps' && ret=0 ;;

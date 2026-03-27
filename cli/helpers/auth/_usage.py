@@ -6,8 +6,8 @@ from typing import Any
 import click
 
 from cli.formats.mcp_tool import TokenState
-from cli.helpers.auth.errors import AuthError, AuthScriptError, AuthScriptNotFound
-from cli.helpers.auth.runtime import call_auth_module
+from cli.helpers.auth._errors import AuthError, AuthScriptError, AuthScriptNotFound
+from cli.helpers.auth._runtime import call_auth_module
 from cli.helpers.storage import load_token, write_token
 
 
@@ -54,6 +54,11 @@ def acquire_auth(app_name: str, output: list[str] | None = None) -> TokenState:
     new_token = _result_to_token_state(result)
     write_token(app_name, new_token)
     return new_token
+
+
+def save_auth_result(app_name: str, result: dict[str, Any]) -> None:
+    """Convert a raw auth function result to ``TokenState`` and persist it."""
+    write_token(app_name, _result_to_token_state(result))
 
 
 def _is_token_valid(token: TokenState) -> bool:
