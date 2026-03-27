@@ -1,0 +1,48 @@
+## How to investigate
+
+Use `query_traces` with jq expressions to examine auth-related traces — request/response headers, cookies, redirect
+locations, and response bodies. The timeline only shows URLs and status codes — you need the actual headers and bodies
+to reproduce the auth flow correctly. Also inspect one or two authenticated API calls to confirm the auth header
+format. Do NOT query every trace — only what is needed to understand the auth mechanism.
+
+If you find NO auth mechanism, respond with exactly: {{ no_auth_sentinel }}
+
+## Script conventions
+
+Your script must export one public function. You may define as many private helper functions (prefixed with `_`) as needed.
+
+### Injected helpers
+
+These are injected into the module's namespace at load time:
+- `debug(...)` — log intermediate values for troubleshooting (same interface as print). Output is captured and shown to you if the script fails. Use it freely for response bodies, status codes, token contents, etc.
+- `prompt_text(label)` — prompt the user for text input (acquire_token only)
+- `prompt_secret(label)` — prompt the user for secret input with no echo (acquire_token only)
+- `tell_user(message)` — display a message to the user (acquire_token only)
+- `wait_user_confirmation(message)` — display a message and wait for Enter (acquire_token only)
+
+### Return format
+
+The function must return a dict with:
+- "headers": dict of HTTP headers to inject (e.g., {"Authorization": "Bearer ey..."} or {"Cookie": "sessionid=abc; csrftoken=xyz"} for cookie-based auth)
+- "body_params": optional, dict of fields to merge into the body of every authenticated request (e.g., {"userToken": "...", "userId": "..."}). Use this when the API passes credentials in the POST body instead of HTTP headers
+- "refresh_token": optional, the refresh token if the auth flow returns one (or the new one for token rotation)
+- "expires_in": optional, token lifetime in seconds. For cookie-based auth, use the shortest `Max-Age` from the session cookies
+
+## Rules
+
+- **No hardcoded personal data**: the generated script may be shared publicly. NEVER hardcode usernames, emails, API keys, passwords, personal URLs, account IDs, or any user-specific values. Only hardcode values that are the same for ALL users of the API (endpoint URLs, public client IDs, content types, static headers)
+- **Stdlib only**: any standard library module is allowed (urllib, http.cookiejar, base64, json, re, hashlib, hmac, etc.) — zero pip dependencies. Do NOT access the filesystem (no open(), no pathlib, no tempfile)
+- **Use `http.cookiejar.CookieJar` with `urllib.request.HTTPCookieProcessor`** to handle cookies automatically across redirects and multi-step flows. Do NOT parse `Set-Cookie` headers manually
+- **No module-level side effects**: the module must only contain imports, constants, and function definitions. No top-level code that executes requests, prints, or runs logic on import
+- **No extraneous requests**: only call endpoints that are part of the auth flow. Do not call any other API endpoint
+- **No caching**: do not cache tokens, do not read/write files
+- **Use injected helpers**: use `debug` for troubleshooting. Do NOT use `input()` or `print()` directly
+- **Return headers**: return the actual HTTP headers to inject, not raw tokens. For cookie-based auth, build a `Cookie` header string from the session cookies. Spectral injects headers, not a cookie jar — cookies MUST be returned as a `Cookie` header in the dict
+- **Include necessary imports** at the top of your code
+- **Error handling**: raise clear exceptions on failure
+- **Reproduce all request headers**: the captured traffic may come from a mobile app, browser, or other client. APIs often validate the client identity via custom headers (User-Agent, app version, device info, API keys, etc.) and reject requests missing them with 403. Copy ALL non-standard request headers from the captured traces into your HTTP requests. Only omit headers managed automatically by urllib (`Host`, `Content-Length`, `Accept-Encoding`)
+- **Only use observed endpoints**: only call endpoints you can see in the captured traces
+
+## Output format
+
+Respond with ONLY the Python code inside a ```python code block. Or respond with {{ no_auth_sentinel }} if no auth mechanism was found. Do NOT include any explanation, commentary, or analysis — just the code block or {{ no_auth_sentinel }}.

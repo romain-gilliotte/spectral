@@ -31,11 +31,11 @@ _spectral() {
             esac ;;
         auth)
             if [[ $cword -eq 2 ]]; then
-                COMPREPLY=($(compgen -W "analyze extract login logout refresh set --help" -- "$cur"))
+                COMPREPLY=($(compgen -W "analyze-acquire analyze-refresh extract login logout refresh set --help" -- "$cur"))
                 return
             fi
             case "$cmd2" in
-                analyze|extract)
+                analyze-acquire|analyze-refresh|extract)
                     [[ "$cur" == -* ]] && COMPREPLY=($(compgen -W "--debug --help" -- "$cur")) || _spectral_apps ;;
                 login|logout|refresh)
                     [[ "$cur" == -* ]] && COMPREPLY=($(compgen -W "--help" -- "$cur")) || _spectral_apps ;;
