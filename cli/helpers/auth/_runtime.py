@@ -15,9 +15,14 @@ from typing import Any
 import click
 
 from cli.helpers.auth._errors import AuthScriptError, AuthScriptNotFound
-from cli.helpers.storage import auth_script_path
+from cli.helpers.storage import auth_script_path, refresh_script_path
 
 _CACHEABLE_LABEL = re.compile(r"email|login|password|user", re.IGNORECASE)
+
+_SCRIPT_PATHS = {
+    "acquire_token": auth_script_path,
+    "refresh_token": refresh_script_path,
+}
 
 
 def call_auth_module(
@@ -27,9 +32,14 @@ def call_auth_module(
     *args: Any,
     **kwargs: Any,
 ) -> Any:
-    """Load auth_acquire.py from disk as a module, injecting prompt utilities."""
+    """Load the appropriate auth script from disk and call *fn*.
 
-    script = auth_script_path(app_name)
+    Routes to ``auth_acquire.py`` for ``acquire_token`` and
+    ``auth_refresh.py`` for ``refresh_token``.
+    """
+
+    path_fn = _SCRIPT_PATHS.get(fn, auth_script_path)
+    script = path_fn(app_name)
     if not script.is_file():
         raise AuthScriptNotFound()
 

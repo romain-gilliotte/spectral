@@ -10,10 +10,15 @@ import time
 import click
 from pydantic import BaseModel
 
-from cli.commands.capture.types import CaptureBundle, Trace
+from cli.commands.capture.types import CaptureBundle
 from cli.formats.mcp_tool import TokenState
+from cli.helpers.auth import (
+    extract_headers_by_name,
+    extract_refresh_token,
+    filter_traces_by_base_url,
+    find_authorization_header,
+)
 from cli.helpers.console import console
-from cli.helpers.http import get_header
 import cli.helpers.llm as llm
 from cli.helpers.prompt import load
 from cli.helpers.storage import load_app_bundle, resolve_app, write_token
@@ -32,12 +37,9 @@ def extract(app_name: str, debug: bool) -> None:
     """
 
     resolve_app(app_name)
-    console.print(f"[bold]Loading captures for app:[/bold] {app_name}")
-    bundle = load_app_bundle(app_name)
-    console.print(f"  Loaded {len(bundle.traces)} traces")
-
     llm.init_debug(debug=debug)
 
+    bundle = load_app_bundle(app_name)
     token = _extract_auth_from_traces(bundle, app_name)
 
     if token is None:
@@ -49,55 +51,44 @@ def extract(app_name: str, debug: bool) -> None:
     write_token(app_name, token)
     header_names = ", ".join(token.headers.keys())
     console.print(f"[green]Token saved with headers: {header_names}[/green]")
+    if token.refresh_token:
+        console.print(f"[green]Refresh token: {token.refresh_token[:20]}...[/green]")
+
+
+# ── Internal helpers ──────────────────────────────────────────────────────
 
 
 def _extract_auth_from_traces(
     bundle: CaptureBundle, app_name: str
 ) -> TokenState | None:
-    """Extract auth headers from the most recent traces.
-
-    Returns a TokenState if auth headers are found, None otherwise.
-    """
+    """Extract auth headers and refresh token from the most recent traces."""
     from cli.helpers.detect_base_url import detect_base_urls
 
     base_url = detect_base_urls(bundle, app_name)[0]
 
-    filtered = _filter_traces_by_base_url(bundle.traces, base_url)
+    filtered = filter_traces_by_base_url(bundle.traces, base_url)
     if not filtered:
         return None
 
     # Fast path: look for Authorization header
-    auth_headers = _find_authorization_header(filtered)
-    if auth_headers:
-        return TokenState(headers=auth_headers, obtained_at=time.time())
+    auth_headers = find_authorization_header(filtered)
+    if not auth_headers:
+        # LLM fallback: ask which headers carry auth
+        header_names = _llm_identify_auth_headers(bundle, base_url)
+        if not header_names:
+            return None
+        auth_headers = extract_headers_by_name(bundle.traces, base_url, header_names)
+        if not auth_headers:
+            return None
 
-    # LLM fallback: ask which headers carry auth
-    header_names = _llm_identify_auth_headers(bundle, base_url)
-    if not header_names:
-        return None
+    # Also try to extract a refresh token from response bodies
+    refresh_token = extract_refresh_token(bundle, base_url)
 
-    extracted = _extract_headers_by_name(bundle.traces, base_url, header_names)
-    if not extracted:
-        return None
-
-    return TokenState(headers=extracted, obtained_at=time.time())
-
-
-def _find_authorization_header(filtered: list[Trace]) -> dict[str, str] | None:
-    """Fast path: find Authorization header from the most recent matching trace."""
-
-    for trace in filtered:
-        value = get_header(trace.meta.request.headers, "Authorization")
-        if value:
-            return {"Authorization": value}
-    return None
-
-
-def _filter_traces_by_base_url(traces: list[Trace], base_url: str) -> list[Trace]:
-    """Return traces whose URL starts with base_url, sorted by timestamp descending."""
-    matching = [t for t in traces if t.meta.request.url.startswith(base_url)]
-    matching.sort(key=lambda t: t.meta.timestamp, reverse=True)
-    return matching
+    return TokenState(
+        headers=auth_headers,
+        refresh_token=refresh_token,
+        obtained_at=time.time(),
+    )
 
 
 class _AuthHeaderNamesResponse(BaseModel):
@@ -122,20 +113,3 @@ def _llm_identify_auth_headers(bundle: CaptureBundle, base_url: str) -> list[str
 
     result = conv.ask_json(prompt, _AuthHeaderNamesResponse)
     return result.header_names
-
-
-def _extract_headers_by_name(
-    traces: list[Trace], base_url: str, names: list[str]
-) -> dict[str, str] | None:
-    """Given header names, find the most recent trace with those headers and return values."""
-    filtered = _filter_traces_by_base_url(traces, base_url)
-    names_lower = [n.lower() for n in names]
-
-    for trace in filtered:
-        headers: dict[str, str] = {}
-        for h in trace.meta.request.headers:
-            if h.name.lower() in names_lower:
-                headers[h.name] = h.value
-        if headers:
-            return headers
-    return None

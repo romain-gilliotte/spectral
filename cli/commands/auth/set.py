@@ -25,11 +25,18 @@ from cli.helpers.storage import resolve_app, write_token
     multiple=True,
     help='Body param as "key=value" (repeatable)',
 )
+@click.option(
+    "--refresh-token",
+    "-r",
+    default=None,
+    help="Refresh token to store for later use with analyze-refresh",
+)
 def set_token(
     app_name: str,
     header: tuple[str, ...],
     cookie: tuple[str, ...],
     body_param: tuple[str, ...],
+    refresh_token: str | None,
 ) -> None:
     """Manually set auth headers/cookies/body params for an app.
 
@@ -67,7 +74,10 @@ def set_token(
         headers["Authorization"] = f"Bearer {token}"
 
     token_state = TokenState(
-        headers=headers, body_params=body_params, obtained_at=time.time()
+        headers=headers,
+        body_params=body_params,
+        refresh_token=refresh_token,
+        obtained_at=time.time(),
     )
     write_token(app_name, token_state)
     console.print("[green]Token saved.[/green]")

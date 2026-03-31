@@ -31,7 +31,7 @@ def login(app_name: str) -> None:
     except AuthScriptNotFound:
         raise click.ClickException(
             f"Auth script not found for '{app_name}'. "
-            f"Run 'spectral auth analyze {app_name}' to generate one."
+            f"Run 'spectral auth analyze-acquire {app_name}' to generate one."
         )
 
     except AuthScriptError:
@@ -39,5 +39,5 @@ def login(app_name: str) -> None:
         console.print(traceback.format_exc())
         raise click.ClickException(
             f"Auth script failed for '{app_name}'. "
-            f"Run 'spectral auth analyze {app_name}' to regenerate."
+            f"Run 'spectral auth analyze-acquire {app_name}' to regenerate."
         )

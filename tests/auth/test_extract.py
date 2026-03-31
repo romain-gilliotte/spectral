@@ -1,5 +1,5 @@
 # pyright: reportPrivateUsage=false
-"""Tests for private extraction helpers in cli.commands.auth.extract."""
+"""Tests for extraction helpers in cli.helpers.auth._extract."""
 
 from __future__ import annotations
 
@@ -9,17 +9,19 @@ from click.testing import CliRunner
 
 from cli.commands.auth.extract import (
     _extract_auth_from_traces,
-    _extract_headers_by_name,
-    _filter_traces_by_base_url,
-    _find_authorization_header,
     extract,
 )
 from cli.commands.capture.types import CaptureBundle, Trace
 from cli.formats.capture_bundle import Header
+from cli.helpers.auth._extract import (
+    extract_headers_by_name,
+    filter_traces_by_base_url,
+    find_authorization_header,
+)
 from tests.conftest import make_trace
 
 BASE_URL = "https://api.example.com"
-MODULE = "cli.commands.auth.extract"
+CMD_MODULE = "cli.commands.auth.extract"
 
 
 def _bearer_trace(trace_id: str, timestamp: int, token: str = "tok") -> Trace:
@@ -45,7 +47,7 @@ def _plain_trace(trace_id: str, url: str, timestamp: int) -> Trace:
 
 
 # ------------------------------------------------------------------
-# _filter_traces_by_base_url
+# filter_traces_by_base_url
 # ------------------------------------------------------------------
 
 
@@ -55,7 +57,7 @@ class TestFilterTracesByBaseUrl:
         other = _plain_trace("t2", "https://cdn.other.com/img.png", 200)
         also_matching = _plain_trace("t3", f"{BASE_URL}/orders", 300)
 
-        result = _filter_traces_by_base_url([matching, other, also_matching], BASE_URL)
+        result = filter_traces_by_base_url([matching, other, also_matching], BASE_URL)
 
         ids = [t.meta.id for t in result]
         assert ids == ["t3", "t1"]
@@ -66,14 +68,14 @@ class TestFilterTracesByBaseUrl:
         t_mid = _plain_trace("t2", f"{BASE_URL}/b", 200)
         t_late = _plain_trace("t3", f"{BASE_URL}/c", 300)
 
-        result = _filter_traces_by_base_url([t_mid, t_early, t_late], BASE_URL)
+        result = filter_traces_by_base_url([t_mid, t_early, t_late], BASE_URL)
 
         timestamps = [t.meta.timestamp for t in result]
         assert timestamps == [300, 200, 100]
 
 
 # ------------------------------------------------------------------
-# _find_authorization_header
+# find_authorization_header
 # ------------------------------------------------------------------
 
 
@@ -81,7 +83,7 @@ class TestFindAuthorizationHeader:
     def test_found_in_first_trace(self) -> None:
         traces = [_bearer_trace("t1", 100, "secret")]
 
-        result = _find_authorization_header(traces)
+        result = find_authorization_header(traces)
 
         assert result == {"Authorization": "Bearer secret"}
 
@@ -91,7 +93,7 @@ class TestFindAuthorizationHeader:
             _plain_trace("t2", f"{BASE_URL}/b", 200),
         ]
 
-        result = _find_authorization_header(traces)
+        result = find_authorization_header(traces)
 
         assert result is None
 
@@ -100,13 +102,13 @@ class TestFindAuthorizationHeader:
         recent = _bearer_trace("t1", 300, "new-token")
         older = _bearer_trace("t2", 100, "old-token")
 
-        result = _find_authorization_header([recent, older])
+        result = find_authorization_header([recent, older])
 
         assert result == {"Authorization": "Bearer new-token"}
 
 
 # ------------------------------------------------------------------
-# _extract_headers_by_name
+# extract_headers_by_name
 # ------------------------------------------------------------------
 
 
@@ -124,7 +126,7 @@ class TestExtractHeadersByName:
             ],
         )
 
-        result = _extract_headers_by_name([trace], BASE_URL, ["X-Api-Key"])
+        result = extract_headers_by_name([trace], BASE_URL, ["X-Api-Key"])
 
         assert result == {"X-Api-Key": "key-abc"}
 
@@ -140,7 +142,7 @@ class TestExtractHeadersByName:
             ],
         )
 
-        result = _extract_headers_by_name([trace], BASE_URL, ["authorization"])
+        result = extract_headers_by_name([trace], BASE_URL, ["authorization"])
 
         assert result == {"Authorization": "Bearer xyz"}
 
@@ -154,7 +156,7 @@ class TestExtractHeadersByName:
             request_headers=[Header(name="Accept", value="text/html")],
         )
 
-        result = _extract_headers_by_name([trace], BASE_URL, ["X-Secret"])
+        result = extract_headers_by_name([trace], BASE_URL, ["X-Secret"])
 
         assert result is None
 
@@ -210,7 +212,7 @@ class TestExtractAuthFromTraces:
 
         assert result is None
 
-    @patch(f"{MODULE}._llm_identify_auth_headers", return_value=["X-Api-Key"])
+    @patch(f"{CMD_MODULE}._llm_identify_auth_headers", return_value=["X-Api-Key"])
     @patch("cli.helpers.detect_base_url.detect_base_urls", return_value=[BASE_URL])
     def test_llm_fallback_identifies_custom_header(
         self, _mock_detect: object, _mock_llm: object
@@ -233,7 +235,7 @@ class TestExtractAuthFromTraces:
         assert result is not None
         assert result.headers == {"X-Api-Key": "key-123"}
 
-    @patch(f"{MODULE}._llm_identify_auth_headers", return_value=[])
+    @patch(f"{CMD_MODULE}._llm_identify_auth_headers", return_value=[])
     @patch("cli.helpers.detect_base_url.detect_base_urls", return_value=[BASE_URL])
     def test_llm_finds_no_auth_headers(
         self, _mock_detect: object, _mock_llm: object
@@ -245,7 +247,7 @@ class TestExtractAuthFromTraces:
 
         assert result is None
 
-    @patch(f"{MODULE}._llm_identify_auth_headers", return_value=["X-Secret"])
+    @patch(f"{CMD_MODULE}._llm_identify_auth_headers", return_value=["X-Secret"])
     @patch("cli.helpers.detect_base_url.detect_base_urls", return_value=[BASE_URL])
     def test_llm_identifies_header_absent_from_traces(
         self, _mock_detect: object, _mock_llm: object
@@ -272,10 +274,10 @@ class TestExtractCommand:
         bundle = _bundle_with_traces([_bearer_trace("t1", 100, "tok")])
 
         with (
-            patch(f"{MODULE}.resolve_app"),
-            patch(f"{MODULE}.load_app_bundle", return_value=bundle),
+            patch(f"{CMD_MODULE}.resolve_app"),
+            patch(f"{CMD_MODULE}.load_app_bundle", return_value=bundle),
             patch(_DETECT_PATCH, return_value=[BASE_URL]),
-            patch(f"{MODULE}.write_token") as mock_write,
+            patch(f"{CMD_MODULE}.write_token") as mock_write,
         ):
             result = CliRunner().invoke(extract, ["myapp"], catch_exceptions=False)
 
@@ -291,10 +293,10 @@ class TestExtractCommand:
         )
 
         with (
-            patch(f"{MODULE}.resolve_app"),
-            patch(f"{MODULE}.load_app_bundle", return_value=bundle),
+            patch(f"{CMD_MODULE}.resolve_app"),
+            patch(f"{CMD_MODULE}.load_app_bundle", return_value=bundle),
             patch(_DETECT_PATCH, return_value=[BASE_URL]),
-            patch(f"{MODULE}.write_token") as mock_write,
+            patch(f"{CMD_MODULE}.write_token") as mock_write,
         ):
             result = CliRunner().invoke(extract, ["myapp"], catch_exceptions=False)
 

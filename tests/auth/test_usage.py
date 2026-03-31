@@ -39,15 +39,21 @@ class TestGetAuth:
 
     @patch(f"{MODULE}.write_token")
     @patch(f"{MODULE}.call_auth_module")
+    @patch(f"{MODULE}.refresh_script_path")
     @patch(f"{MODULE}.load_token")
     def test_expired_token_with_refresh_triggers_refresh(
-        self, mock_load: object, mock_call: object, mock_write: object
+        self,
+        mock_load: object,
+        mock_path: object,
+        mock_call: object,
+        mock_write: object,
     ) -> None:
         token = make_token(
             expires_at=time.time() - 100,
             refresh_token="rt_old",
         )
         mock_load.return_value = token  # type: ignore[union-attr]
+        mock_path.return_value.is_file.return_value = True  # type: ignore[union-attr]
         mock_call.return_value = {  # type: ignore[union-attr]
             "headers": {"Authorization": "Bearer new"},
             "refresh_token": "rt_new",
@@ -76,12 +82,14 @@ class TestGetAuth:
             get_auth("myapp")
 
     @patch(f"{MODULE}.call_auth_module", side_effect=AuthScriptError)
+    @patch(f"{MODULE}.refresh_script_path")
     @patch(f"{MODULE}.load_token")
     def test_refresh_failure_raises(
-        self, mock_load: object, _mock_call: object
+        self, mock_load: object, mock_path: object, _mock_call: object
     ) -> None:
         token = make_token(expires_at=time.time() - 100, refresh_token="rt_old")
         mock_load.return_value = token  # type: ignore[union-attr]
+        mock_path.return_value.is_file.return_value = True  # type: ignore[union-attr]
 
         with pytest.raises(AuthError, match="No valid token"):
             get_auth("myapp")
